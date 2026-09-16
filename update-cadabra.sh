@@ -64,7 +64,10 @@ DO_PACKAGES="yes"
 DO_AGENT_PACKAGE_UPDATE="yes"
 DO_BUILD="yes"
 DO_CODESIGN="yes"
-CLEAN_PACKAGES="no"
+# "default" becomes yes or no after argument parsing: a clean install unless this run does
+# not install packages at all (--skip-build, --skip-packages). An explicit --clean-packages
+# or --no-clean-packages sets it outright.
+CLEAN_PACKAGES="default"
 
 # The Python MCP servers. Two lists because the name pip installs is not the name that
 # gets imported, and they must stay index-aligned.
@@ -146,13 +149,22 @@ REPLAY_BIN="$APP_BUNDLE/Contents/Support/replay"
 PYTHON_DIR="$APP_BUNDLE/Contents/Library/Python"
 BUNDLED_PYTHON="$PYTHON_DIR/bin/python3"
 PACKAGES_DIR="$APP_BUNDLE/Contents/Library/Packages"
-# Where --clean-packages builds the new tree before swapping it in. Kept beside the live
+# Where a clean install builds the new tree before swapping it in. Kept beside the live
 # directory so the swap is a rename rather than a 44 MB copy across filesystems, and
 # swept by codesign_app so an interrupted run can never seal a duplicate into the bundle.
 PACKAGES_STAGING="$APP_BUNDLE/Contents/Library/Packages.staging"
 # Written into the staging dir only once the install AND the strip have both succeeded.
 # Its presence is the sole signal that a staging tree is complete and safe to swap in.
 STAGING_SENTINEL=".install-complete"
+# Files OMC's AppletBuilder installs into Packages beside pip's output: the omc and
+# actionui_remote Python modules and the ActionUI remote shell clients. A clean install
+# replaces the whole directory, so carry_over_omc_files copies these from the live tree into
+# the staged one. Installing and updating them stays AppletBuilder's job
+# (update_python_packages and update_shell_clients in lib.build.sh overwrite them on every
+# applet build). The names are read from AppletBuilder's own Contents/Library/Packages,
+# the directory those functions copy from, so a file OMC adds later is kept without editing
+# this script; this list is the fallback when no OMC checkout sits beside this repo.
+OMC_PACKAGES_FALLBACK="omc.py actionui_remote.py actionui_remote.sh actionui_remote.zsh actionui_remote_escape.awk actionui_remote_walk.awk"
 
 show_help() {
     cat <<EOF
@@ -180,7 +192,11 @@ Options:
   --skip-pdfutil      leave pdfutil untouched
   --skip-replay       leave replay untouched
   --skip-packages     leave the Python MCP packages untouched
-  --clean-packages    wipe Contents/Library/Packages before installing (drops orphans)
+  --clean-packages    reinstall Contents/Library/Packages from scratch, dropping orphaned
+                      packages and old versions' metadata (the default; OMC's own modules
+                      are kept)
+  --no-clean-packages upgrade the installed packages in place instead (faster; leaves
+                      whatever pip stops needing behind)
   --skip-agent-package-update
                       build mlx-agent against its committed Package.resolved instead of
                       re-resolving its SPM dependencies to the newest allowed versions
@@ -222,6 +238,7 @@ while [ $# -gt 0 ]; do
         --skip-replay) DO_REPLAY="no" ;;
         --skip-packages) DO_PACKAGES="no" ;;
         --clean-packages) CLEAN_PACKAGES="yes" ;;
+        --no-clean-packages) CLEAN_PACKAGES="no" ;;
         --skip-agent-package-update) DO_AGENT_PACKAGE_UPDATE="no" ;;
         --skip-build) DO_BUILD="no" ;;
         --skip-codesign) DO_CODESIGN="no" ;;
@@ -239,6 +256,15 @@ if [ "$CLEAN_PACKAGES" = "yes" ]; then
         || { echo "${RED}--clean-packages cannot be combined with --skip-build: a clean install has to run pip.${RESET}" >&2; exit 1; }
     [ "$DO_PACKAGES" = "yes" ] \
         || { echo "${RED}--clean-packages cannot be combined with --skip-packages.${RESET}" >&2; exit 1; }
+fi
+# The default is not a request, so it follows the stages instead of tripping the refusal
+# above: a run that installs no packages simply does not clean them.
+if [ "$CLEAN_PACKAGES" = "default" ]; then
+    if [ "$DO_BUILD" = "yes" ] && [ "$DO_PACKAGES" = "yes" ]; then
+        CLEAN_PACKAGES="yes"
+    else
+        CLEAN_PACKAGES="no"
+    fi
 fi
 
 cleanup() {
@@ -474,7 +500,7 @@ prepare() {
     # half-removed one, and the wrong guess destroys the good tree.
     if [ -d "$PACKAGES_STAGING" ]; then
         if [ -f "$PACKAGES_STAGING/$STAGING_SENTINEL" ]; then
-            echo "  ${YELLOW}Completing an interrupted --clean-packages run (staged tree is complete)${RESET}"
+            echo "  ${YELLOW}Completing an interrupted clean package install (staged tree is complete)${RESET}"
             swap_in_staged_packages
         else
             echo "  ${YELLOW}Discarding an incomplete staged package tree from an interrupted run${RESET}"
@@ -892,7 +918,9 @@ update_packages() {
 
     # pip --target --upgrade never REMOVES anything, so a dir that has been upgraded across
     # dependency changes accumulates orphaned packages that are still importable and still
-    # signed into the bundle. --clean-packages is the escape hatch.
+    # signed into the bundle, and it leaves the dist-info of every replaced version beside
+    # the new one, where importlib.metadata may read the old version number. So the default
+    # is a clean install; --no-clean-packages keeps the faster in-place upgrade.
     #
     # It builds the new tree in a STAGING directory and only swaps it in once the install
     # and the stripping have both succeeded. The obvious alternative - rename the live dir
@@ -934,6 +962,9 @@ update_packages() {
     /usr/bin/find "$install_target" -type d \( -name tests -o -name test \) -prune -exec /bin/rm -rf {} + 2>/dev/null
 
     if [ "$CLEAN_PACKAGES" = "yes" ]; then
+        # Before the sentinel, so a staged tree marked complete always has them.
+        carry_over_omc_files "$PACKAGES_STAGING"
+
         # The sentinel is what makes recovery decidable. Written only after pip AND the
         # strip have succeeded, so prepare() can tell "complete tree waiting to be swapped
         # in" from "pip died halfway" without guessing - which is exactly the distinction
@@ -946,6 +977,51 @@ update_packages() {
     PACKAGES_STATUS="installed"
     echo "  ${GREEN}Installed${RESET} ${MCP_PACKAGES[*]}"
     echo
+}
+
+# Copy OMC's own files (see OMC_PACKAGES_FALLBACK) from the live Packages into the staged
+# tree, so a clean install replaces only what pip owns. Only files already present are
+# copied: putting them there in the first place is AppletBuilder's job. A name pip has now
+# installed too is a real import conflict, and it stops the run before the swap, with the
+# live packages untouched.
+carry_over_omc_files() { # <staging dir>
+    local staging="$1"
+    [ -d "$PACKAGES_DIR" ] || return 0
+
+    local names="$OMC_PACKAGES_FALLBACK"
+    local names_from="the built-in list"
+    local ab_packages
+    local listing
+    local ls_rc
+    for ab_packages in "$SCRIPT_DIR/../OMC/Distribution/AppletBuilder.app/Contents/Library/Packages" \
+                       "$SCRIPT_DIR/../../OMC/Distribution/AppletBuilder.app/Contents/Library/Packages"; do
+        [ -d "$ab_packages" ] || continue
+        listing="$(/bin/ls "$ab_packages")"
+        ls_rc=$?
+        if [ "$ls_rc" -eq 0 ] && [ -n "$listing" ]; then
+            names="$listing"
+            names_from="$ab_packages"
+        fi
+        break
+    done
+
+    local kept=0
+    local name
+    local cp_rc
+    for name in $names; do
+        # A bytecode cache next to AppletBuilder's copies is not one of OMC's files, and
+        # the strip above has already run on the staged tree.
+        [ "$name" = "__pycache__" ] && continue
+        [ -e "$PACKAGES_DIR/$name" ] || continue
+        [ -e "$staging/$name" ] \
+            && fail "pip installed $name, which is also an OMC file in Packages. One would shadow the other; resolve the conflict and rerun. The installed packages were left untouched."
+        /bin/cp -Rp "$PACKAGES_DIR/$name" "$staging/$name"
+        cp_rc=$?
+        [ "$cp_rc" -eq 0 ] \
+            || fail "Could not copy $name into $staging. The installed packages were left untouched."
+        kept=$((kept + 1))
+    done
+    echo "  Kept $kept OMC file(s) from the live Packages (names from $names_from)"
 }
 
 # Replace the live packages with the completed staging tree. Split out because prepare()
