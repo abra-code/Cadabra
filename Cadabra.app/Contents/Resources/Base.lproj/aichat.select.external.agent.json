@@ -31,6 +31,7 @@
         "type": "Table",
         "id": 10,
         "properties": {
+          "scrollContentBackground": "hidden",
           "columns": ["Agent", "Status"],
           "columnHeadersVisibility": "hidden",
           "widths": [200, 20],

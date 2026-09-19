@@ -41,6 +41,7 @@
         "type": "Table",
         "id": 510,
         "properties": {
+          "scrollContentBackground": "hidden",
           "columns": ["Title"],
           "widths": [280],
           "minWidths": [150],

@@ -80,6 +80,7 @@
         "type": "Table",
         "id": 202,
         "properties": {
+          "scrollContentBackground": "hidden",
           "columns": ["Model", "Downloads"],
           "widths": [330, 80],
           "minWidths": [200, 50],
