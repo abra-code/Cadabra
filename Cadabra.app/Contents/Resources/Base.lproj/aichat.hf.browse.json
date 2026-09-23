@@ -145,7 +145,8 @@
                   "systemImage": "questionmark.circle",
                   "imageScale": "medium",
                   "buttonStyle": "plain",
-                  "actionID": "aichat.model.help"
+                  "actionID": "aichat.model.help",
+                  "help": "Open the model guide"
                 }
               }
             ]

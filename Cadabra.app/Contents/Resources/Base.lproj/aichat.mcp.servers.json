@@ -320,6 +320,7 @@
                             "systemImage": "plus",
                             "buttonStyle": "borderless",
                             "actionID": "aichat.mcp.servers.rw.add",
+                            "help": "Add a folder the agent may read and write",
                             "frame": { "width": 24, "height": 22 }
                           }
                         },
@@ -330,6 +331,7 @@
                             "systemImage": "minus",
                             "buttonStyle": "borderless",
                             "actionID": "aichat.mcp.servers.rw.remove",
+                            "help": "Remove the selected read-write folder",
                             "disabled": true,
                             "frame": { "width": 24, "height": 22 }
                           }
@@ -371,6 +373,7 @@
                             "systemImage": "plus",
                             "buttonStyle": "borderless",
                             "actionID": "aichat.mcp.servers.ro.add",
+                            "help": "Add a folder the agent may only read",
                             "frame": { "width": 24, "height": 22 }
                           }
                         },
@@ -381,6 +384,7 @@
                             "systemImage": "minus",
                             "buttonStyle": "borderless",
                             "actionID": "aichat.mcp.servers.ro.remove",
+                            "help": "Remove the selected read-only folder",
                             "disabled": true,
                             "frame": { "width": 24, "height": 22 }
                           }
