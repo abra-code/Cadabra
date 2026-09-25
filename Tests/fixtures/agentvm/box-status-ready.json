@@ -1,0 +1,41 @@
+{
+  "activeExecs": 1,
+  "box": {
+    "cpuCount": 4,
+    "createdAt": "2026-09-25T06:53:07Z",
+    "formatVersion": 1,
+    "guestProtocol": 1,
+    "image": "dev-agents",
+    "macAddress": "4a:44:e2:f9:ea:37",
+    "macOSBuild": "26A428",
+    "macOSVersion": "27.0",
+    "memoryBytes": 4294967296,
+    "name": "cadabra-spike",
+    "network": {
+      "allow": [
+        "pack:npm"
+      ],
+      "mode": "allowlist"
+    },
+    "userName": "agent"
+  },
+  "diskUsage": {
+    "bytes": 38677839872,
+    "unsharedBytes": 142839808
+  },
+  "guestFeatures": [
+    "terminal",
+    "prompt-notices",
+    "wallpaper"
+  ],
+  "guestVersion": "0.1.5",
+  "path": "/Users/you/Library/Application Support/agent-vm/Boxes/cadabra-spike",
+  "pid": 44847,
+  "project": "/Users/you/Development/cadabra-spike-project",
+  "projectReadOnly": true,
+  "running": true,
+  "startedAt": "2026-09-25T06:57:49Z",
+  "state": "ready",
+  "supervisorPath": "/Users/you/Development/agent-vm/.build/signed/release/agent-vm",
+  "supervisorVersion": "0.1.8"
+}

@@ -1,0 +1,34 @@
+{
+  "checks": [
+    {
+      "detail": "macOS 27.0.0",
+      "name": "macOS",
+      "status": "ok"
+    },
+    {
+      "detail": "supported; this Mac has 10 CPU cores and 24 GB of memory to share with boxes",
+      "name": "virtualization",
+      "status": "ok"
+    },
+    {
+      "detail": "com.apple.security.virtualization present",
+      "name": "entitlement",
+      "status": "ok"
+    },
+    {
+      "detail": "ad hoc: runs on this Mac only; sign with a Developer ID to distribute",
+      "name": "signature",
+      "status": "info"
+    },
+    {
+      "detail": "45 GB free on the volume of /Users/you/Library/Application Support/agent-vm; a macOS image needs tens of GB (50 GB or more recommended)",
+      "name": "disk space",
+      "status": "warning"
+    },
+    {
+      "detail": "2 virtual machines running on this Mac (any application); macOS runs at most 2 macOS guests at once, so a box will not start while those are macOS guests",
+      "name": "running VMs",
+      "status": "warning"
+    }
+  ]
+}

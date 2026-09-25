@@ -1,0 +1,17 @@
+{
+  "controlProtocol": 1,
+  "guestDaemon": {
+    "digest": "6fd15f404e002e967fbce4d2e21a03f30ec1e09dace4f8e10994423274376de5",
+    "features": [
+      "terminal",
+      "prompt-notices",
+      "wallpaper"
+    ],
+    "path": "/Users/you/Development/agent-vm/.build/signed/release/agent-vm-guest",
+    "protocol": 1,
+    "version": "0.1.8"
+  },
+  "guestProtocol": 1,
+  "path": "/Users/you/Development/agent-vm/.build/signed/release/agent-vm",
+  "version": "0.1.8"
+}

@@ -1,0 +1,29 @@
+{
+  "box": {
+    "cpuCount": 4,
+    "createdAt": "2026-09-24T09:06:22Z",
+    "formatVersion": 1,
+    "guestProtocol": 1,
+    "image": "dev",
+    "macAddress": "d2:5e:f2:43:b0:0d",
+    "macOSBuild": "26A428",
+    "macOSVersion": "27.0",
+    "memoryBytes": 8589934592,
+    "name": "try1",
+    "network": {
+      "allow": [
+        "pack:github"
+      ],
+      "mode": "allowlist"
+    },
+    "userName": "agent"
+  },
+  "diskUsage": {
+    "bytes": 35547566080,
+    "unsharedBytes": 1335742464
+  },
+  "path": "/Users/you/Library/Application Support/agent-vm/Boxes/try1",
+  "running": true,
+  "state": "unresponsive",
+  "statusError": "no answer from the supervisor within 5 s"
+}
