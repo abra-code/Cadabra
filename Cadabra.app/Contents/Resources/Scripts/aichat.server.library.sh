@@ -14,6 +14,8 @@
 [ -n "${__AICHAT_SERVER_LIB:-}" ] && return 0
 __AICHAT_SERVER_LIB=1
 source "$OMC_APP_BUNDLE_PATH/Contents/Resources/Scripts/aichat.mcp.servers.library.sh"
+# For agentvm_bin: the orphan sweep below also covers agent-vm's exec clients.
+source "$OMC_APP_BUNDLE_PATH/Contents/Resources/Scripts/aichat.agentvm.library.sh"
 
 # ──────────────────────────────────────────────────────────────
 # Server-lifecycle debug log (opt-in orphan-cleanup diagnostics)
@@ -89,6 +91,9 @@ forget_server_host_entry() {
 #     — the time / search MCP servers, children of mlx-agent
 #   • replay             ($OMC_APP_BUNDLE_PATH/Contents/Support/replay) — the Local
 #     (files & shell) MCP server, a child of mlx-agent
+# A fifth kind runs out of the bundle's agent-vm (or the developer override) but is not a
+# bundle process in the same sense: `agent-vm exec`, the client that runs one program in a
+# box for mlx-agent or the chat. Only that subcommand is swept; see _bundle_managed_process.
 #
 # A llama-server reparents to launchd (PPID 1) once its init handler exits, so the
 # pid-registry teardown (stop_orphaned_servers / the cancel & terminate handlers)
@@ -118,11 +123,27 @@ forget_server_host_entry() {
 # running order relative to the registry reapers — those still run first to keep the
 # on-disk registry tidy.
 
-# _bundle_managed_process <args-string>
+# _bundle_managed_process <args-string> [other agent-vm]
 # 0 if the command's executable lives in a swept bundle dir (llama-server, bundled
-# python, replay, or mlx-agent). Matches the START of the whole argument string, so a bundle
-# path containing spaces is handled and a path that only appears as a later argument is not
-# mistaken for the executable.
+# python, replay, or mlx-agent), or is an agent-vm exec client. Matches the START of the whole
+# argument string, so a bundle path containing spaces is handled and a path that only appears
+# as a later argument is not mistaken for the executable.
+#
+# AGENT-VM: ONLY `exec`, AND NEVER ANYTHING ELSE. An `agent-vm exec` runs one program in a box
+# for its parent - an MCP server for mlx-agent, an external agent for the chat - and a dead
+# parent leaves it at PPID 1 holding that program open, which is exactly what this sweep is for.
+# Killing it is safe: agent-vm hangs the program in the box up and ends it a few seconds later.
+# Every OTHER agent-vm process at PPID 1 is there on purpose and must never be touched:
+#   - `box serve` is a box's supervisor, which owns the running virtual machine. agent-vm
+#     detaches it in its own session so it outlives whatever started it; killing it is pulling
+#     the power cord on the box, and its VM slot stays taken until macOS notices;
+#   - `image create`, `image update-guest` and `image setup` run for minutes to an hour, detached
+#     on purpose so they survive the window and Cadabra itself;
+#   - any subcommand agent-vm adds later, which is why this is a one-entry allowlist rather than
+#     a list of exclusions.
+# Two binaries count: the embedded one, and the agent-vm in use when that is another one (the
+# developer override, /developer/agent-vm), passed as the second argument. Exec clients started
+# before the override was changed carry the old path and are missed until it is changed back.
 #
 # mlx-agent normally needs no sweeping: it is the Chat element's ACP child, so its stdin
 # closes when the app goes away and it exits on its own (verified on a hard kill of the
@@ -139,8 +160,29 @@ _bundle_managed_process() {
         "$OMC_APP_BUNDLE_PATH/Contents/Support/Llama.cpp/llama-server "*) return 0 ;;
         "$OMC_APP_BUNDLE_PATH/Contents/Support/MLX/mlx-agent"|\
         "$OMC_APP_BUNDLE_PATH/Contents/Support/MLX/mlx-agent "*)          return 0 ;;
+        "$OMC_APP_BUNDLE_PATH/Contents/Support/AgentVM/agent-vm exec "*)  return 0 ;;
     esac
+    if [ -n "${2:-}" ]; then
+        case "$1" in
+            "$2 exec "*) return 0 ;;
+        esac
+    fi
     return 1
+}
+
+# _bundle_other_agentvm  ->  the agent-vm in use when it is not the embedded one, or nothing.
+# Asked once per sweep, not once per process line. Absolute paths only: agentvm_available
+# refuses a relative override, so Cadabra never runs one, and every "agent-vm exec" found
+# through a PATH belongs to someone else.
+_bundle_other_agentvm() {
+    local _in_use="$(agentvm_bin)"
+    case "$_in_use" in
+        /*) ;;
+        *)  return 0 ;;
+    esac
+    if [ "$_in_use" != "$agentvm_embedded" ]; then
+        printf '%s\n' "$_in_use"
+    fi
 }
 
 # _collect_descendants <pid>  ->  prints every descendant pid, one per line.
@@ -154,7 +196,7 @@ _collect_descendants() {
 
 reap_orphaned_bundle_processes() {
     [ -n "$OMC_APP_BUNDLE_PATH" ] || return 0
-    echo "Reaping orphaned bundle processes (llama-server / MCP servers / mlx-agent) with no running parent"
+    echo "Reaping orphaned bundle processes (llama-server / MCP servers / mlx-agent / agent-vm exec) with no running parent"
 
     # Protected pids: the llama-servers of still-running sessions, keyed on host
     # liveness (see header). A server is shielded only while its host app is alive.
@@ -179,10 +221,11 @@ reap_orphaned_bundle_processes() {
 
     # Scan every process; an orphan is a swept-dir executable reparented to launchd
     # (PPID 1) that is not in the protected set.
+    local _rp_agentvm="$(_bundle_other_agentvm)"
     local victims="" _rp_pid _rp_ppid _rp_args
     while read -r _rp_pid _rp_ppid _rp_args; do
         [ "$_rp_ppid" = "1" ] || continue
-        _bundle_managed_process "$_rp_args" || continue
+        _bundle_managed_process "$_rp_args" "$_rp_agentvm" || continue
         case "$protected" in *" $_rp_pid "*) continue ;; esac
         echo "  orphan pid=$_rp_pid: $_rp_args"
         victims="${victims:+$victims }$_rp_pid"
