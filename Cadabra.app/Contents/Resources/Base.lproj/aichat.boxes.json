@@ -1,0 +1,213 @@
+{
+  "type": "HSplitView",
+  "properties": {
+    "frame": { "minWidth": 1000, "idealWidth": 1180, "minHeight": 560, "idealHeight": 680 },
+    "padding": "default"
+  },
+  "children": [
+    {
+      "type": "VStack",
+      "properties": {
+        "spacing": 8,
+        "alignment": "leading",
+        "frame": { "minWidth": 560, "idealWidth": 640, "maxHeight": "infinity", "alignment": "topLeading" }
+      },
+      "children": [
+        {
+          "type": "Text",
+          "id": 100,
+          "properties": { "text": "Checking agent-vm...", "font": "subheadline" }
+        },
+        {
+          "type": "Text",
+          "id": 101,
+          "properties": { "text": "", "font": "caption", "foregroundStyle": "secondary" }
+        },
+        {
+          "type": "HStack",
+          "properties": { "spacing": 8, "alignment": "center", "frame": { "maxWidth": "infinity" } },
+          "children": [
+            {
+              "type": "Picker",
+              "id": 110,
+              "properties": {
+                "options": ["Images", "Boxes"],
+                "pickerStyle": "segmented",
+                "labelsHidden": true,
+                "frame": { "width": 180 },
+                "actionID": "aichat.boxes.kind.changed"
+              }
+            },
+            { "type": "Spacer" },
+            {
+              "type": "Button",
+              "id": 121,
+              "properties": {
+                "title": "New Box...",
+                "controlSize": "small",
+                "help": "Create a box from an image",
+                "actionID": "aichat.boxes.box.new"
+              }
+            },
+            {
+              "type": "Button",
+              "id": 120,
+              "properties": {
+                "systemImage": "arrow.clockwise",
+                "help": "Refresh the images, boxes and jobs",
+                "controlSize": "small",
+                "actionID": "aichat.boxes.refresh"
+              }
+            }
+          ]
+        },
+        {
+          "type": "ZStack",
+          "properties": { "frame": { "maxWidth": "infinity", "maxHeight": "infinity" } },
+          "children": [
+            {
+              "type": "Table",
+              "id": 200,
+              "properties": {
+                "columns": ["Name", "State", "macOS", "Based on", "Own size", "Needs"],
+                "widths": [120, 65, 105, 85, 65, 80],
+                "minWidths": [90, 50, 80, 60, 50, 60],
+                "actionID": "aichat.boxes.image.selection.changed",
+                "frame": { "maxWidth": "infinity", "maxHeight": "infinity" }
+              }
+            },
+            {
+              "type": "Table",
+              "id": 300,
+              "properties": {
+                "columns": ["Name", "State", "Image", "Network", "CPUs", "Memory", "Own size"],
+                "widths": [170, 70, 110, 120, 40, 60, 70],
+                "minWidths": [90, 50, 60, 70, 30, 40, 50],
+                "hidden": true,
+                "actionID": "aichat.boxes.box.selection.changed",
+                "frame": { "maxWidth": "infinity", "maxHeight": "infinity" }
+              }
+            }
+          ]
+        },
+        {
+          "type": "Text",
+          "properties": { "text": "Jobs", "font": "subheadline" }
+        },
+        {
+          "type": "Table",
+          "id": 400,
+          "properties": {
+            "columns": ["Job", "State", "Progress"],
+            "widths": [220, 80, 300],
+            "minWidths": [120, 60, 120],
+            "actionID": "aichat.boxes.job.selection.changed",
+            "frame": { "maxWidth": "infinity", "minHeight": 90, "idealHeight": 120, "maxHeight": 160 }
+          }
+        },
+        {
+          "type": "HStack",
+          "properties": { "spacing": 8, "alignment": "center", "frame": { "maxWidth": "infinity" } },
+          "children": [
+            {
+              "type": "ProgressView",
+              "id": 405,
+              "properties": {
+                "value": 0,
+                "total": 100,
+                "progressViewStyle": "linear",
+                "hidden": true,
+                "frame": { "maxWidth": "infinity" }
+              }
+            },
+            {
+              "type": "Button",
+              "id": 401,
+              "properties": {
+                "title": "Cancel Job",
+                "controlSize": "small",
+                "disabled": true,
+                "actionID": "aichat.boxes.job.cancel"
+              }
+            },
+            {
+              "type": "Button",
+              "id": 402,
+              "properties": {
+                "title": "Remove",
+                "controlSize": "small",
+                "help": "Remove a finished job from the list",
+                "disabled": true,
+                "actionID": "aichat.boxes.job.forget"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "VStack",
+      "properties": {
+        "spacing": 8,
+        "alignment": "leading",
+        "frame": { "minWidth": 380, "idealWidth": 480, "maxWidth": "infinity", "maxHeight": "infinity", "alignment": "topLeading" }
+      },
+      "children": [
+        {
+          "type": "Text",
+          "id": 500,
+          "properties": { "text": "Select an image, a box or a job.", "font": "headline" }
+        },
+        {
+          "type": "Text",
+          "id": 501,
+          "properties": { "text": "", "font": "caption", "foregroundStyle": "secondary" }
+        },
+        {
+          "type": "TextEditor",
+          "id": 510,
+          "properties": {
+            "text": "",
+            "readOnly": true,
+            "font": { "size": 11, "design": "monospaced" },
+            "frame": { "maxWidth": "infinity", "maxHeight": "infinity" }
+          }
+        },
+        {
+          "type": "ZStack",
+          "properties": { "alignment": "leading", "frame": { "maxWidth": "infinity", "minHeight": 28 } },
+          "children": [
+            {
+              "type": "HStack",
+              "id": 540,
+              "properties": { "spacing": 8, "hidden": true },
+              "children": [
+                { "type": "Button", "id": 541, "properties": { "title": "New Box...", "help": "Create a box from this image", "actionID": "aichat.boxes.image.new.box" } },
+                { "type": "Button", "id": 542, "properties": { "title": "Update Guest", "help": "Install this Cadabra's agent-vm-guest into the image", "actionID": "aichat.boxes.image.update.guest" } },
+                { "type": "Button", "id": 543, "properties": { "title": "Full Disk Access...", "help": "Open the image to give agent-vm-guest Full Disk Access", "actionID": "aichat.boxes.image.setup" } },
+                { "type": "Button", "id": 544, "properties": { "systemImage": "folder", "help": "Show the image's folder in the Finder", "actionID": "aichat.boxes.reveal" } },
+                { "type": "Spacer" },
+                { "type": "Button", "id": 545, "properties": { "title": "Delete...", "role": "destructive", "actionID": "aichat.boxes.image.delete" } }
+              ]
+            },
+            {
+              "type": "HStack",
+              "id": 550,
+              "properties": { "spacing": 8, "hidden": true },
+              "children": [
+                { "type": "Button", "id": 551, "properties": { "title": "Start", "actionID": "aichat.boxes.box.start" } },
+                { "type": "Button", "id": 552, "properties": { "title": "Stop", "actionID": "aichat.boxes.box.stop" } },
+                { "type": "Button", "id": 553, "properties": { "title": "View", "help": "Show the box's screen; keys and clicks do not reach it", "actionID": "aichat.boxes.box.view" } },
+                { "type": "Button", "id": 554, "properties": { "title": "View and Control", "help": "Show the box's screen and let keys and clicks reach it", "actionID": "aichat.boxes.box.control" } },
+                { "type": "Button", "id": 555, "properties": { "title": "Shell", "help": "Open a shell in the box in Terminal", "actionID": "aichat.boxes.box.shell" } },
+                { "type": "Button", "id": 556, "properties": { "systemImage": "folder", "help": "Show the box's folder in the Finder", "actionID": "aichat.boxes.reveal" } },
+                { "type": "Spacer" },
+                { "type": "Button", "id": 557, "properties": { "title": "Delete...", "role": "destructive", "actionID": "aichat.boxes.box.delete" } }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,66 @@
+{
+  "type": "VStack",
+  "properties": {
+    "spacing": 10,
+    "alignment": "leading",
+    "padding": "default",
+    "frame": { "minWidth": 520, "idealWidth": 560, "minHeight": 470, "idealHeight": 520 }
+  },
+  "children": [
+    {
+      "type": "Text",
+      "properties": {
+        "text": "A box is an instant copy of an image, with its own disk and network rules. Programs in it see only what it is given.",
+        "font": "callout",
+        "foregroundStyle": "secondary",
+        "frame": { "maxWidth": "infinity", "alignment": "leading" }
+      }
+    },
+    {
+      "type": "Form",
+      "properties": { "frame": { "maxWidth": "infinity" } },
+      "children": [
+        { "type": "TextField", "id": 600, "properties": { "title": "Name", "text": "", "prompt": "lower-case letters, digits, \".\", \"_\" and \"-\"" } },
+        { "type": "Picker", "id": 601, "properties": { "title": "Image", "options": ["-"], "pickerStyle": "menu" } },
+        { "type": "TextField", "id": 602, "properties": { "title": "CPUs", "text": "", "prompt": "the image's" } },
+        { "type": "TextField", "id": 603, "properties": { "title": "Memory (GB)", "text": "", "prompt": "the image's" } },
+        { "type": "Picker", "id": 604, "properties": { "title": "Network", "options": ["Allow list", "Off", "Open"], "pickerStyle": "segmented" } },
+        { "type": "Toggle", "id": 607, "properties": { "title": "Disposable: deleted once it stops" } }
+      ]
+    },
+    {
+      "type": "Text",
+      "properties": { "text": "Allowed hosts, one per line: a host, *.domain, host:port, or pack:<name>", "font": "caption" }
+    },
+    {
+      "type": "GroupBox",
+      "properties": { "frame": { "maxWidth": "infinity", "maxHeight": "infinity" } },
+      "children": [
+        {
+          "type": "TextEditor",
+          "id": 605,
+          "properties": {
+            "text": "",
+            "font": { "size": 11, "design": "monospaced" },
+            "frame": { "maxWidth": "infinity", "minHeight": 90, "maxHeight": "infinity" }
+          }
+        }
+      ]
+    },
+    {
+      "type": "Text",
+      "id": 606,
+      "properties": { "text": "", "font": "caption", "foregroundStyle": "secondary", "frame": { "maxWidth": "infinity", "alignment": "leading" } }
+    },
+    {
+      "type": "HStack",
+      "properties": { "spacing": 8, "frame": { "maxWidth": "infinity" } },
+      "children": [
+        { "type": "Text", "id": 608, "properties": { "text": "", "font": "caption", "foregroundStyle": "red" } },
+        { "type": "Spacer" },
+        { "type": "Button", "id": 610, "properties": { "title": "Cancel", "keyboardShortcut": { "key": "escape" }, "actionID": "aichat.boxes.box.new.cancel" } },
+        { "type": "Button", "id": 609, "properties": { "title": "Create", "buttonStyle": "borderedProminent", "keyboardShortcut": { "key": "return" }, "actionID": "aichat.boxes.box.new.create" } }
+      ]
+    }
+  ]
+}

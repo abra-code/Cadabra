@@ -41,6 +41,10 @@
       { "type": "Button", "properties": {
           "title": "MCP Servers",
           "actionID": "aichat.mcp.inspect"
+      } },
+      { "type": "Button", "properties": {
+          "title": "Boxes...",
+          "actionID": "aichat.boxes"
       } }
     ]
   },
