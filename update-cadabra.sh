@@ -1236,59 +1236,12 @@ codesign_app() {
     [ -f "$codesign_script" ] || codesign_script="$SCRIPT_DIR/../codesign_applet.sh"
     [ -f "$codesign_script" ] || fail "codesign_applet.sh not found at $codesign_script"
 
-    # agent-vm cannot start a virtual machine without com.apple.security.virtualization.
-    # codesign_applet.sh carries a nested binary's entitlements over only when it signs with a
-    # real identity; ad hoc, it re-signs every nested binary with none, on purpose (ad hoc output
-    # stays what it always was for every applet that shares the script). So an ad hoc run keeps
-    # agent-vm's entitlements before the bundle is signed and puts them back afterwards.
-    # TEMPORARY, until codesign_applet.sh (canonical copy in OMC) carries entitlements over for
-    # ad hoc signatures too: Private/agent-vm-integration-plan.md, D18.
-    # The signing identifier is kept too: codesign_applet.sh re-signs a binary that has no
-    # embedded Info.plist under a generated identifier (agent-vm-5555...), replacing the
-    # com.abracode.agent-vm that build.sh gave it.
-    local agentvm_entitlements="" agentvm_identifier=""
-    case "$SIGNING_IDENTITY" in
-        ""|-)
-            if [ -f "$AGENTVM_BIN" ]; then
-                agentvm_entitlements="$(/usr/bin/codesign -d --entitlements - --xml "$AGENTVM_BIN" 2>/dev/null)"
-                case "$agentvm_entitlements" in
-                    *com.apple.security.virtualization*) ;;
-                    *) fail "The embedded agent-vm has no com.apple.security.virtualization entitlement to keep (lost in an earlier signing?). Redeploy it: drop --skip-agent-vm." ;;
-                esac
-                agentvm_identifier="$(/usr/bin/codesign -dv "$AGENTVM_BIN" 2>&1 | /usr/bin/sed -n 's/^Identifier=//p')"
-            fi
-            ;;
-    esac
-
+    # agent-vm cannot start a virtual machine without com.apple.security.virtualization, and
+    # grants tied to its identity need its identifier, com.abracode.agent-vm. codesign_applet.sh
+    # keeps both when it re-signs nested code (entitlements from an ad hoc signature also in an ad
+    # hoc run), so nothing agent-vm-specific happens here; verify checks the entitlement after.
     "$codesign_script" "$APP_BUNDLE" "$SIGNING_IDENTITY" || fail "Codesigning failed"
-    [ -n "$agentvm_entitlements" ] \
-        && restore_agentvm_entitlements "$agentvm_entitlements" "$agentvm_identifier"
     echo
-}
-
-# restore_agentvm_entitlements <entitlements XML> [identifier]
-# Ad hoc runs only (see codesign_app): signs the embedded agent-vm again, with its entitlements
-# and its identifier from before the bundle was signed, the way agent-vm's own Scripts/build.sh
-# does (hardened runtime), then reseals the outer bundle, whose seal records the code hash of
-# every nested binary. The reseal mirrors codesign_applet.sh's last step for ad hoc signing.
-restore_agentvm_entitlements() {
-    local entitlements_file="$(/usr/bin/mktemp "${TMPDIR:-/tmp}/agent-vm-entitlements.XXXXXX")"
-    [ -n "$entitlements_file" ] || fail "mktemp failed"
-    printf '%s' "$1" > "$entitlements_file"
-    echo "  Restoring agent-vm's entitlements and identifier after ad hoc signing"
-    # ${2:+...} adds the option only when an identifier was captured, as one word.
-    /usr/bin/codesign --force --sign - --timestamp=none --options runtime ${2:+"--identifier=$2"} \
-        --entitlements "$entitlements_file" "$AGENTVM_BIN"
-    local sign_status=$?
-    /bin/rm -f "$entitlements_file"
-    [ "$sign_status" -eq 0 ] || fail "Could not re-sign $AGENTVM_BIN with its entitlements."
-
-    local app_id="$(/usr/bin/defaults read "$APP_BUNDLE/Contents/Info.plist" CFBundleIdentifier 2>/dev/null)"
-    [ -n "$app_id" ] || fail "Could not read the bundle identifier of $APP_BUNDLE."
-    /usr/bin/codesign --force --sign - --timestamp=none --identifier "$app_id" "$APP_BUNDLE" \
-        || fail "Could not reseal $APP_BUNDLE after re-signing agent-vm."
-    /usr/bin/codesign --verify --deep --strict "$APP_BUNDLE" \
-        || fail "$(/usr/bin/basename "$APP_BUNDLE") does not verify after re-signing agent-vm."
 }
 
 # ── 5. Verify ─────────────────────────────────────────────────────────────────
