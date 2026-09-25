@@ -95,15 +95,14 @@ Both app bundles require binaries that are excluded from git.
 
 ### Cadabra.app engines (update-cadabra.sh)
 
-`update-cadabra.sh` installs all three runtime engines into `Cadabra.app`, then codesigns the bundle
-and verifies the engines actually launch:
+`update-cadabra.sh` installs the runtime engines and tools into `Cadabra.app`, then codesigns the
+bundle and verifies that they actually launch (`--help` lists every option):
 
 ```bash
-./update-cadabra.sh                              # llama.cpp (latest) + mlx-agent + pdfutil
+./update-cadabra.sh                              # everything: llama.cpp (latest release) and the rest built from source
 ./update-cadabra.sh --version=b8797              # pin the llama.cpp build tag
-./update-cadabra.sh --skip-llama                 # rebuild + redeploy just the agent + pdfutil
-./update-cadabra.sh --skip-agent                 # refresh llama.cpp + pdfutil
-./update-cadabra.sh --skip-llama --skip-agent    # rebuild + redeploy just pdfutil
+./update-cadabra.sh --skip-llama                 # rebuild and redeploy everything but llama.cpp
+./update-cadabra.sh --skip-llama --skip-agent --skip-pdfutil --skip-replay --skip-packages   # just agent-vm
 ```
 
 | Component | Destination | Source |
@@ -111,10 +110,14 @@ and verifies the engines actually launch:
 | `llama-server` + dylibs | `Contents/Support/Llama.cpp/` | downloaded GitHub release |
 | `mlx-agent` + resource bundles | `Contents/Support/MLX/` | built from source with `xcodebuild` |
 | `pdfutil` | `Contents/Support/` | built from source with `./build.sh` |
+| `replay` | `Contents/Support/` | built from source with `xcodebuild` |
+| `agent-vm` + `agent-vm-guest` | `Contents/Support/AgentVM/` | built from source with its `Scripts/build.sh` |
+| Python MCP servers | `Contents/Library/Packages/` | `pip install` with the bundle's own `python3` |
 
-The agent and pdfutil are built from sibling checkouts (`--agent-repo=` / `--pdfutil-repo=`); the
-script offers to `git clone` them if they are missing. No WebUI is downloaded or patched - Cadabra's
-chat is native.
+mlx-agent, pdfutil, replay and agent-vm are built from sibling checkouts (`--agent-repo=`,
+`--pdfutil-repo=`, `--replay-repo=`, `--agent-vm-repo=`); the script offers to `git clone` the first
+three if they are missing. agent-vm is not published yet, so its sibling checkout must exist. No WebUI
+is downloaded or patched - Cadabra's chat is native.
 
 **arm64 only for the agent:** mlx-agent is Metal/MLX and does not build for x86_64. The llama.cpp
 half still accepts `--arch=x86_64` (pass `--skip-agent` with it). pdfutil builds for either arch.

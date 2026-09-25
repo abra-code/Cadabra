@@ -6,10 +6,12 @@
 #   2. mlx-agent  - built from source with xcodebuild, Release (the ACP agent + MLX engine)
 #   3. pdfutil    - built from source with ./build.sh (the PDF MCP server)
 #   4. replay     - built from source with xcodebuild (the local files/shell MCP server)
-#   5. packages   - the Python MCP servers, pip-installed into Contents/Library/Packages
+#   5. agent-vm   - built from source with its Scripts/build.sh (the virtual machine tool that
+#                   runs agents and their tools in boxes), from the sibling checkout
+#   6. packages   - the Python MCP servers, pip-installed into Contents/Library/Packages
 # then codesigns the bundle and verifies the engines actually launch.
 #
-# Stage 5 absorbs what update-mcp-servers.py did as a separate manual step. Folding it in
+# Stage 6 absorbs what update-mcp-servers.py did as a separate manual step. Folding it in
 # means one codesign pass instead of two (that script signed, then this one signed again)
 # and it means the Python servers cannot silently rot: generate_mcp_configs.py now PROBES
 # every server at launch and drops any that fails to answer, so a stale or missing
@@ -56,10 +58,12 @@ SIGNING_IDENTITY="-"
 AGENT_REPO="${AGENT_REPO:-}"
 PDFUTIL_REPO="${PDFUTIL_REPO:-}"
 REPLAY_REPO="${REPLAY_REPO:-}"
+AGENTVM_REPO="${AGENTVM_REPO:-}"
 DO_LLAMA="yes"
 DO_AGENT="yes"
 DO_PDFUTIL="yes"
 DO_REPLAY="yes"
+DO_AGENTVM="yes"
 DO_PACKAGES="yes"
 DO_AGENT_PACKAGE_UPDATE="yes"
 DO_BUILD="yes"
@@ -103,8 +107,9 @@ AGENT_PINS_DIR=""
 AGENT_PINS_BACKUP=""
 PDFUTIL_BUILD_BIN=""
 REPLAY_BUILD_BIN=""
+AGENTVM_BUILD_DIR=""
 LLAMA_STATUS="skipped"; AGENT_STATUS="skipped"; PDFUTIL_STATUS="skipped"
-REPLAY_STATUS="skipped"; PACKAGES_STATUS="skipped"
+REPLAY_STATUS="skipped"; AGENTVM_STATUS="skipped"; PACKAGES_STATUS="skipped"
 
 SCRIPT_DIR="$(cd "$(/usr/bin/dirname "$0")" >/dev/null 2>&1 && pwd)"
 
@@ -123,6 +128,25 @@ offer_clone() {
     /usr/bin/git clone "$1" "$2"
 }
 
+# PIDs of processes running this bundle's own agent-vm: box supervisors (agent-vm box serve,
+# which outlive Cadabra on purpose), image builds and exec clients. Matched on the executable
+# file itself (lsof -d txt: the processes that run it as their program), never by name, so an
+# agent-vm run from its repository in Terminal is not counted. Not by command line either:
+# agent-vm starts every box supervisor with a bare "agent-vm" as argv[0], so ps shows no path
+# for exactly the processes this has to find.
+# lsof exits 1 both when nothing matches and when it fails, so it first has to see this
+# script's own process; if it cannot, this returns 1 and the caller refuses rather than assume
+# that nothing is running.
+agentvm_running_pids() {
+    local _self="$(/usr/sbin/lsof -a -p $$ -d txt -F p 2>/dev/null)"
+    [ -n "$_self" ] || return 1
+    local _pids="$(/usr/sbin/lsof -t -a -d txt -- "$AGENTVM_BIN" 2>/dev/null)"
+    local _pid
+    for _pid in $_pids; do
+        printf '%s ' "$_pid"
+    done
+}
+
 # Pinned to Cadabra.app: the repo root also holds the V1 AIChat.app, so a *.app glob
 # would grab the wrong bundle.
 APP_BUNDLE="$SCRIPT_DIR/Cadabra.app"
@@ -132,6 +156,11 @@ INSTALL_DIR="$APP_BUNDLE/Contents/Support/Llama.cpp"
 MLX_DIR="$APP_BUNDLE/Contents/Support/MLX"
 PDFUTIL_BIN="$APP_BUNDLE/Contents/Support/pdfutil"
 REPLAY_BIN="$APP_BUNDLE/Contents/Support/replay"
+# agent-vm and its guest daemon share a folder because agent-vm installs the agent-vm-guest it
+# finds next to itself into the images it builds (image create, image update-guest).
+AGENTVM_DIR="$APP_BUNDLE/Contents/Support/AgentVM"
+AGENTVM_BIN="$AGENTVM_DIR/agent-vm"
+AGENTVM_GUEST_BIN="$AGENTVM_DIR/agent-vm-guest"
 
 # The Python tier lives under Contents/Library, not Contents/Support: Support holds the
 # native engines this script builds, Library holds the embedded interpreter and the
@@ -139,7 +168,7 @@ REPLAY_BIN="$APP_BUNDLE/Contents/Support/replay"
 #
 # BUNDLED_PYTHON is installed by AppletBuilder, not by this script - `appletbuilder
 # create --python` for a new applet, `appletbuilder build --update-python` to refresh an
-# existing one. Stage 5 therefore checks for it and points at that tool rather than
+# existing one. Stage 6 therefore checks for it and points at that tool rather than
 # falling back to the system python, whose site-packages would not travel with the app.
 #
 # Packages go in Contents/Library/Packages and never in the runtime's own site-packages:
@@ -175,6 +204,7 @@ Updates the runtime engines in $(/usr/bin/basename "$APP_BUNDLE"):
   mlx-agent -> Contents/Support/MLX/         (built from source, xcodebuild -configuration Release)
   pdfutil   -> Contents/Support/pdfutil      (built from source with ./build.sh)
   replay    -> Contents/Support/replay       (built from source with xcodebuild)
+  agent-vm  -> Contents/Support/AgentVM/     (built from source with its Scripts/build.sh)
   packages  -> Contents/Library/Packages     (pip install with the bundle's own python3)
 
 Options:
@@ -187,10 +217,13 @@ Options:
   --agent-repo=PATH   mlx-agent repo (default: ../mlx-agent sibling checkout)
   --pdfutil-repo=PATH pdfutil repo (default: ../pdfutil sibling checkout)
   --replay-repo=PATH  replay repo (default: ../replay sibling checkout)
+  --agent-vm-repo=PATH
+                      agent-vm repo (default: ../agent-vm sibling checkout)
   --skip-llama        leave llama.cpp untouched
   --skip-agent        leave mlx-agent untouched
   --skip-pdfutil      leave pdfutil untouched
   --skip-replay       leave replay untouched
+  --skip-agent-vm     leave agent-vm untouched
   --skip-packages     leave the Python MCP packages untouched
   --clean-packages    reinstall Contents/Library/Packages from scratch, dropping orphaned
                       packages and old versions' metadata (the default; OMC's own modules
@@ -212,7 +245,8 @@ Examples:
   ./update-cadabra.sh --skip-agent                 # refresh llama.cpp + the MCP servers
   ./update-cadabra.sh --skip-llama --skip-agent    # rebuild + redeploy just pdfutil + replay
   ./update-cadabra.sh --skip-llama --skip-agent --skip-pdfutil   # just replay + packages
-  ./update-cadabra.sh --skip-llama --skip-agent --skip-pdfutil --skip-replay   # just packages
+  ./update-cadabra.sh --skip-llama --skip-agent --skip-pdfutil --skip-replay   # agent-vm + packages
+  ./update-cadabra.sh --skip-llama --skip-agent --skip-pdfutil --skip-replay --skip-packages   # just agent-vm
 EOF
     exit 0
 }
@@ -232,10 +266,13 @@ while [ $# -gt 0 ]; do
         --pdfutil-repo) shift; PDFUTIL_REPO="${1:-}" ;;
         --replay-repo=*) REPLAY_REPO="${1#*=}" ;;
         --replay-repo) shift; REPLAY_REPO="${1:-}" ;;
+        --agent-vm-repo=*) AGENTVM_REPO="${1#*=}" ;;
+        --agent-vm-repo) shift; AGENTVM_REPO="${1:-}" ;;
         --skip-llama) DO_LLAMA="no" ;;
         --skip-agent) DO_AGENT="no" ;;
         --skip-pdfutil) DO_PDFUTIL="no" ;;
         --skip-replay) DO_REPLAY="no" ;;
+        --skip-agent-vm) DO_AGENTVM="no" ;;
         --skip-packages) DO_PACKAGES="no" ;;
         --clean-packages) CLEAN_PACKAGES="yes" ;;
         --no-clean-packages) CLEAN_PACKAGES="no" ;;
@@ -371,7 +408,7 @@ detect_latest_version() {
 
 # ── 0. Prepare ────────────────────────────────────────────────────────────────
 prepare() {
-    local _cand
+    local _cand _running
     echo
     echo "==== Updating $(/usr/bin/basename "$APP_BUNDLE") ===="
     echo
@@ -477,6 +514,39 @@ prepare() {
         REPLAY_BUILD_BIN="$REPLAY_REPO/build/Release/replay"
     fi
 
+    if [ "$DO_AGENTVM" = "yes" ]; then
+        # Locate the agent-vm repo by its build script AND its entitlements file: Scripts/build.sh
+        # alone is too common a name to identify a checkout. agent-vm is not published yet, so
+        # unlike the stages above there is nothing to offer to clone, and the sibling checkout is
+        # the only source. Once it is released, this stage is to switch to the newest tagged
+        # GitHub release (the llama.cpp stage's pattern), with a local checkout kept as the
+        # development override.
+        _cand="${AGENTVM_REPO:-$SCRIPT_DIR/../agent-vm}"
+        if [ -z "$AGENTVM_REPO" ]; then
+            [ -f "$_cand/Scripts/build.sh" ] && [ -f "$_cand/Resources/agent-vm.entitlements" ] \
+                && AGENTVM_REPO="$(cd "$_cand" && pwd)"
+        fi
+        [ -n "$AGENTVM_REPO" ] && [ -f "$AGENTVM_REPO/Scripts/build.sh" ] \
+            && [ -f "$AGENTVM_REPO/Resources/agent-vm.entitlements" ] \
+            || fail "agent-vm repo not found (looked for Scripts/build.sh and Resources/agent-vm.entitlements in $_cand); pass --agent-vm-repo=PATH, or --skip-agent-vm."
+        # Scripts/build.sh signs copies and renames them into this folder (release is its default).
+        AGENTVM_BUILD_DIR="$AGENTVM_REPO/.build/signed/release"
+    fi
+
+    # Boxes started from Cadabra run this bundle's agent-vm as their supervisor and outlive the
+    # app on purpose. A deploy renames the new binary into place (update_agentvm), so they are not
+    # killed, but they would keep running the old version, and agent-vm's protocol checks are
+    # strict equality, so the next exec into such a box may be refused. Refuse here, before the
+    # build, and leave stopping them to the user: killing them from here would stop their virtual
+    # machines uncleanly. Codesigning alone needs no check: codesign writes a new file, and a
+    # running process keeps the one it started from (measured).
+    if [ "$DO_AGENTVM" = "yes" ] && [ -e "$AGENTVM_BIN" ]; then
+        _running="$(agentvm_running_pids)" \
+            || fail "Could not list processes to check that no box runs from this bundle's agent-vm (lsof failed)."
+        [ -z "$_running" ] \
+            || fail "This bundle's agent-vm is running (PIDs: ${_running% }) - boxes started from Cadabra, or an image build. A new agent-vm would leave them on the old version. Stop the boxes ('$AGENTVM_BIN' box stop <name>) or let the build finish, then re-run, or pass --skip-agent-vm."
+    fi
+
     if [ "$DO_PACKAGES" = "yes" ]; then
         # Fail here rather than inside the stage: this is the one input the repo cannot
         # produce for you, so saying so before any building starts saves a full llama.cpp
@@ -517,6 +587,7 @@ prepare() {
     echo "  mlx-agent  : $([ "$DO_AGENT" = yes ] && echo "${AGENT_REPO}$([ "$DO_BUILD" = no ] && echo " (no rebuild)")$([ "$DO_BUILD" = yes ] && [ "$DO_AGENT_PACKAGE_UPDATE" = yes ] && echo " (+ SPM re-resolve)")" || echo "<skipped>")"
     echo "  pdfutil    : $([ "$DO_PDFUTIL" = yes ] && echo "${PDFUTIL_REPO}$([ "$DO_BUILD" = no ] && echo " (no rebuild)")" || echo "<skipped>")"
     echo "  replay     : $([ "$DO_REPLAY" = yes ] && echo "${REPLAY_REPO}$([ "$DO_BUILD" = no ] && echo " (no rebuild)")" || echo "<skipped>")"
+    echo "  agent-vm   : $([ "$DO_AGENTVM" = yes ] && echo "${AGENTVM_REPO}$([ "$DO_BUILD" = no ] && echo " (no rebuild)")" || echo "<skipped>")"
     echo "  packages   : $([ "$DO_PACKAGES" = yes ] && echo "${MCP_PACKAGES[*]}$([ "$CLEAN_PACKAGES" = yes ] && echo " (clean install)")" || echo "<skipped>")"
     echo "  Codesign   : $([ "$DO_CODESIGN" = yes ] && echo "$SIGNING_IDENTITY" || echo "<skipped>")"
     echo
@@ -895,7 +966,66 @@ update_replay() {
     echo
 }
 
-# ── 3c. Python MCP packages ───────────────────────────────────────────────────
+# -- 3c. agent-vm -------------------------------------------------------------
+update_agentvm() {
+    local product
+    echo "==== agent-vm ===="
+    echo
+
+    if [ "$DO_BUILD" = "yes" ]; then
+        # agent-vm's own script: a release `swift build` of agent-vm and agent-vm-guest, then
+        # signed copies - agent-vm with com.apple.security.virtualization, without which
+        # Virtualization refuses every virtual machine - renamed into .build/signed/release.
+        # Always ad hoc here, whatever --identity says: the bundle-wide codesign below applies
+        # the real identity, and signing twice would only add a keychain prompt and a timestamp
+        # server round trip for a signature that is replaced minutes later.
+        #
+        # It ends by running `agent-vm doctor`, and status 2 means exactly that check failed:
+        # the binaries are built and signed, but this Mac cannot run boxes right now (both
+        # virtual machine slots taken, low disk space). That is not a build failure, so it is
+        # reported and the deployment goes on; any other failure stops here.
+        echo "  Building (Scripts/build.sh --identity -, release)..."
+        "$AGENTVM_REPO/Scripts/build.sh" --identity - 2>&1 | /usr/bin/tail -8
+        local build_status="${PIPESTATUS[0]}"
+        case "$build_status" in
+            0) ;;
+            2) echo "  ${YELLOW}agent-vm doctor reports that this Mac cannot run boxes right now (see above); the binaries are fine, deploying them.${RESET}" ;;
+            *) fail "agent-vm Scripts/build.sh failed (status $build_status)." ;;
+        esac
+    else
+        echo "  --skip-build: reusing existing build products"
+    fi
+
+    for product in agent-vm agent-vm-guest; do
+        [ -x "$AGENTVM_BUILD_DIR/$product" ] \
+            || fail "No built $product at $AGENTVM_BUILD_DIR (build first, or drop --skip-build)."
+    done
+
+    /bin/mkdir -p "$AGENTVM_DIR" || fail "Could not create $AGENTVM_DIR"
+    for product in agent-vm agent-vm-guest; do
+        # Copied beside the target and renamed over it, the way agent-vm's own build.sh places
+        # its binaries: a process started from the old file in the meantime (a box started
+        # during the build, after the check in prepare) keeps that file, where overwriting it in
+        # place would get the process stopped by macOS for code that changed under it.
+        /bin/cp -f "$AGENTVM_BUILD_DIR/$product" "$AGENTVM_DIR/.$product.new" \
+            || fail "Could not copy $product into $AGENTVM_DIR"
+        /bin/chmod +x "$AGENTVM_DIR/.$product.new"
+        /bin/mv -f "$AGENTVM_DIR/.$product.new" "$AGENTVM_DIR/$product" \
+            || fail "Could not move the new $product into place in $AGENTVM_DIR"
+        # Same pre-signing freshness proof as the other stages: signing rewrites the signature
+        # blob, so a byte-compare afterwards could never match.
+        /usr/bin/cmp -s "$AGENTVM_BUILD_DIR/$product" "$AGENTVM_DIR/$product" \
+            || fail "Deployed $product differs from the build product - copy did not take."
+    done
+
+    [ -f "$AGENTVM_REPO/LICENSE" ] && /bin/cp -f "$AGENTVM_REPO/LICENSE" "${AGENTVM_BIN}.LICENSE"
+
+    AGENTVM_STATUS="deployed"
+    echo "  ${GREEN}Deployed${RESET} agent-vm and agent-vm-guest"
+    echo
+}
+
+# ── 3d. Python MCP packages ───────────────────────────────────────────────────
 update_packages() {
     echo "==== Python MCP packages ===="
     echo
@@ -1118,8 +1248,60 @@ codesign_app() {
     local codesign_script="$SCRIPT_DIR/codesign_applet.sh"
     [ -f "$codesign_script" ] || codesign_script="$SCRIPT_DIR/../codesign_applet.sh"
     [ -f "$codesign_script" ] || fail "codesign_applet.sh not found at $codesign_script"
+
+    # agent-vm cannot start a virtual machine without com.apple.security.virtualization.
+    # codesign_applet.sh carries a nested binary's entitlements over only when it signs with a
+    # real identity; ad hoc, it re-signs every nested binary with none, on purpose (ad hoc output
+    # stays what it always was for every applet that shares the script). So an ad hoc run keeps
+    # agent-vm's entitlements before the bundle is signed and puts them back afterwards.
+    # TEMPORARY, until codesign_applet.sh (canonical copy in OMC) carries entitlements over for
+    # ad hoc signatures too: Private/agent-vm-integration-plan.md, D18.
+    # The signing identifier is kept too: codesign_applet.sh re-signs a binary that has no
+    # embedded Info.plist under a generated identifier (agent-vm-5555...), replacing the
+    # com.abracode.agent-vm that build.sh gave it.
+    local agentvm_entitlements="" agentvm_identifier=""
+    case "$SIGNING_IDENTITY" in
+        ""|-)
+            if [ -f "$AGENTVM_BIN" ]; then
+                agentvm_entitlements="$(/usr/bin/codesign -d --entitlements - --xml "$AGENTVM_BIN" 2>/dev/null)"
+                case "$agentvm_entitlements" in
+                    *com.apple.security.virtualization*) ;;
+                    *) fail "The embedded agent-vm has no com.apple.security.virtualization entitlement to keep (lost in an earlier signing?). Redeploy it: drop --skip-agent-vm." ;;
+                esac
+                agentvm_identifier="$(/usr/bin/codesign -dv "$AGENTVM_BIN" 2>&1 | /usr/bin/sed -n 's/^Identifier=//p')"
+            fi
+            ;;
+    esac
+
     "$codesign_script" "$APP_BUNDLE" "$SIGNING_IDENTITY" || fail "Codesigning failed"
+    [ -n "$agentvm_entitlements" ] \
+        && restore_agentvm_entitlements "$agentvm_entitlements" "$agentvm_identifier"
     echo
+}
+
+# restore_agentvm_entitlements <entitlements XML> [identifier]
+# Ad hoc runs only (see codesign_app): signs the embedded agent-vm again, with its entitlements
+# and its identifier from before the bundle was signed, the way agent-vm's own Scripts/build.sh
+# does (hardened runtime), then reseals the outer bundle, whose seal records the code hash of
+# every nested binary. The reseal mirrors codesign_applet.sh's last step for ad hoc signing.
+restore_agentvm_entitlements() {
+    local entitlements_file="$(/usr/bin/mktemp "${TMPDIR:-/tmp}/agent-vm-entitlements.XXXXXX")"
+    [ -n "$entitlements_file" ] || fail "mktemp failed"
+    printf '%s' "$1" > "$entitlements_file"
+    echo "  Restoring agent-vm's entitlements and identifier after ad hoc signing"
+    # ${2:+...} adds the option only when an identifier was captured, as one word.
+    /usr/bin/codesign --force --sign - --timestamp=none --options runtime ${2:+"--identifier=$2"} \
+        --entitlements "$entitlements_file" "$AGENTVM_BIN"
+    local sign_status=$?
+    /bin/rm -f "$entitlements_file"
+    [ "$sign_status" -eq 0 ] || fail "Could not re-sign $AGENTVM_BIN with its entitlements."
+
+    local app_id="$(/usr/bin/defaults read "$APP_BUNDLE/Contents/Info.plist" CFBundleIdentifier 2>/dev/null)"
+    [ -n "$app_id" ] || fail "Could not read the bundle identifier of $APP_BUNDLE."
+    /usr/bin/codesign --force --sign - --timestamp=none --identifier "$app_id" "$APP_BUNDLE" \
+        || fail "Could not reseal $APP_BUNDLE after re-signing agent-vm."
+    /usr/bin/codesign --verify --deep --strict "$APP_BUNDLE" \
+        || fail "$(/usr/bin/basename "$APP_BUNDLE") does not verify after re-signing agent-vm."
 }
 
 # ── 5. Verify ─────────────────────────────────────────────────────────────────
@@ -1211,6 +1393,36 @@ verify() {
         echo "  ${GREEN}OK${RESET} replay launches and serves annotated tools (post-signing)"
     fi
 
+    if [ "$DO_AGENTVM" = "yes" ]; then
+        # Freshness is proven by the cmp in update_agentvm (pre-signing); this proves both
+        # binaries still load once signed. --version answers before any store or virtual
+        # machine work. stderr is discarded and the answer matched for shape, as for mlx-agent.
+        local agentvm_version="$("$AGENTVM_BIN" --version 2>/dev/null | /usr/bin/head -1)"
+        case "$agentvm_version" in
+            [0-9]*.[0-9]*) ;;
+            *) fail "agent-vm --version did not report a version (got: \"${agentvm_version:-<no output>}\") - a load failure, or a broken signature." ;;
+        esac
+        local guest_version="$("$AGENTVM_GUEST_BIN" --version 2>/dev/null | /usr/bin/head -1)"
+        case "$guest_version" in
+            "agent-vm-guest "*) ;;
+            *) fail "agent-vm-guest --version did not report a version (got: \"${guest_version:-<no output>}\") - a load failure, or a broken signature." ;;
+        esac
+        echo "  agent-vm: $agentvm_version; $guest_version"
+        echo "  ${GREEN}OK${RESET} agent-vm and agent-vm-guest launch (post-signing)"
+    fi
+
+    # Whenever this run signed, and agent-vm is in the bundle whether or not this run deployed
+    # it: signing is what can strip the entitlement, and nothing else here would notice - the
+    # binary launches and answers --version without it, and only refuses virtual machines later.
+    if [ "$DO_CODESIGN" = "yes" ] && [ -f "$AGENTVM_BIN" ]; then
+        local agentvm_entitlements="$(/usr/bin/codesign -d --entitlements - --xml "$AGENTVM_BIN" 2>/dev/null)"
+        case "$agentvm_entitlements" in
+            *com.apple.security.virtualization*) ;;
+            *) fail "The signed agent-vm lacks com.apple.security.virtualization; it could not start any virtual machine." ;;
+        esac
+        echo "  ${GREEN}OK${RESET} agent-vm keeps its virtualization entitlement"
+    fi
+
     if [ "$DO_PACKAGES" = "yes" ]; then
         # Import each module the way the app will: the bundle's own interpreter with
         # PYTHONPATH pointing at Packages, matching how generate_mcp_configs.py spawns
@@ -1271,6 +1483,7 @@ print_summary() {
     echo "  mlx-agent : $AGENT_STATUS"
     echo "  pdfutil   : $PDFUTIL_STATUS"
     echo "  replay    : $REPLAY_STATUS"
+    echo "  agent-vm  : $AGENTVM_STATUS"
     echo "  packages  : $PACKAGES_STATUS"
     echo
     echo "  ${GREEN}$(/usr/bin/basename "$APP_BUNDLE") is ready.${RESET}"
@@ -1283,6 +1496,7 @@ main() {
     [ "$DO_AGENT" = "yes" ] && update_agent
     [ "$DO_PDFUTIL" = "yes" ] && update_pdfutil
     [ "$DO_REPLAY" = "yes" ] && update_replay
+    [ "$DO_AGENTVM" = "yes" ] && update_agentvm
     # Before codesign, deliberately: the packages land inside the bundle, so installing
     # them afterwards would invalidate the seal that was just applied.
     [ "$DO_PACKAGES" = "yes" ] && update_packages
