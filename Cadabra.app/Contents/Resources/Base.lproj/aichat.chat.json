@@ -162,6 +162,7 @@
             "type": "Chat",
             "id": 1,
             "properties": {
+              "remoteImages": "on-click",
               "appearance": {
                 "alignment": "single",
                 "showRoleLabels": true,

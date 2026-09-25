@@ -1,0 +1,21 @@
+{
+  "cpuCount": 4,
+  "createdAt": "2026-09-25T09:18:04Z",
+  "disposable": true,
+  "formatVersion": 1,
+  "guestProtocol": 1,
+  "image": "dev",
+  "macAddress": "3e:3f:2d:f4:a3:e6",
+  "macOSBuild": "26A428",
+  "macOSVersion": "27.0",
+  "memoryBytes": 4294967296,
+  "name": "cadabra-fixture-box",
+  "network": {
+    "allow": [
+      "pack:npm",
+      "example.com"
+    ],
+    "mode": "allowlist"
+  },
+  "userName": "agent"
+}

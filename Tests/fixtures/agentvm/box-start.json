@@ -1,0 +1,16 @@
+{
+  "activeExecs": 0,
+  "guestFeatures": [
+    "terminal",
+    "prompt-notices",
+    "wallpaper"
+  ],
+  "guestVersion": "0.1.5",
+  "ok": true,
+  "ownerPid": 82745,
+  "pid": 82748,
+  "startedAt": "2026-09-25T09:18:17Z",
+  "state": "ready",
+  "supervisorPath": "/Users/you/Development/agent-vm/.build/signed/release/agent-vm",
+  "supervisorVersion": "0.2.1"
+}

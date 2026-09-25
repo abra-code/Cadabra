@@ -1,0 +1,38 @@
+[
+  {
+    "decision": "denied",
+    "host": "bag.itunes.apple.com",
+    "method": "CONNECT",
+    "milliseconds": 0,
+    "port": 443,
+    "reason": "not in the allowlist",
+    "time": "2026-09-25T07:37:04Z"
+  },
+  {
+    "decision": "denied",
+    "host": "iadsdk.apple.com",
+    "method": "CONNECT",
+    "milliseconds": 0,
+    "port": 443,
+    "reason": "not in the allowlist",
+    "time": "2026-09-25T07:37:04Z"
+  },
+  {
+    "decision": "denied",
+    "host": "configuration.apple.com",
+    "method": "CONNECT",
+    "milliseconds": 0,
+    "port": 443,
+    "reason": "not in the allowlist",
+    "time": "2026-09-25T07:37:05Z"
+  },
+  {
+    "decision": "denied",
+    "host": "init.push.apple.com",
+    "method": "CONNECT",
+    "milliseconds": 0,
+    "port": 443,
+    "reason": "not in the allowlist",
+    "time": "2026-09-25T07:37:05Z"
+  }
+]

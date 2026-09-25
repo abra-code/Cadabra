@@ -1,0 +1,271 @@
+[
+  {
+    "commandLineTools": "Command Line Tools for Xcode 27.0-27.0",
+    "cpuCount": 4,
+    "createdAt": "2026-09-23T23:04:56Z",
+    "createdBy": "0.0.1",
+    "diskBytes": 68719476736,
+    "diskUsage": {
+      "bytes": 36344430592,
+      "unsharedBytes": 598425600
+    },
+    "formatVersion": 1,
+    "fullDiskAccess": {
+      "checkedAt": "2026-09-25T04:49:35Z",
+      "granted": true,
+      "guestDigest": "11e93d44c1019a12badb747dd7fe535e7c3b7734bd2a38ebf891ff97faf5dff8"
+    },
+    "guestDigest": "11e93d44c1019a12badb747dd7fe535e7c3b7734bd2a38ebf891ff97faf5dff8",
+    "guestFeatures": [
+      "terminal",
+      "prompt-notices",
+      "wallpaper"
+    ],
+    "guestProtocol": 1,
+    "guestVersion": "0.1.5",
+    "installSeconds": 172.70192475,
+    "macAddress": "96:10:12:fa:06:ed",
+    "macOSBuild": "26A428",
+    "macOSVersion": "27.0",
+    "memoryBytes": 8589934592,
+    "name": "dev",
+    "needs": [
+      {
+        "kind": "guest-update",
+        "missing": [
+          "time-sync"
+        ]
+      }
+    ],
+    "path": "/Users/you/Library/Application Support/agent-vm/Images/dev",
+    "provisionSeconds": 186.049275625,
+    "state": "ready",
+    "userName": "agent"
+  },
+  {
+    "addedOverBase": {
+      "bytes": 2107613184,
+      "image": "dev-node"
+    },
+    "commandLineTools": "Command Line Tools for Xcode 27.0-27.0",
+    "cpuCount": 4,
+    "createdAt": "2026-09-23T23:53:50Z",
+    "createdBy": "0.0.1",
+    "derivedFrom": {
+      "image": "dev-node",
+      "recipeDigest": "edef427c53ca1f576a458db6504b52a1be6a3adbe179450fdef78870f95d5290"
+    },
+    "diskBytes": 68719476736,
+    "diskUsage": {
+      "bytes": 38683222016,
+      "unsharedBytes": 220385280
+    },
+    "formatVersion": 1,
+    "fullDiskAccess": {
+      "checkedAt": "2026-09-25T04:50:28Z",
+      "granted": true,
+      "guestDigest": "11e93d44c1019a12badb747dd7fe535e7c3b7734bd2a38ebf891ff97faf5dff8"
+    },
+    "guestDigest": "11e93d44c1019a12badb747dd7fe535e7c3b7734bd2a38ebf891ff97faf5dff8",
+    "guestFeatures": [
+      "terminal",
+      "prompt-notices",
+      "wallpaper"
+    ],
+    "guestProtocol": 1,
+    "guestVersion": "0.1.5",
+    "macAddress": "32:13:b8:d7:ab:81",
+    "macOSBuild": "26A428",
+    "macOSVersion": "27.0",
+    "memoryBytes": 8589934592,
+    "name": "dev-agents",
+    "needs": [
+      {
+        "kind": "guest-update",
+        "missing": [
+          "time-sync"
+        ]
+      }
+    ],
+    "path": "/Users/you/Library/Application Support/agent-vm/Images/dev-agents",
+    "provisionSeconds": 54.779180792,
+    "recipe": {
+      "description": "Claude Code, Codex and opencode (needs Node: build from an image with recipes/homebrew-node)",
+      "digest": "b847b0b9403846a7cbd5b5054d2645e2bf5d735cac9a72f467c89f9cb29c7d4a"
+    },
+    "state": "ready",
+    "userName": "agent"
+  },
+  {
+    "addedOverBase": {
+      "bytes": 3456983040,
+      "image": "dev"
+    },
+    "commandLineTools": "Command Line Tools for Xcode 27.0-27.0",
+    "cpuCount": 4,
+    "createdAt": "2026-09-23T23:51:46Z",
+    "createdBy": "0.0.1",
+    "derivedFrom": {
+      "image": "dev"
+    },
+    "diskBytes": 68719476736,
+    "diskUsage": {
+      "bytes": 37401456640,
+      "unsharedBytes": 822292480
+    },
+    "formatVersion": 1,
+    "fullDiskAccess": {
+      "checkedAt": "2026-09-25T04:51:17Z",
+      "granted": true,
+      "guestDigest": "11e93d44c1019a12badb747dd7fe535e7c3b7734bd2a38ebf891ff97faf5dff8"
+    },
+    "guestDigest": "11e93d44c1019a12badb747dd7fe535e7c3b7734bd2a38ebf891ff97faf5dff8",
+    "guestFeatures": [
+      "terminal",
+      "prompt-notices",
+      "wallpaper"
+    ],
+    "guestProtocol": 1,
+    "guestVersion": "0.1.5",
+    "macAddress": "f6:17:26:ed:42:14",
+    "macOSBuild": "26A428",
+    "macOSVersion": "27.0",
+    "memoryBytes": 8589934592,
+    "name": "dev-node",
+    "needs": [
+      {
+        "kind": "guest-update",
+        "missing": [
+          "time-sync"
+        ]
+      }
+    ],
+    "path": "/Users/you/Library/Application Support/agent-vm/Images/dev-node",
+    "provisionSeconds": 117.215451459,
+    "recipe": {
+      "description": "Homebrew and Node",
+      "digest": "edef427c53ca1f576a458db6504b52a1be6a3adbe179450fdef78870f95d5290"
+    },
+    "state": "ready",
+    "userName": "agent"
+  },
+  {
+    "addedOverBase": {
+      "bytes": 7295340544,
+      "image": "dev"
+    },
+    "commandLineTools": "Command Line Tools for Xcode 27.0-27.0",
+    "cpuCount": 4,
+    "createdAt": "2026-09-24T20:57:56Z",
+    "createdBy": "0.1.4",
+    "derivedFrom": {
+      "image": "dev"
+    },
+    "diskBytes": 137438953472,
+    "diskUsage": {
+      "bytes": 41218584576,
+      "unsharedBytes": 476418048
+    },
+    "formatVersion": 1,
+    "fullDiskAccess": {
+      "checkedAt": "2026-09-25T04:47:22Z",
+      "granted": true,
+      "guestDigest": "11e93d44c1019a12badb747dd7fe535e7c3b7734bd2a38ebf891ff97faf5dff8"
+    },
+    "guestDigest": "11e93d44c1019a12badb747dd7fe535e7c3b7734bd2a38ebf891ff97faf5dff8",
+    "guestFeatures": [
+      "terminal",
+      "prompt-notices",
+      "wallpaper"
+    ],
+    "guestProtocol": 1,
+    "guestVersion": "0.1.5",
+    "macAddress": "1a:8d:b1:d5:f6:a4",
+    "macOSBuild": "26A428",
+    "macOSVersion": "27.0",
+    "memoryBytes": 8589934592,
+    "name": "dev-xcode",
+    "needs": [
+      {
+        "kind": "guest-update",
+        "missing": [
+          "time-sync"
+        ]
+      }
+    ],
+    "path": "/Users/you/Library/Application Support/agent-vm/Images/dev-xcode",
+    "provisionSeconds": 244.941400708,
+    "recipe": {
+      "description": "Xcode from a .xip you downloaded (next: Recipes/xcode-platforms for simulator runtimes)",
+      "digest": "5d18075708a489bebbae2a815ed68ae3e824bf9c03d40c3235d438ed5ad68539",
+      "inputs": [
+        {
+          "bytes": 2014229334,
+          "file": "Xcode_27.xip",
+          "name": "xcode",
+          "sha256": "6a270c53a5a0c5e0ac78125342d44c3cfff2716ec390373cd5e30834d80a67c3"
+        }
+      ]
+    },
+    "state": "ready",
+    "userName": "agent"
+  },
+  {
+    "addedOverBase": {
+      "bytes": 9955958784,
+      "image": "dev-xcode"
+    },
+    "commandLineTools": "Command Line Tools for Xcode 27.0-27.0",
+    "cpuCount": 4,
+    "createdAt": "2026-09-24T21:02:14Z",
+    "createdBy": "0.1.4",
+    "derivedFrom": {
+      "image": "dev-xcode",
+      "recipeDigest": "5d18075708a489bebbae2a815ed68ae3e824bf9c03d40c3235d438ed5ad68539"
+    },
+    "diskBytes": 137438953472,
+    "diskUsage": {
+      "bytes": 50646159360,
+      "unsharedBytes": 9956941824
+    },
+    "formatVersion": 1,
+    "fullDiskAccess": {
+      "checkedAt": "2026-09-25T04:48:25Z",
+      "granted": true,
+      "guestDigest": "11e93d44c1019a12badb747dd7fe535e7c3b7734bd2a38ebf891ff97faf5dff8"
+    },
+    "guestDigest": "11e93d44c1019a12badb747dd7fe535e7c3b7734bd2a38ebf891ff97faf5dff8",
+    "guestFeatures": [
+      "terminal",
+      "prompt-notices",
+      "wallpaper"
+    ],
+    "guestProtocol": 1,
+    "guestVersion": "0.1.5",
+    "macAddress": "b6:8c:fc:5e:41:aa",
+    "macOSBuild": "26A428",
+    "macOSVersion": "27.0",
+    "memoryBytes": 8589934592,
+    "name": "dev-xcode-ios",
+    "needs": [
+      {
+        "kind": "guest-update",
+        "missing": [
+          "time-sync"
+        ]
+      }
+    ],
+    "path": "/Users/you/Library/Application Support/agent-vm/Images/dev-xcode-ios",
+    "provisionSeconds": 299.826463708,
+    "recipe": {
+      "description": "Simulator runtimes and Xcode components (needs Xcode: build from an image with Recipes/xcode)",
+      "digest": "bc2eed812d5aa1aec42c86cb324f640452e9ad0fcd3c58f424f0c094a618c32e",
+      "parameters": {
+        "components": "MetalToolchain",
+        "platforms": "iOS"
+      }
+    },
+    "state": "ready",
+    "userName": "agent"
+  }
+]

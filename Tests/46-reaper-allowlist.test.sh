@@ -49,6 +49,17 @@ check "no subcommand at all"            "no" "$(swept "$AVM")"
 check "the guest daemon beside it"      "no" "$(swept "$B/Support/AgentVM/agent-vm-guest exec x")"
 check "the path only as an argument"    "no" "$(swept "/bin/sh -c $AVM exec --box b")"
 
+section "the agent-vm job runner is the one bundled Python never swept"
+JOBPY="$OMC_APP_BUNDLE_PATH/Contents/Resources/Scripts/agentvm_job.py"
+PYBIN="$B/Library/Python/bin/python3"
+check "the detached runner"              "no"  "$(swept "$PYBIN $JOBPY run /Users/you/Library/Application Support/Cadabra/Jobs 20260925-092829-9660ef 3")"
+check "  but a list call is an ordinary helper" "yes" "$(swept "$PYBIN $JOBPY list /j")"
+check "  and so is a start that lost its parent" "yes" "$(swept "$PYBIN $JOBPY start /j box-start box:b Start -- $AVM box start b")"
+check "  the runner run with other interpreter options is not the runner" "yes" "$(swept "$PYBIN -I $JOBPY run /j 20260925-092829-9660ef 3")"
+check "  nor is the same name elsewhere" "yes" "$(swept "$PYBIN /tmp/agentvm_job.py run /j x 3")"
+check "the MCP servers' Python is still swept" "yes" "$(swept "$PYBIN -m mcp_server_time")"
+# 48-agentvm-jobs.test.sh checks the same verdict on a real runner's command line, from ps.
+
 section "the developer override: its exec clients, and only with it set"
 check "its exec client, with it set"    "yes" "$(swept "$DEV exec --box b -- x" "$DEV")"
 check "  but not its supervisor"        "no"  "$(swept "$DEV box serve b" "$DEV")"

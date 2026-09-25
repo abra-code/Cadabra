@@ -10,7 +10,7 @@
 #
 # The mcp-proxy era is fully retired: mlx-agent owns the MCP stdio children now, the
 # proxy launch/kill/reap machinery was removed with it, and the mcp-proxy package is no
-# longer bundled. See Private/commit-notes-drop-mcp-proxy.md.
+# longer bundled.
 [ -n "${__AICHAT_SERVER_LIB:-}" ] && return 0
 __AICHAT_SERVER_LIB=1
 source "$OMC_APP_BUNDLE_PATH/Contents/Resources/Scripts/aichat.mcp.servers.library.sh"
@@ -145,6 +145,13 @@ forget_server_host_entry() {
 # developer override, /developer/agent-vm), passed as the second argument. Exec clients started
 # before the override was changed carry the old path and are missed until it is changed back.
 #
+# THE ONE BUNDLED PYTHON THAT IS NEVER SWEPT: the agent-vm job runner (agentvm_job.py run). It
+# waits, detached at PPID 1 on purpose, for an image build or a box start that must outlive
+# the window and Cadabra, and records its result. Killing it leaves the job "lost" with no
+# result, and its agent-vm child at PPID 1 in turn. Matched by its exact command line, which
+# agentvm_job.py itself writes (it re-executes itself), and checked before the rule
+# that sweeps every other bundled Python.
+#
 # mlx-agent normally needs no sweeping: it is the Chat element's ACP child, so its stdin
 # closes when the app goes away and it exits on its own (verified on a hard kill of the
 # app). It is swept anyway for the case that self-teardown cannot cover - an agent wedged
@@ -153,6 +160,8 @@ forget_server_host_entry() {
 # bundled python servers), which the two classes above already match.
 _bundle_managed_process() {
     case "$1" in
+        "$OMC_APP_BUNDLE_PATH/Contents/Library/Python/bin/python3 $OMC_APP_BUNDLE_PATH/Contents/Resources/Scripts/agentvm_job.py run "*)
+                                                                          return 1 ;;
         "$OMC_APP_BUNDLE_PATH/Contents/Library/Python/"*)                 return 0 ;;
         "$OMC_APP_BUNDLE_PATH/Contents/Support/replay"|\
         "$OMC_APP_BUNDLE_PATH/Contents/Support/replay "*)                 return 0 ;;

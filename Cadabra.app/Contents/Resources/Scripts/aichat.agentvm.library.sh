@@ -5,7 +5,6 @@
 # machines ("boxes") for agents and their tools. Everything that needs an image, a box or a
 # running program in one goes through the functions here, so there is one place that knows
 # which agent-vm binary is in use, how to read its answers, and how its failures reach the user.
-# The design is AIChatApp/Private/agent-vm-integration-plan.md (D1, D3).
 #
 # WHICH agent-vm. Three candidates, the first one set wins:
 #   - CADABRA_AGENT_VM in the environment: the test seam, pointed at Tests/helpers/fake_agent_vm.sh
@@ -32,13 +31,16 @@ __AICHAT_AGENTVM_LIB=1
 
 source "$OMC_APP_BUNDLE_PATH/Contents/Resources/Scripts/aichat.library.sh"
 
-# 0.1.6 added `box status` (no side effects) and `version --json`, which this library relies on.
-AGENTVM_MIN_VERSION="0.1.6"
+# 0.2.0: `box status` and `version --json` (0.1.6), progress events under --json (0.1.8), a clean
+# cancel (0.1.9), permission prompts in the exec log (0.1.10), disposable boxes with an owner
+# lease (0.1.11) and secrets (0.2.0). The Box Manager relies on all of them.
+AGENTVM_MIN_VERSION="0.2.0"
 AGENTVM_MIN_MACOS="27"
 
 agentvm_embedded="$OMC_APP_BUNDLE_PATH/Contents/Support/AgentVM/agent-vm"
 agentvm_python="$OMC_APP_BUNDLE_PATH/Contents/Library/Python/bin/python3"
 agentvm_json_py="$OMC_APP_BUNDLE_PATH/Contents/Resources/Scripts/agentvm_json.py"
+agentvm_job_py="$OMC_APP_BUNDLE_PATH/Contents/Resources/Scripts/agentvm_job.py"
 
 # Where agentvm_json leaves agent-vm's stderr for agentvm_last_error. Named after the handler's
 # pid: $$ is the handler's own pid inside every subshell of it too, so a call made in $( ) - the
@@ -302,4 +304,353 @@ agentvm_box_status() {
 # agentvm_doctor  ->  TSV rows: name, status (ok, info, warning, failure), detail.
 agentvm_doctor() {
     agentvm_rows doctor doctor
+}
+
+# -- Images, boxes and their logs --------------------------------------------------------
+# Rows as agentvm_json.py documents them. Each fails like agentvm_rows: agent-vm's status, and
+# its message waiting for agentvm_last_error.
+
+# _agentvm_refuse <status> <message>  ->  leaves the message for agentvm_last_error, returns status.
+# For arguments refused before agent-vm runs, so every failure is read the same way.
+_agentvm_refuse() {
+    printf 'Error: %s\n' "$2" > "$agentvm_err_file"
+    return "$1"
+}
+
+# _agentvm_need_name <image|box> <name>  ->  0, or 2 with the reason left for agentvm_last_error.
+_agentvm_need_name() {
+    agentvm_valid_name "$2" && return 0
+    _agentvm_refuse 2 "\"$2\" is not a $1 name agent-vm accepts: lower-case letters, digits, \".\", \"_\" and \"-\", starting with a letter or digit, at most 63 characters."
+}
+
+# _agentvm_need_count <what> <value>  ->  0 when value is a whole number from 1 to 999.
+_agentvm_need_count() {
+    case "$2" in
+        [123456789]|[123456789][0123456789]|[123456789][0123456789][0123456789]) return 0 ;;
+    esac
+    _agentvm_refuse 2 "$1 must be a whole number, and \"$2\" is not one."
+}
+
+# agentvm_images  ->  one row per image: name, state, failure, macOS, basedOn, ownSize, needs,
+# recipe, created, guestVersion, cpus, memoryGB, diskGB, path, needKinds.
+agentvm_images() {
+    agentvm_rows images image list
+}
+
+# agentvm_boxes  ->  one row per box: name, state, image, network, cpus, memoryGB, ownSize, pid,
+# project, projectReadOnly, activeExecs, disposable, ownerPid, startedAt, supervisorVersion,
+# path, netMode, rules. Like `box status`, listing never starts or stops anything; it does
+# delete disposable boxes that have stopped (agent-vm's `box gc`, run by `box list`).
+agentvm_boxes() {
+    agentvm_rows boxes box list
+}
+
+# agentvm_packs  ->  one row per network pack: name, hosts (comma-joined).
+agentvm_packs() {
+    agentvm_rows packs box packs
+}
+
+# agentvm_execlog <box> [last]  ->  one row per program run in the box, oldest first: started,
+# status, seconds, program, prompts, stoppedOnPrompt. The last <last> runs when given.
+agentvm_execlog() {
+    _agentvm_need_name box "$1" || return $?
+    if [ -n "${2:-}" ]; then
+        _agentvm_need_count "The number of runs" "$2" || return $?
+        agentvm_rows execlog box execlog "$1" --last "$2"
+        return $?
+    fi
+    agentvm_rows execlog box execlog "$1"
+}
+
+# agentvm_netlog <box> [last] [denied]  ->  one row per connection attempt, oldest first: time,
+# decision, host, port, method, reason. "denied" as the third argument keeps only refusals.
+agentvm_netlog() {
+    _agentvm_need_name box "$1" || return $?
+    local _box="$1" _last="${2:-}" _denied="${3:-}"
+    if [ -n "$_last" ]; then
+        _agentvm_need_count "The number of entries" "$_last" || return $?
+    fi
+    if [ -n "$_last" ] && [ "$_denied" = "denied" ]; then
+        agentvm_rows netlog box netlog "$_box" --last "$_last" --denied
+    elif [ -n "$_last" ]; then
+        agentvm_rows netlog box netlog "$_box" --last "$_last"
+    elif [ "$_denied" = "denied" ]; then
+        agentvm_rows netlog box netlog "$_box" --denied
+    else
+        agentvm_rows netlog box netlog "$_box"
+    fi
+}
+
+# agentvm_box_create <box> <image> <cpus> <memory GB> <network> <disposable> [allow rules...]
+#   ->  0 once the box exists (a clone takes a second or two, so this is not a job).
+# cpus and memory may be empty for the image's own; network is allowlist, off or open;
+# disposable is yes or no. Each allow rule is one --allow: a host, "*.domain", "host:port" or
+# "pack:<name>". A rule is an argv element after an option, so one starting with "-" is refused.
+agentvm_box_create() {
+    if [ $# -lt 6 ]; then
+        _agentvm_refuse 2 "agentvm_box_create needs a box, an image, CPUs, memory, a network mode and yes or no for disposable."
+        return 2
+    fi
+    _agentvm_need_name box "$1" || return $?
+    _agentvm_need_name image "$2" || return $?
+    local _box="$1" _image="$2" _cpus="$3" _memory="$4" _net="$5" _disposable="$6"
+    shift 6
+    case "$_net" in
+        allowlist|off|open) ;;
+        *) _agentvm_refuse 2 "The network mode must be allowlist, off or open, not \"$_net\"."
+           return $? ;;
+    esac
+    # The rules are now the positional parameters. Each one is taken off the front and put
+    # back at the end behind its --allow, once per rule, which leaves "--allow r1 --allow r2 ...".
+    local _rules=$# _rule
+    while [ "$_rules" -gt 0 ]; do
+        _rule="$1"
+        shift
+        case "$_rule" in
+            ''|-*|*' '*)
+                _agentvm_refuse 2 "\"$_rule\" is not a network rule: a host, \"*.domain\", \"host:port\" or \"pack:<name>\"."
+                return $? ;;
+        esac
+        set -- "$@" --allow "$_rule"
+        _rules=$((_rules - 1))
+    done
+    set -- box create "$_box" --image "$_image" --net "$_net" "$@"
+    if [ -n "$_cpus" ]; then
+        _agentvm_need_count "The number of CPUs" "$_cpus" || return $?
+        set -- "$@" --cpus "$_cpus"
+    fi
+    if [ -n "$_memory" ]; then
+        _agentvm_need_count "The memory in GB" "$_memory" || return $?
+        set -- "$@" --memory-gb "$_memory"
+    fi
+    case "$_disposable" in
+        yes) set -- "$@" --disposable ;;
+        no)  ;;
+        *)   _agentvm_refuse 2 "disposable must be yes or no, not \"$_disposable\"."
+             return $? ;;
+    esac
+    agentvm_json "$@" >/dev/null
+}
+
+# agentvm_box_delete <box>  ->  0 once the box and its disk are gone. agent-vm refuses a
+# running box, with a message saying to stop it first.
+agentvm_box_delete() {
+    _agentvm_need_name box "$1" || return $?
+    agentvm_json box delete "$1" >/dev/null
+}
+
+# agentvm_image_delete <image>  ->  0 once it is gone. agent-vm refuses an image that boxes or
+# other images are made from, naming them.
+agentvm_image_delete() {
+    _agentvm_need_name image "$1" || return $?
+    agentvm_json image delete "$1" >/dev/null
+}
+
+# agentvm_box_view <box> [interactive]  ->  0 once the box's supervisor shows its screen in a
+# window (or brings the window to the front). The box must be running. "interactive" lets keys
+# and clicks reach the box.
+agentvm_box_view() {
+    _agentvm_need_name box "$1" || return $?
+    if [ "${2:-}" = "interactive" ]; then
+        agentvm_json box view "$1" --interactive >/dev/null
+        return $?
+    fi
+    agentvm_json box view "$1" >/dev/null
+}
+
+# agentvm_vm_slot_free  ->  0 when another macOS virtual machine can start on this Mac;
+# otherwise 1, with doctor's explanation (how many run, the limit) for agentvm_last_error.
+# macOS runs at most two macOS guests at once, counting every application's, and agent-vm
+# would only find out a minute into a start. Doctor's "running VMs" check says "warning" when
+# the limit is reached, and "info" when it could not count: that is not a reason to refuse.
+agentvm_vm_slot_free() {
+    local _rows
+    _rows="$(agentvm_doctor)"
+    local _status=$?
+    if [ "$_status" -ne 0 ]; then
+        # Doctor itself failed: let the start go ahead and fail with agent-vm's own reason.
+        /bin/rm -f "$agentvm_err_file"
+        return 0
+    fi
+    local _full="$(printf '%s\n' "$_rows" | /usr/bin/awk -F'\t' '$1 == "running VMs" && $2 == "warning" { print $3 }')"
+    if [ -n "$_full" ]; then
+        _agentvm_refuse 1 "No virtual machine slot is free: $_full. Stop a box or another virtual machine first."
+        return 1
+    fi
+    return 0
+}
+
+# -- Jobs: long agent-vm commands that outlive the window --------------------------------
+# agentvm_job.py runs them detached, in the folder agentvm_jobs_dir names; see its header.
+# A job's target ("box:<name>", "image:<name>") is what it works on: one job per target at a
+# time, so a second start of a box, or a delete during a guest update, is refused up front.
+
+# agentvm_jobs_dir  ->  where the jobs live.
+agentvm_jobs_dir() {
+    printf '%s\n' "$mcp_app_support/Jobs"
+}
+
+# agentvm_job_start <kind> <target> <title> <agent-vm args...>  ->  the new job's id.
+# Runs the agent-vm agentvm_bin names, with --json last (progress events) and Cadabra's store
+# setting, exactly as agentvm_json would. Status 3 when a job for the same target still runs.
+agentvm_job_start() {
+    local _kind="$1" _target="$2" _title="$3"
+    shift 3
+    local _bin="$(agentvm_bin)"
+    local _home="$(agentvm_setting agent-vm-home)"
+    local _jobs="$(agentvm_jobs_dir)"
+    local _status
+    /bin/rm -f "$agentvm_err_file"
+    if [ -n "$_home" ]; then
+        AGENT_VM_HOME="$_home" "$agentvm_python" "$agentvm_job_py" start "$_jobs" "$_kind" "$_target" "$_title" -- "$_bin" "$@" --json 2>"$agentvm_err_file"
+        _status=$?
+    else
+        "$agentvm_python" "$agentvm_job_py" start "$_jobs" "$_kind" "$_target" "$_title" -- "$_bin" "$@" --json 2>"$agentvm_err_file"
+        _status=$?
+    fi
+    _agentvm_job_result "$_status" start
+}
+
+# _agentvm_job_result <status> <command>  ->  status. The job store's refusals are plain
+# sentences on stderr; they get the "Error: " prefix agentvm_last_error reads.
+_agentvm_job_result() {
+    if [ "$1" -eq 0 ]; then
+        /bin/rm -f "$agentvm_err_file"
+        return 0
+    fi
+    local _message="$(/bin/cat "$agentvm_err_file" 2>/dev/null)"
+    _agentvm_refuse "$1" "${_message:-agentvm_job.py $2 failed (status $1)}"
+}
+
+# agentvm_jobs  ->  one row per job, oldest first: id, kind, target, title, state, status,
+# started, ended, step, fraction, message, notice, error (agentvm_job.py list). state is
+# running, done, failed, canceled or lost.
+agentvm_jobs() {
+    "$agentvm_python" "$agentvm_job_py" list "$(agentvm_jobs_dir)" 2>"$agentvm_err_file"
+    _agentvm_job_result $? list
+}
+
+# agentvm_job_busy <target>  ->  the title of the running job that holds target, or nothing.
+agentvm_job_busy() {
+    agentvm_jobs | /usr/bin/awk -F'\t' -v target="$1" '$3 == target && $5 == "running" { print $4; exit }'
+}
+
+# _agentvm_job_call <command> <id>  ->  agentvm_job.py <command> for one job; its refusal is left
+# for agentvm_last_error.
+_agentvm_job_call() {
+    "$agentvm_python" "$agentvm_job_py" "$1" "$(agentvm_jobs_dir)" "$2" 2>"$agentvm_err_file"
+    _agentvm_job_result $? "$1"
+}
+
+# agentvm_job_error <id>  ->  the whole error of a failed job, as agent-vm wrote it.
+agentvm_job_error() {
+    _agentvm_job_call error "$1"
+}
+
+# agentvm_job_cancel <id>  ->  0 once the job was asked to stop. agent-vm stops at its next safe
+# point, so the job still shows as running for a moment; it ends as canceled.
+agentvm_job_cancel() {
+    _agentvm_job_call cancel "$1"
+}
+
+# agentvm_job_forget <id>  ->  0 once a finished job is removed from the list.
+agentvm_job_forget() {
+    _agentvm_job_call forget "$1"
+}
+
+# _agentvm_owner_pid  ->  the application's pid for --owner-pid, or nothing when OMC did not
+# give one: a box Cadabra started stops when Cadabra goes away, however it goes (a crash, a
+# force quit).
+_agentvm_owner_pid() {
+    case "${OMC_APP_PROCESS_ID:-}" in
+        ''|*[!0123456789]*) ;;
+        *) printf '%s\n' "$OMC_APP_PROCESS_ID" ;;
+    esac
+}
+
+# agentvm_box_start_job <box>  ->  the job id. The box stops by itself when Cadabra exits (its
+# owner lease), because a running box holds one of the two macOS virtual machine slots.
+agentvm_box_start_job() {
+    _agentvm_need_name box "$1" || return $?
+    agentvm_vm_slot_free || return $?
+    local _owner="$(_agentvm_owner_pid)"
+    if [ -n "$_owner" ]; then
+        agentvm_job_start box-start "box:$1" "Start $1" box start "$1" --owner-pid "$_owner"
+        return $?
+    fi
+    agentvm_job_start box-start "box:$1" "Start $1" box start "$1"
+}
+
+# agentvm_box_stop_job <box>  ->  the job id. A clean shutdown of the guest takes a few seconds.
+agentvm_box_stop_job() {
+    _agentvm_need_name box "$1" || return $?
+    agentvm_job_start box-stop "box:$1" "Stop $1" box stop "$1"
+}
+
+# agentvm_image_update_guest_job <image>  ->  the job id. Boots the image to install the guest
+# daemon next to agent-vm into it, so it needs a free virtual machine slot.
+agentvm_image_update_guest_job() {
+    _agentvm_need_name image "$1" || return $?
+    agentvm_vm_slot_free || return $?
+    agentvm_job_start update-guest "image:$1" "Update the guest in $1" image update-guest "$1"
+}
+
+# agentvm_image_setup_job <image>  ->  the job id. Opens the image in a window where the user
+# grants Full Disk Access by hand; the job ends when they are done.
+agentvm_image_setup_job() {
+    _agentvm_need_name image "$1" || return $?
+    agentvm_vm_slot_free || return $?
+    agentvm_job_start image-setup "image:$1" "Set up Full Disk Access in $1" image setup "$1"
+}
+
+# -- A shell in a box, in Terminal -------------------------------------------------------
+
+# _agentvm_quote <text>  ->  text as one single-quoted shell word.
+_agentvm_quote() {
+    printf "'%s'\n" "$(printf '%s' "$1" | /usr/bin/sed "s/'/'\\\\''/g")"
+}
+
+# agentvm_box_shell_file <box>  ->  the path of a .command file that opens a shell in the box.
+# Terminal runs a .command file when it opens one, which is how a window-less handler hands
+# the user an interactive terminal. The file names the agent-vm and store in use now; it is
+# rewritten each time, so a changed setting takes effect on the next Shell.
+agentvm_box_shell_file() {
+    _agentvm_need_name box "$1" || return $?
+    local _dir="$mcp_app_support/Shells"
+    local _file="$_dir/$1.command"
+    local _home="$(agentvm_setting agent-vm-home)"
+    /bin/mkdir -p "$_dir"
+    if [ $? -ne 0 ]; then
+        _agentvm_refuse 1 "Could not create $_dir."
+        return 1
+    fi
+    {
+        printf '#!/bin/sh\n'
+        printf '# Written by Cadabra'"'"'s Box Manager: a shell in the box %s. Safe to delete.\n' "$1"
+        if [ -n "$_home" ]; then
+            printf 'AGENT_VM_HOME=%s\nexport AGENT_VM_HOME\n' "$(_agentvm_quote "$_home")"
+        fi
+        printf 'exec %s box shell %s\n' "$(_agentvm_quote "$(agentvm_bin)")" "$1"
+    } > "$_file" || { _agentvm_refuse 1 "Could not write $_file."; return 1; }
+    /bin/chmod 700 "$_file"
+    printf '%s\n' "$_file"
+}
+
+# agentvm_box_shell <box>  ->  0 once Terminal was asked to open a shell in the box.
+# CADABRA_OPEN is the test seam for /usr/bin/open.
+agentvm_box_shell() {
+    local _file
+    _file="$(agentvm_box_shell_file "$1")"
+    local _status=$?
+    if [ "$_status" -ne 0 ]; then
+        return "$_status"
+    fi
+    "${CADABRA_OPEN:-/usr/bin/open}" -a Terminal "$_file" 2>"$agentvm_err_file"
+    _status=$?
+    if [ "$_status" -ne 0 ]; then
+        _agentvm_refuse "$_status" "Terminal could not open $_file."
+        return "$_status"
+    fi
+    /bin/rm -f "$agentvm_err_file"
+    return 0
 }

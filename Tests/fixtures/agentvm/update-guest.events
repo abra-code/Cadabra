@@ -1,0 +1,6 @@
+{"event": "progress", "image": "dev", "message": "Booting dev", "step": "boot"}
+{"event": "progress", "image": "dev", "message": "Replacing the guest daemon 0.1.5 with 0.2.1", "step": "replace-guest-daemon"}
+{"event": "progress", "image": "dev", "message": "Shutting dev down", "step": "shutdown"}
+{"event": "progress", "image": "dev", "message": "Booting dev again to check the new guest daemon", "step": "check-guest-daemon"}
+{"event": "notice", "image": "dev", "message": "dev now has guest daemon 0.2.1"}
+{"event": "progress", "image": "dev", "message": "Shutting dev down", "step": "shutdown"}

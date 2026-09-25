@@ -1,0 +1,55 @@
+[
+  {
+    "argv": [
+      "/bin/echo",
+      "ok"
+    ],
+    "guestPid": 870,
+    "hostPid": 66236,
+    "id": "77f20443",
+    "seconds": 0.018,
+    "started": "2026-09-25T07:36:52Z",
+    "status": 0,
+    "user": "agent"
+  },
+  {
+    "argv": [
+      "/bin/echo",
+      "ok"
+    ],
+    "guestPid": 871,
+    "hostPid": 66242,
+    "id": "0dc96d83",
+    "seconds": 0.015,
+    "started": "2026-09-25T07:36:52Z",
+    "status": 0,
+    "user": "agent"
+  },
+  {
+    "argv": [
+      "/bin/echo",
+      "ok"
+    ],
+    "guestPid": 873,
+    "hostPid": 66248,
+    "id": "91e33e0b",
+    "seconds": 0.012,
+    "started": "2026-09-25T07:36:52Z",
+    "status": 0,
+    "user": "agent"
+  },
+  {
+    "argv": [
+      "/bin/sh",
+      "-c",
+      "uname -r; sw_vers -productVersion; /opt/homebrew/bin/node --version 2>/dev/null; sysctl -n hw.ncpu hw.memsize"
+    ],
+    "guestPid": 887,
+    "hostPid": 66454,
+    "id": "d9a69688",
+    "seconds": 0.979,
+    "started": "2026-09-25T07:37:04Z",
+    "status": 0,
+    "user": "agent"
+  }
+]

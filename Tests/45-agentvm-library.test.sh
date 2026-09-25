@@ -226,10 +226,10 @@ else
     check "a current agent-vm is available"    "0" "$rc"
     check "  silently"                         ""  "$out"
     check "  after asking its version"         "--version" "$(/bin/cat "$FAKE_AGENTVM_DIR/log")"
-    printf '0.1.5\n' > "$FAKE_AGENTVM_DIR/version"
+    printf '0.1.11\n' > "$FAKE_AGENTVM_DIR/version"
     out=$(with_fake agentvm_available); rc=$?
-    check "0.1.5 is too old"                   "1" "$rc"
-    check "  and the reason names both versions" "1" "$(cad_has "$out" "Cadabra needs agent-vm 0.1.6 or later, and $FAKE is 0.1.5.")"
+    check "0.1.11 is too old"                  "1" "$rc"
+    check "  and the reason names both versions" "1" "$(cad_has "$out" "Cadabra needs agent-vm 0.2.0 or later, and $FAKE is 0.1.11.")"
     fake_reset
     printf '3\n' > "$FAKE_AGENTVM_DIR/exit"
     printf 'dyld: Library not loaded\n' > "$FAKE_AGENTVM_DIR/stderr"
