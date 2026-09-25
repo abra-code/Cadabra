@@ -119,8 +119,8 @@ mlx-agent, pdfutil, replay and agent-vm are built from sibling checkouts (`--age
 three if they are missing. agent-vm is not published yet, so its sibling checkout must exist. No WebUI
 is downloaded or patched - Cadabra's chat is native.
 
-**arm64 only for the agent:** mlx-agent is Metal/MLX and does not build for x86_64. The llama.cpp
-half still accepts `--arch=x86_64` (pass `--skip-agent` with it). pdfutil builds for either arch.
+**arm64 only:** Cadabra runs only on Macs with Apple silicon, so every engine is built and deployed
+for arm64 alone, and the script refuses to run on an Intel Mac.
 
 ### AIChat.app llama.cpp distribution (update-llama-cpp.sh)
 

@@ -24,9 +24,9 @@
 # weight here and is deliberately absent rather than skipped by a flag. Cadabra also embeds
 # mlx-agent, which V1 does not, so the two scripts do not converge.
 #
-# arm64 only for the agent: mlx-agent is Metal/MLX and does not build for x86_64. The
-# llama.cpp half still accepts --arch=x86_64 (pass --skip-agent with it). pdfutil and
-# replay build for either arch, so both are deployed on the arm64 and x86_64 paths.
+# arm64 only: Cadabra runs only on Macs with Apple silicon (mlx-agent is Metal/MLX, and
+# agent-vm's macOS guests need Apple silicon), so every engine is built and deployed for arm64
+# alone, and the script refuses to run elsewhere.
 #
 # The bundle is Cadabra.app next to this script - NOT auto-globbed: the repo root also
 # holds the V1 AIChat.app, which this script must never touch.
@@ -53,7 +53,9 @@ RED=$(printf '\033[91m'); GREEN=$(printf '\033[92m')
 YELLOW=$(printf '\033[93m'); RESET=$(printf '\033[0m')
 
 VERSION="auto"
-ARCH="auto"
+# The only architecture Cadabra ships. Still spelled out where builds take one: bare, pdfutil's
+# build.sh would build a universal binary and llama.cpp publishes one archive per architecture.
+ARCH="arm64"
 SIGNING_IDENTITY="-"
 AGENT_REPO="${AGENT_REPO:-}"
 PDFUTIL_REPO="${PDFUTIL_REPO:-}"
@@ -212,7 +214,6 @@ Options:
                         auto     the newest official release (default; upstream tags these
                                  vX.Y.Z and points them at the build carrying the binaries)
                         nightly  the newest build, released or not
-  --arch=ARCH         arm64 or x86_64 (default: host). x86_64 requires --skip-agent.
   --identity=CERT     codesign identity (default: - for ad-hoc)
   --agent-repo=PATH   mlx-agent repo (default: ../mlx-agent sibling checkout)
   --pdfutil-repo=PATH pdfutil repo (default: ../pdfutil sibling checkout)
@@ -256,8 +257,6 @@ while [ $# -gt 0 ]; do
         --help) show_help ;;
         --version=*) VERSION="${1#*=}" ;;
         --version) shift; VERSION="${1:-}" ;;
-        --arch=*) ARCH="${1#*=}" ;;
-        --arch) shift; ARCH="${1:-}" ;;
         --identity=*) SIGNING_IDENTITY="${1#*=}" ;;
         --identity) shift; SIGNING_IDENTITY="${1:-}" ;;
         --agent-repo=*) AGENT_REPO="${1#*=}" ;;
@@ -413,14 +412,10 @@ prepare() {
     echo "==== Updating $(/usr/bin/basename "$APP_BUNDLE") ===="
     echo
 
-    [ "$ARCH" = "auto" ] && ARCH=$(/usr/bin/uname -m)
-    case "$ARCH" in
-        arm64) ;;
-        x86_64)
-            [ "$DO_AGENT" = "yes" ] && fail "mlx-agent is arm64-only (Metal/MLX). Re-run with --skip-agent for an x86_64 llama.cpp-only update."
-            ;;
-        *) fail "Invalid --arch: $ARCH (must be arm64 or x86_64)" ;;
-    esac
+    # Asked of the hardware rather than of uname -m, which says x86_64 in a Terminal running
+    # under Rosetta on an Apple silicon Mac, where everything here still works.
+    local apple_silicon="$(/usr/sbin/sysctl -n hw.optional.arm64 2>/dev/null)"
+    [ "$apple_silicon" = "1" ] || fail "Cadabra is arm64 only: run this on a Mac with Apple silicon."
 
     if [ "$DO_LLAMA" = "yes" ]; then
         case "$VERSION" in
@@ -430,11 +425,7 @@ prepare() {
             b[0-9]*) ;;
             *) fail "Invalid --version: $VERSION (expected auto, nightly, or a build tag bNNNN)" ;;
         esac
-        if [ "$ARCH" = "arm64" ]; then
-            ASSET_NAME="llama-${VERSION}-bin-macos-arm64.tar.gz"
-        else
-            ASSET_NAME="llama-${VERSION}-bin-macos-x64.tar.gz"
-        fi
+        ASSET_NAME="llama-${VERSION}-bin-macos-${ARCH}.tar.gz"
         DOWNLOAD_URL="https://github.com/ggml-org/llama.cpp/releases/download/${VERSION}/${ASSET_NAME}"
         WORK_DIR="$(/usr/bin/mktemp -d "${TMPDIR:-/tmp}/update-aichat.XXXXXX")" || fail "mktemp failed"
         TARBALL="$WORK_DIR/$ASSET_NAME"
@@ -579,7 +570,6 @@ prepare() {
     fi
 
     echo "  App bundle : $APP_BUNDLE"
-    echo "  Arch       : $ARCH"
     echo "  llama.cpp  : $([ "$DO_LLAMA" = yes ] && echo "$VERSION" || echo "<skipped>")"
     # Spells out the SPM re-resolve: it is on by default, it touches a tracked file in a
     # DIFFERENT repo, and it goes to the network for minutes - the most surprising thing this
@@ -897,10 +887,9 @@ update_pdfutil() {
 
     if [ "$DO_BUILD" = "yes" ]; then
         # build.sh is a plain `xcrun swiftc -O` build (zero third-party deps - only macOS
-        # system frameworks), so no Metal/Xcode-project machinery is needed. Pass the app's
-        # arch so the deployed slice matches the rest of the bundle (build.sh accepts
-        # arm64|x86_64; bare it would build a universal binary). It ad-hoc signs its output,
-        # which the bundle-wide codesign below overwrites anyway.
+        # system frameworks), so no Metal/Xcode-project machinery is needed. Pass arm64:
+        # bare, build.sh would build a universal binary. It ad-hoc signs its output, which the
+        # bundle-wide codesign below overwrites anyway.
         echo "  Building (./build.sh $ARCH)..."
         ( cd "$PDFUTIL_REPO" && ./build.sh "$ARCH" ) 2>&1 | /usr/bin/tail -5
         [ "${PIPESTATUS[0]}" = 0 ] || fail "pdfutil build.sh failed."
@@ -936,9 +925,7 @@ update_replay() {
     if [ "$DO_BUILD" = "yes" ]; then
         # The repo's own ./build.sh builds all four tools (replay, dispatch, fingerprint,
         # gate); only replay is bundled, so drive its scheme directly instead. ARCHS +
-        # ONLY_ACTIVE_ARCH=NO pins the slice to the app's arch, matching the rationale in
-        # update_pdfutil - on an arm64 host a bare build would never produce x86_64.
-        # replay is portable C++ (no Metal/MLX), so unlike mlx-agent both arches are fine.
+        # ONLY_ACTIVE_ARCH=NO pins the slice to arm64, the only architecture Cadabra ships.
         echo "  Building (xcodebuild -scheme replay -configuration Release, $ARCH)..."
         ( cd "$REPLAY_REPO" && /usr/bin/xcodebuild -project replay.xcodeproj -scheme replay \
             -configuration Release ARCHS="$ARCH" ONLY_ACTIVE_ARCH=NO build ) 2>&1 | /usr/bin/tail -5
