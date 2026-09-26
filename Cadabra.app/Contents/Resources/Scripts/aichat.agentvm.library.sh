@@ -795,7 +795,7 @@ agentvm_box_shell_file() {
     fi
     {
         printf '#!/bin/sh\n'
-        printf '# Written by Cadabra'"'"'s Box Manager: a shell in the box %s. Safe to delete.\n' "$1"
+        printf '# Written by Cadabra'"'"'s AgentVM window: a shell in the box %s. Safe to delete.\n' "$1"
         if [ -n "$_home" ]; then
             printf 'AGENT_VM_HOME=%s\nexport AGENT_VM_HOME\n' "$(_agentvm_quote "$_home")"
         fi

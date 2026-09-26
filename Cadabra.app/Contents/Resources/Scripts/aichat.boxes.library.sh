@@ -56,8 +56,10 @@ BOXES_BOX_DELETE_ID=557
 BOXES_IMAGE_ACTION_IDS="$BOXES_IMAGE_NEW_BOX_ID $BOXES_IMAGE_UPDATE_ID $BOXES_IMAGE_SETUP_ID $BOXES_IMAGE_REVEAL_ID $BOXES_IMAGE_DELETE_ID"
 BOXES_BOX_ACTION_IDS="$BOXES_BOX_START_ID $BOXES_BOX_STOP_ID $BOXES_BOX_VIEW_ID $BOXES_BOX_CONTROL_ID $BOXES_BOX_SHELL_ID $BOXES_BOX_REVEAL_ID $BOXES_BOX_DELETE_ID"
 
-# The open Box Manager's window uuid, for windows that change what it lists.
-BOXES_MANAGER_KEY="cadabra_boxes_manager_window"
+# The open Box Manager's window uuid, for Tools > Boxes... and the windows that change what it
+# lists. Keyed by this process, so a uuid left behind by a Cadabra that quit or crashed with the
+# window open is never read.
+BOXES_MANAGER_KEY="cadabra_boxes_manager_window_${OMC_APP_PROCESS_ID}"
 
 # CADABRA_OPEN is the test seam for /usr/bin/open (Reveal), as in aichat.agentvm.library.sh.
 boxes_open="${CADABRA_OPEN:-/usr/bin/open}"

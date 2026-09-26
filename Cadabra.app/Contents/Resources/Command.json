@@ -374,10 +374,15 @@
         "IS_BLOCKING" : false,
         "JSON_NAME" : "aichat.boxes",
         "WINDOW_DID_ACTIVATE_SUBCOMMAND_ID" : "aichat.boxes.activated",
-        "WINDOW_TITLE" : "Cadabra - Boxes"
+        "WINDOW_TITLE" : "AgentVM"
       },
       "COMMAND_ID" : "aichat.boxes",
       "EXECUTION_MODE" : "exe_shell_script",
+      "NAME" : "Cadabra"
+    },
+    {
+      "COMMAND_ID" : "aichat.boxes.open",
+      "EXECUTION_MODE" : "exe_script_file",
       "NAME" : "Cadabra"
     },
     {

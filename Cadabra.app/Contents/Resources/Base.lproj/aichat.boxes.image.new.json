@@ -10,7 +10,7 @@
     {
       "type": "Text",
       "properties": {
-        "text": "An image is a macOS installation that boxes are made from. Install macOS from a restore image, or add tools to an image you have, with a recipe. The build runs on after this window closes; the Box Manager shows its progress.",
+        "text": "An image is a macOS installation that boxes are made from. Install macOS from a restore image, or add tools to an image you have, with a recipe. The build runs on after this window closes; the AgentVM window shows its progress.",
         "font": "callout",
         "foregroundStyle": "secondary",
         "frame": { "maxWidth": "infinity", "alignment": "leading" }

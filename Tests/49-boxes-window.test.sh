@@ -88,7 +88,7 @@ check "the images are shown"                 "1" "$(ui_visible "$BOXES_IMAGES_ID
 check "  and the boxes hidden"               "0" "$(ui_visible "$BOXES_BOXES_ID")"
 check "no progress bar"                      "0" "$(ui_visible "$BOXES_PROGRESS_ID")"
 check "no poll loop without jobs"            "0" "$(chain_asked aichat.boxes.poll)"
-check "the manager is known to other windows" "$OMC_ACTIONUI_WINDOW_UUID" "$(cad_pb_get cadabra_boxes_manager_window)"
+check "the manager is known to other windows" "$OMC_ACTIONUI_WINDOW_UUID" "$(cad_pb_get "cadabra_boxes_manager_window_$OMC_APP_PROCESS_ID")"
 check "doctor's warnings are shown (none: the slot fixture is ok)" "" "$(ui_value "$BOXES_NOTES_ID")"
 
 section "doctor's warnings reach the notes line"
@@ -206,7 +206,7 @@ fake_reset 3
 id=$(cad_call_lib aichat.agentvm.library.sh agentvm_box_stop_job try1)
 omc_run aichat.boxes.close
 check "close marks the loop stopped" "closed" "$(cad_pb_get "cadabra_boxes_poll_$OMC_ACTIONUI_WINDOW_UUID")"
-check "  and forgets the manager"    "" "$(cad_pb_get cadabra_boxes_manager_window)"
+check "  and forgets the manager"    "" "$(cad_pb_get "cadabra_boxes_manager_window_$OMC_APP_PROCESS_ID")"
 check "  and its cache files"        "0" "$(/bin/ls "${TMPDIR:-/tmp}" | /usr/bin/grep -c "cadabra-boxes.$OMC_ACTIONUI_WINDOW_UUID")"
 check "but the job goes on"          "running" "$(cad_call_lib aichat.agentvm.library.sh agentvm_jobs | /usr/bin/awk -F'\t' -v id="$id" '$1 == id { print $5 }')"
 omc_run aichat.boxes.poll
@@ -610,6 +610,28 @@ omc_run aichat.boxes.poll
 check "the job failed"                       "1" "$(ui_rows "$BOXES_JOBS_ID" | /usr/bin/grep -c "^Update the guest in dev${TAB}failed")"
 check "  and the offer was still made"       "1" "$(alerts_mention "Set up Full Disk Access in dev")"
 check "  Later starts nothing"               "0" "$(/bin/cat "$FAKE_AGENTVM_DIR/log" | /usr/bin/grep -c '^image setup' | /usr/bin/tr -d ' ')"
+
+section "Tools > Boxes...: one Box Manager, brought to the front"
+fake_reset
+ui_reset
+omc_window_switch manager3
+omc_control_defaults aichat.boxes
+omc_run aichat.boxes.init
+manager3="$OMC_ACTIONUI_WINDOW_UUID"
+chains_reset
+omc_run aichat.boxes.open
+check "an open Box Manager comes to the front" "1" "$(journal_count "$manager3" omc_window omc_select)"
+check "  and no second one opens"      "0" "$(chain_asked aichat.boxes)"
+omc_run aichat.boxes.close
+chains_reset
+omc_run aichat.boxes.open
+check "none open: one opens"           "1" "$(chain_asked aichat.boxes)"
+check "  and the closed one is not asked to come forward" "1" "$(journal_count "$manager3" omc_window omc_select)"
+cad_pb_set "cadabra_boxes_manager_window_999999" "$manager3"
+chains_reset
+omc_run aichat.boxes.open
+check "a uuid another Cadabra process left behind is not read" "1" "$(chain_asked aichat.boxes)"
+cad_pb_set "cadabra_boxes_manager_window_999999" ""
 
 section "every view id constant is defined once"
 # A later definition silently wins in sh, so a reused name retargets every earlier use: a
