@@ -41,7 +41,9 @@ this file.
     activeExecs, disposable, ownerPid, startedAt, supervisorVersion, path, netMode, rules
   network is for people ("allowlist, 2 rules"); rules is the allow list, comma-joined.
 "packs" emits one row per pack:
-    name, hosts
+    name, hosts, problem
+  problem is agent-vm's reason a user pack cannot be used (since 0.2.10, which reads packs from
+  files); such a pack has no hosts. "-" for a usable pack, and for agent-vm before 0.2.10.
 "execlog" emits one row per program run, oldest first:
     started, status, seconds, program, prompts, stoppedOnPrompt
   status is "no end recorded" while the run goes on, and also when its client died without
@@ -198,7 +200,7 @@ def box_rows(data):
 
 def pack_rows(data):
     for pack in objects(need_list(data, "agent-vm box packs --json")):
-        yield row([pack.get("name"), pack.get("hosts")])
+        yield row([pack.get("name"), pack.get("hosts"), pack.get("problem")])
 
 
 def execlog_rows(data):

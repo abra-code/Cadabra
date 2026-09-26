@@ -334,6 +334,7 @@ check "the ready images are offered" '["dev","dev-agents","dev-node","dev-xcode"
 check "  from the manager's list, not agent-vm again" "1" "$(fake_asked "image list")"
 check "dev-node is chosen"           "3" "$(ui_value "$BOXES_NEW_IMAGE_ID")"
 check "the packs are named"          "1" "$(cad_has "$(ui_value "$BOXES_NEW_PACKS_ID")" "Known packs: anthropic, apple-updates")"
+check "  none of them marked broken"  "0" "$(cad_has "$(ui_value "$BOXES_NEW_PACKS_ID")" "broken")"
 check "the hand-off was read once"   "" "$(cad_pb_get cadabra_boxes_new_image)"
 
 section "Create: the fields become agent-vm's arguments"
@@ -375,6 +376,17 @@ check "network off takes no rules" "1" "$(fake_asked "box create offline --image
 
 # -----------------------------------------------------------------------------------------
 RECIPES="$OMC_APP_BUNDLE_PATH/Contents/Resources/Recipes"
+
+section "a pack agent-vm cannot use is named as broken"
+fake_reset
+printf '%s' '[{"name":"mine","source":"user","problem":"hosts is not a list of host names"},{"name":"npm","hosts":["registry.npmjs.org"],"source":"built-in"}]' > "$FAKE_AGENTVM_DIR/packs.json"
+cad_pb_set cadabra_boxes_new_image "dev-node"
+omc_window_switch newbox-broken
+omc_control_defaults aichat.boxes.box.new
+omc_run aichat.boxes.box.new.init
+check "the broken pack says why"      "1" "$(cad_has "$(ui_value "$BOXES_NEW_PACKS_ID")" "mine (broken: hosts is not a list of host names)")"
+check "  and the usable one is plain" "1" "$(cad_has "$(ui_value "$BOXES_NEW_PACKS_ID")" "mine (broken: hosts is not a list of host names), npm.")"
+/bin/rm -f "$FAKE_AGENTVM_DIR/packs.json"
 
 section "New Image from This...: the window starts from that image"
 fake_reset

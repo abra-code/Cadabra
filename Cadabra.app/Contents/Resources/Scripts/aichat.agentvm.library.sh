@@ -345,7 +345,8 @@ agentvm_boxes() {
     agentvm_rows boxes box list
 }
 
-# agentvm_packs  ->  one row per network pack: name, hosts (comma-joined).
+# agentvm_packs  ->  one row per network pack: name, hosts (comma-joined), problem ("-" unless
+# agent-vm cannot use the pack).
 agentvm_packs() {
     agentvm_rows packs box packs
 }

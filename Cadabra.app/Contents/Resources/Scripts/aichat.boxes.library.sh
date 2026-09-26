@@ -723,7 +723,9 @@ boxes_new_init() {
     local _index="$(printf '%s\n' "$_images" | /usr/bin/awk -v want="$_wanted" '$0 == want { print NR; exit }')"
     "$dialog" "$_uuid" "$BOXES_NEW_IMAGE_ID" "${_index:-1}"
     "$dialog" "$_uuid" "$BOXES_NEW_NETWORK_ID" "1"
-    local _packs="$(agentvm_packs 2>/dev/null | /usr/bin/awk -F'\t' '{ printf "%s%s", sep, $1; sep = ", " }')"
+    # A user pack agent-vm cannot use (its problem, since agent-vm 0.2.10) is named as broken: a
+    # box that names it is refused, so offering it as if it worked would be a trap.
+    local _packs="$(agentvm_packs 2>/dev/null | /usr/bin/awk -F'\t' '{ printf "%s%s%s", sep, $1, ($3 != "" && $3 != "-") ? " (broken: " $3 ")" : ""; sep = ", " }')"
     agentvm_last_error >/dev/null
     if [ -n "$_packs" ]; then
         "$dialog" "$_uuid" "$BOXES_NEW_PACKS_ID" "Packs name the hosts a tool needs, for example pack:npm. Known packs: $_packs."

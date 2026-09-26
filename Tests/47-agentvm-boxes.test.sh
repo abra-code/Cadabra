@@ -104,6 +104,13 @@ section "packs, and the two logs"
 rows=$(convert packs "$FIXTURES/packs.json")
 check "npm is a pack" "1" "$(printf '%s\n' "$rows" | /usr/bin/grep -c "^npm${TAB}")"
 check "hosts, comma-joined" "1" "$(cad_has "$(printf '%s\n' "$rows" | /usr/bin/awk -F'\t' '$1 == "github" { print $2 }')" "github.com,api.github.com")"
+check "a usable pack has no problem" "-" "$(printf '%s\n' "$rows" | /usr/bin/awk -F'\t' '$1 == "github" { print $3 }')"
+printf '%s' '[{"name":"mine","source":"user","path":"/Users/you/Packs/mine.json","problem":"hosts is not a list of host names"},{"name":"npm","hosts":["registry.npmjs.org"],"source":"built-in"}]' > "$OMCTEST_WORK/packs-broken.json"
+rows=$(convert packs "$OMCTEST_WORK/packs-broken.json")
+check "a broken user pack keeps its row" "1" "$(printf '%s\n' "$rows" | /usr/bin/grep -c "^mine${TAB}")"
+check "  with no hosts"                 "-" "$(printf '%s\n' "$rows" | /usr/bin/awk -F'\t' '$1 == "mine" { print $2 }')"
+check "  and agent-vm's problem"        "hosts is not a list of host names" "$(printf '%s\n' "$rows" | /usr/bin/awk -F'\t' '$1 == "mine" { print $3 }')"
+check "  while the next pack still reads" "registry.npmjs.org" "$(printf '%s\n' "$rows" | /usr/bin/awk -F'\t' '$1 == "npm" { print $2 }')"
 row=$(convert execlog "$FIXTURES/execlog.json" | /usr/bin/head -1)
 check "execlog: six fields" "6"              "$(printf '%s\n' "$row" | /usr/bin/awk -F'\t' '{ print NF }')"
 check "  started"           "2026-09-25T07:36:52Z" "$(printf '%s\n' "$row" | col 1)"

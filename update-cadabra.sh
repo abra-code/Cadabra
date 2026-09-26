@@ -209,7 +209,7 @@ Updates the runtime engines in $(/usr/bin/basename "$APP_BUNDLE"):
   mlx-agent -> Contents/Support/MLX/         (built from source, xcodebuild -configuration Release)
   pdfutil   -> Contents/Support/pdfutil      (built from source with ./build.sh)
   replay    -> Contents/Support/replay       (built from source with xcodebuild)
-  agent-vm  -> Contents/Support/AgentVM/     (built from source with its Scripts/build.sh)
+  agent-vm  -> Contents/Support/AgentVM/     (built from source with its Scripts/build.sh; with packs.json)
   packages  -> Contents/Library/Packages     (pip install with the bundle's own python3)
 
 Options:
@@ -990,6 +990,11 @@ update_agentvm() {
         [ -x "$AGENTVM_BUILD_DIR/$product" ] \
             || fail "No built $product at $AGENTVM_BUILD_DIR (build first, or drop --skip-build)."
     done
+    # Checked here, before the bundle changes: a checkout with Resources/packs.json whose build
+    # lacks it is a stale build (only possible with --skip-build; build.sh copies it or fails).
+    if [ -f "$AGENTVM_REPO/Resources/packs.json" ] && [ ! -f "$AGENTVM_BUILD_DIR/packs.json" ]; then
+        fail "agent-vm's build has no packs.json although its checkout does; rebuild agent-vm (Scripts/build.sh), or drop --skip-build."
+    fi
 
     /bin/mkdir -p "$AGENTVM_DIR" || fail "Could not create $AGENTVM_DIR"
     for product in agent-vm agent-vm-guest; do
@@ -1009,6 +1014,20 @@ update_agentvm() {
     done
 
     [ -f "$AGENTVM_REPO/LICENSE" ] && /bin/cp -f "$AGENTVM_REPO/LICENSE" "${AGENTVM_BIN}.LICENSE"
+
+    # The built-in network packs. Since 0.2.10 agent-vm reads them from packs.json beside its
+    # executable and refuses any box that names a pack when the file is missing, so it ships
+    # with the binaries, from the same build (a stale build was refused above, before the bundle
+    # changed). An older agent-vm has no such file and reads none.
+    if [ -f "$AGENTVM_BUILD_DIR/packs.json" ]; then
+        /bin/cp -f "$AGENTVM_BUILD_DIR/packs.json" "$AGENTVM_DIR/packs.json" \
+            || fail "Could not copy packs.json into $AGENTVM_DIR"
+        /usr/bin/cmp -s "$AGENTVM_BUILD_DIR/packs.json" "$AGENTVM_DIR/packs.json" \
+            || fail "Deployed packs.json differs from the build's - copy did not take."
+        echo "  Packs: packs.json"
+    else
+        /bin/rm -f "$AGENTVM_DIR/packs.json"
+    fi
 
     # The image recipes the Box Manager offers, from the same checkout as the binaries, so the
     # recipes a Cadabra build ships are the ones its agent-vm was tested with. Copied, never
@@ -1369,6 +1388,21 @@ verify() {
             *) fail "agent-vm-guest --version did not report a version (got: \"${guest_version:-<no output>}\") - a load failure, or a broken signature." ;;
         esac
         echo "  agent-vm: $agentvm_version; $guest_version"
+        # With packs.json in the bundle, agent-vm must read it: a file it cannot read would
+        # otherwise surface only when a box that names a pack is created. A broken USER pack is
+        # an entry with a "problem", not a failure, so the user's own packs cannot fail this.
+        if [ -f "$AGENTVM_DIR/packs.json" ]; then
+            local agentvm_packs
+            agentvm_packs="$("$AGENTVM_BIN" box packs 2>&1)"
+            local packs_status=$?
+            if [ "$packs_status" -ne 0 ]; then
+                fail "agent-vm box packs failed with status $packs_status after signing: $agentvm_packs"
+            fi
+            case "$agentvm_packs" in
+                *"pack:anthropic"*) ;;
+                *) fail "agent-vm box packs did not list the built-in packs after signing (got: \"${agentvm_packs:-<no output>}\")." ;;
+            esac
+        fi
         echo "  ${GREEN}OK${RESET} agent-vm and agent-vm-guest launch (post-signing)"
     fi
 

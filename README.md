@@ -111,7 +111,7 @@ bundle and verifies that they actually launch (`--help` lists every option):
 | `mlx-agent` + resource bundles | `Contents/Support/MLX/` | built from source with `xcodebuild` |
 | `pdfutil` | `Contents/Support/` | built from source with `./build.sh` |
 | `replay` | `Contents/Support/` | built from source with `xcodebuild` |
-| `agent-vm` + `agent-vm-guest` | `Contents/Support/AgentVM/` | built from source with its `Scripts/build.sh` |
+| `agent-vm` + `agent-vm-guest` + `packs.json` | `Contents/Support/AgentVM/` | built from source with its `Scripts/build.sh` |
 | Python MCP servers | `Contents/Library/Packages/` | `pip install` with the bundle's own `python3` |
 
 mlx-agent, pdfutil, replay and agent-vm are built from sibling checkouts (`--agent-repo=`,
