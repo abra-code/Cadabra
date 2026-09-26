@@ -20,6 +20,7 @@ Usage (the JSON on stdin):
     agentvm_json.py packs     <- agent-vm box packs --json
     agentvm_json.py execlog   <- agent-vm box execlog <box> --json
     agentvm_json.py netlog    <- agent-vm box netlog <box> --json
+    agentvm_json.py secrets   <- agent-vm secret list --json
     agentvm_json.py recipe <recipe.json>   an image recipe file, read directly
 The job-log readers at the end (log_progress, log_error) are for agentvm_job.py, which imports
 this file.
@@ -52,6 +53,11 @@ this file.
   macOS privacy prompts the run waited on, joined with "; ".
 "netlog" emits one row per entry, oldest first:
     time, decision, host, port, method, reason
+"secrets" emits one row per Keychain secret agent-vm keeps (names only; agent-vm never prints a
+value):
+    name, readable
+  readable is "false" when macOS would ask before agent-vm could read it (a rebuilt agent-vm
+  that is not yet on the item's access list, say).
 "recipe" emits the recipe, then one row per input and per parameter, in the file's order:
     kind (recipe, input or parameter), name, required, default, description
   The recipe's own row carries commandLineTools in the default column (true, false, or "-" when
@@ -214,6 +220,11 @@ def execlog_rows(data):
                    entry.get("stoppedOnPrompt", False)])
 
 
+def secret_rows(data):
+    for entry in objects(need_list(data, "agent-vm secret list --json")):
+        yield row([entry.get("name"), entry.get("readable")])
+
+
 def netlog_rows(data):
     for entry in objects(need_list(data, "agent-vm box netlog --json")):
         yield row([entry.get("time"), entry.get("decision"), entry.get("host"), entry.get("port"),
@@ -301,7 +312,7 @@ def recipe_rows(path):
 
 COMMANDS = {"version": version_rows, "status": status_rows, "doctor": doctor_rows,
             "images": image_rows, "boxes": box_rows, "packs": pack_rows,
-            "execlog": execlog_rows, "netlog": netlog_rows}
+            "execlog": execlog_rows, "netlog": netlog_rows, "secrets": secret_rows}
 
 
 def main(argv):

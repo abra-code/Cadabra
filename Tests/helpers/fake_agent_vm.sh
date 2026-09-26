@@ -16,7 +16,10 @@
 #   version    what --version prints (default 0.2.1).
 #   delay      seconds between the progress events of a long command (default 0).
 #   <key>.json the answer to one query, overriding the fixture of that name:
-#              version, doctor, image-list, box-list, packs, execlog, netlog, box-create.
+#              version, doctor, image-list, box-list, packs, execlog, netlog, box-create,
+#              secret-list.
+#   exec-error when present, `exec` prints "Error: " and the file's text and exits 1 (agent-vm's
+#              refusal of a share, say); otherwise exec runs nothing and exits 0.
 #   box-<name>.json  <- box status <name> --json. With no such file the box does not exist, and
 #              the commands that name a box answer the way agent-vm does for a missing box.
 #
@@ -25,7 +28,8 @@
 #   box packs --json, box status|execlog|netlog <name> ... --json,
 #   box create <name> --image <image> ... --json (creates box-<name>.json),
 #   box delete <name> --json (removes it), image delete <name> --json, box view <name> ... --json,
-#   box shell <name>, and the long ones, which print progress events on stderr like agent-vm
+#   box shell <name>, secret list --json, exec --box <name> ... -- <argv> (runs nothing),
+#   and the long ones, which print progress events on stderr like agent-vm
 #   and exit 130 (SIGINT) or 143 (SIGTERM) when stopped:
 #   box start <name> [--owner-pid N] --json, box stop <name> --json,
 #   image update-guest <name> --json, image setup <name> --json, image create <name> ... --json.
@@ -101,6 +105,14 @@ case "$1 $2" in
         answer box-list ;;
     "box packs")
         answer packs ;;
+    "secret list")
+        answer secret-list ;;
+    "exec --box")
+        need_box "$3"
+        if [ -f "$state/exec-error" ]; then
+            printf 'Error: %s\n' "$(/bin/cat "$state/exec-error")" >&2
+            exit 1
+        fi ;;
     "box status")
         need_box "$3"
         /bin/cat "$state/box-$3.json" ;;

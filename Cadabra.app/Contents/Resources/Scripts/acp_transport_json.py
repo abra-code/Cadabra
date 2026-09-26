@@ -8,8 +8,8 @@ otherwise the transport is plain chat (no --mcp-config).
 
 Usage:
     acp_transport_json.py <agent_bin> <engine> <target> <mcp_config_path> <cwd> [tools]
-                          [--box NAME --agent-vm PATH --project DIR [--read-only]
-                           --level free|ask|plan [--agent-id ID]
+                          [--box NAME --agent-vm PATH [--agent-vm-home DIR] --project DIR
+                           [--read-only] --level free|ask|plan [--agent-id ID]
                            [--secret NAME ...] [--env NAME=VALUE ...]]
 
     The named options come after the positional ones and apply to engine "external" only: the
@@ -59,6 +59,9 @@ project shared at the same path:
   the catalog's box.levels says: an ACP session mode goes out as "sessionConfig": {"mode": ...}
   for ChatView to set after session/new; extra env joins the environment; a level the agent
   cannot do ("unavailable") is refused with nothing on stdout, like an empty command.
+- --agent-vm-home is agent-vm's store root when Cadabra uses another one (its developer
+  setting): it goes into the transport's env as AGENT_VM_HOME, for agent-vm itself on this Mac,
+  so the exec finds the box Cadabra started in that store.
 - cwd is the project, which is also its path in the box. startupTimeoutSeconds is 60: the box is
   started before this transport is used, so the time covers only the agent's own start.
 - No mcpServers yet: Cadabra's servers live at Mac paths, and the copy of them into the box
@@ -177,6 +180,7 @@ def parse_box_options(words):
     parser = argparse.ArgumentParser(prog="acp_transport_json.py", add_help=False, allow_abbrev=False)
     parser.add_argument("--box", required=True)
     parser.add_argument("--agent-vm", required=True)
+    parser.add_argument("--agent-vm-home", default="")
     parser.add_argument("--project", required=True)
     parser.add_argument("--read-only", action="store_true")
     parser.add_argument("--agent-id", default="")
@@ -208,6 +212,9 @@ def box_transport(options, user_argv):
         return None
     if not os.path.isabs(options.agent_vm):
         sys.stderr.write("acp_transport_json: the agent-vm path must be absolute\n")
+        return None
+    if options.agent_vm_home and not os.path.isabs(options.agent_vm_home):
+        sys.stderr.write("acp_transport_json: the agent-vm store (--agent-vm-home) must be an absolute path\n")
         return None
     recipe = catalog_box(options.agent_id) or {}
     argv = recipe.get("argv") if isinstance(recipe.get("argv"), list) else None
@@ -248,6 +255,8 @@ def box_transport(options, user_argv):
     command += ["--"] + argv
     transport = {"command": command, "cwd": options.project,
                  "startupTimeoutSeconds": BOX_STARTUP_TIMEOUT_SECONDS}
+    if options.agent_vm_home:
+        transport["env"] = {"AGENT_VM_HOME": options.agent_vm_home}
     if session_config:
         transport["sessionConfig"] = session_config
     return transport

@@ -56,7 +56,7 @@
       "url": "https://github.com/agentclientprotocol/claude-agent-acp",
       "summary": "An adapter that exposes Anthropic's Claude Agent SDK to any ACP client.",
       "note": "Claude Code speaks no ACP itself; this adapter wraps it. It needs no login of its own - it uses your existing Claude Code credentials.",
-      "verification": "Probed: initialize ok at 0.69.0, protocolVersion 1, loadSession, authMethods empty. Takes no arguments - src/index.ts falls through to runAcp() with zero args. npm bin claude-agent-acp. In a box (spike S3, 2026-09-26, 0.81.2): runs without @anthropic-ai/claude-code; CLAUDE_CODE_OAUTH_TOKEN through exec --secret works; a /login made in box shell is a file (~/.claude/.credentials.json) and exec'd programs use it; hosts api.anthropic.com (platform.claude.com for login); CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1 drops telemetry and halves a short turn; modes default, acceptEdits, plan, auto, bypassPermissions.",
+      "verification": "Probed: initialize ok at 0.69.0, protocolVersion 1, loadSession, authMethods empty. Takes no arguments - src/index.ts falls through to runAcp() with zero args. npm bin claude-agent-acp. In a box (spike S3, 2026-09-26, 0.81.2): runs without @anthropic-ai/claude-code; CLAUDE_CODE_OAUTH_TOKEN through exec --secret works; a /login made in box shell is a file (~/.claude/.credentials.json) and exec'd programs use it; hosts api.anthropic.com (platform.claude.com for login); CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1 drops telemetry and halves a short turn; modes default, acceptEdits, plan, auto, bypassPermissions; session/set_config_option sets the mode and answers with the refreshed list.",
       "box": {
         "argv": ["claude-agent-acp"],
         "allow": ["pack:anthropic"],
@@ -96,7 +96,7 @@
       "url": "https://github.com/agentclientprotocol/codex-acp",
       "summary": "An adapter that exposes OpenAI's Codex coding assistant to any ACP client.",
       "note": "OpenAI's Codex speaks no ACP itself; this adapter wraps it. Install the npm package @agentclientprotocol/codex-acp, which provides the codex-acp command.",
-      "verification": "NOT PROBED. ACP registry 1.4.0, npx distribution with no args; bin name codex-acp confirmed from npm package metadata. In a box (spike S4, 2026-09-26, 1.13.1 with codex-cli 0.156.1): ChatGPT Free login with codex-acp cli login --device-auth, stored in ~/.codex/auth.json; hosts chatgpt.com, auth.openai.com; modes read-only (Ask for approval), agent (default), agent-full-access; no mode asks before writes inside the working folder.",
+      "verification": "NOT PROBED. ACP registry 1.4.0, npx distribution with no args; bin name codex-acp confirmed from npm package metadata. In a box (spike S4, 2026-09-26, 1.13.1 with codex-cli 0.156.1): ChatGPT Free login with codex-acp cli login --device-auth, stored in ~/.codex/auth.json; hosts chatgpt.com, auth.openai.com; modes read-only (Ask for approval), agent (default), agent-full-access; no mode asks before writes inside the working folder. session/set_config_option sets the mode and answers with the refreshed list; an unknown value is refused (-32602). Its collaboration_mode plan (a separate option) only instructs: it declined an ordinary request to write a file, but ran a direct touch command, so it is not used as the plan level.",
       "box": {
         "argv": ["codex-acp"],
         "allow": ["pack:openai"],

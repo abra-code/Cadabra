@@ -598,6 +598,67 @@ agentvm_box_stop_job() {
     agentvm_job_start box-stop "box:$1" "Stop $1" box stop "$1"
 }
 
+# agentvm_box_start <box>  ->  0 once the box is ready, after waiting for it (10-16 s from
+# stopped). For a chat window's start, which shows its own progress and cannot go on without the
+# box; the Box Manager starts boxes as jobs. A box that already runs is left as it is, and one
+# that is starting (a Box Manager job, say) is waited for: neither is slot-checked, since each
+# already holds its virtual machine slot and would count against itself.
+agentvm_box_start() {
+    _agentvm_need_name box "$1" || return $?
+    local _row
+    _row="$(agentvm_box_status "$1")"
+    local _status=$?
+    if [ "$_status" -ne 0 ]; then
+        return "$_status"
+    fi
+    local _state="$(printf '%s\n' "$_row" | /usr/bin/cut -f1)"
+    case "$_state" in
+        ready)    return 0 ;;
+        starting) ;;
+        *)        agentvm_vm_slot_free || return $? ;;
+    esac
+    local _owner="$(_agentvm_owner_pid)"
+    if [ -n "$_owner" ]; then
+        agentvm_json box start "$1" --owner-pid "$_owner" >/dev/null
+        return $?
+    fi
+    agentvm_json box start "$1" >/dev/null
+}
+
+# agentvm_box_warmup <box> <project> <yes|no read-only>  ->  0 once a program has run in the box
+# with the project shared, at the same path. It checks what only agent-vm can (its share rules,
+# a box already serving another project) and mounts the share, so the agent's own start does not
+# wait for it. A refusal is agent-vm's message, naming the rule, for agentvm_last_error.
+agentvm_box_warmup() {
+    _agentvm_need_name box "$1" || return $?
+    case "$2" in
+        /*) ;;
+        *) _agentvm_refuse 2 "The project must be an absolute path, not \"$2\"."
+           return $? ;;
+    esac
+    case "$3" in
+        yes) set -- "$1" "$2" --read-only ;;
+        no)  set -- "$1" "$2" ;;
+        *)   _agentvm_refuse 2 "read-only must be yes or no, not \"$3\"."
+             return $? ;;
+    esac
+    local _box="$1" _project="$2"
+    shift 2
+    /bin/rm -f "$agentvm_err_file"
+    agentvm_run exec --box "$_box" --project "$_project" "$@" -- /usr/bin/true </dev/null 2>"$agentvm_err_file"
+    local _status=$?
+    if [ "$_status" -eq 0 ]; then
+        /bin/rm -f "$agentvm_err_file"
+    fi
+    return "$_status"
+}
+
+# agentvm_secrets  ->  one row per Keychain secret agent-vm keeps: name, readable (names only;
+# agent-vm never prints a value).
+agentvm_secrets() {
+    agentvm_rows secrets secret list
+}
+
 # agentvm_image_update_guest_job <image>...  ->  the job id. Boots each image in turn to install
 # the guest daemon next to agent-vm into it, so it needs a free virtual machine slot. Several
 # images are one job, one agent-vm run: they update one after another, where separate jobs

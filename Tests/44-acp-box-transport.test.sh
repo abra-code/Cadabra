@@ -36,6 +36,9 @@ check "opencode runs opencode acp"       '["opencode", "acp"]'  "$(catalog box o
 check "Codex is allowed OpenAI's hosts"  '["pack:openai"]'      "$(catalog box codex-acp | "$cad_py" -c 'import json,sys; print(json.dumps(json.load(sys.stdin)["allow"]))')"
 check "an agent with no box object prints nothing" "" "$(catalog box cursor)"
 check "  and an unknown id nothing either"         "" "$(catalog box no-such-agent)"
+check "box-list gives an agent's rules"  "pack:anthropic" "$(catalog box-list claude-code-acp allow)"
+check "  and its secrets, in order"      "CLAUDE_CODE_OAUTH_TOKEN ANTHROPIC_API_KEY" "$(catalog box-list claude-code-acp secrets | /usr/bin/tr '\n' ' ' | /usr/bin/sed 's/ $//')"
+check "  nothing for an agent with no box object" "" "$(catalog box-list cursor allow)"
 check "the rows never carry box details" "0" "$(cad_has "$(catalog rows)" 'OPENCODE_CONFIG_CONTENT')"
 check "  while the rows are still there" "1" "$(cad_has "$(catalog rows)" 'claude-code-acp')"
 

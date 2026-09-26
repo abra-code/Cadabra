@@ -22,6 +22,7 @@ Usage:
     acp_catalog.py rows   [<catalog.json>]
     acp_catalog.py custom [<catalog.json>]
     acp_catalog.py box <id> [<catalog.json>]
+    acp_catalog.py box-list <id> allow|secrets [<catalog.json>]
 
 "rows" emits, tab separated, one row per agent:
     id, label, command, args, url, summary, note
@@ -39,6 +40,11 @@ argv in the guest, network rules, secrets, login hint, env and autonomy levels; 
 comment names the keys). An agent with no box object, or an unknown id, emits nothing and exits 0:
 "no box recipe" is an answer, and the caller falls back to the agent's own command. The object is
 nested, which TSV cannot carry, so it travels as JSON and is read in Python, never in the shell.
+
+"box-list" emits one value per line from the agent's box object, for the shell: "allow" gives
+the network rules ("pack:anthropic", a host), "secrets" the variable name of each secret the
+agent can use, in the catalog's order of preference. Values that are empty, or hold whitespace
+(no rule or variable name does), are left out. Nothing for an agent with no box object.
 
 A missing or unreadable catalog is reported on stderr and exits non-zero with NO rows on
 stdout, so the dialog shows an empty list rather than a plausible-looking partial one.
@@ -114,12 +120,28 @@ def box_of(data, agent_id):
     return None
 
 
+def box_list(box, which):
+    """The box object's allow rules or secret variable names, as clean strings."""
+    if which == "allow":
+        values = box.get("allow")
+    else:
+        values = [entry.get("env") for entry in box.get("secrets") or [] if isinstance(entry, dict)]
+    if not isinstance(values, list):
+        return []
+    return [value for value in values
+            if isinstance(value, str) and value and not any(c.isspace() for c in value)]
+
+
 def main():
     argv = sys.argv[1:]
-    if not argv or argv[0] not in ("rows", "custom", "box") or (argv[0] == "box" and len(argv) < 2):
-        sys.stderr.write("usage: acp_catalog.py rows|custom [<catalog.json>] | box <id> [<catalog.json>]\n")
+    known = (argv and (argv[0] in ("rows", "custom")
+                       or (argv[0] == "box" and len(argv) >= 2)
+                       or (argv[0] == "box-list" and len(argv) >= 3 and argv[2] in ("allow", "secrets"))))
+    if not known:
+        sys.stderr.write("usage: acp_catalog.py rows|custom [<catalog.json>] | box <id> [<catalog.json>]"
+                         " | box-list <id> allow|secrets [<catalog.json>]\n")
         return 2
-    rest = argv[2:] if argv[0] == "box" else argv[1:]
+    rest = argv[2:] if argv[0] == "box" else argv[3:] if argv[0] == "box-list" else argv[1:]
     path = rest[0] if rest else default_catalog_path()
     try:
         data = load(path)
@@ -129,6 +151,17 @@ def main():
 
     if argv[0] == "custom":
         return emit_custom(data)
+
+    if argv[0] == "box-list":
+        try:
+            box = box_of(data, argv[1])
+            values = box_list(box, argv[2]) if box is not None else []
+        except Exception as exc:
+            sys.stderr.write("acp_catalog: cannot read %s: %s\n" % (path, exc))
+            return 1
+        for value in values:
+            sys.stdout.write(value + "\n")
+        return 0
 
     if argv[0] == "box":
         try:
