@@ -21,6 +21,7 @@ collapsing-field bug, because this file will not emit an empty one.
 Usage:
     acp_catalog.py rows   [<catalog.json>]
     acp_catalog.py custom [<catalog.json>]
+    acp_catalog.py box <id> [<catalog.json>]
 
 "rows" emits, tab separated, one row per agent:
     id, label, command, args, url, summary, note
@@ -32,6 +33,12 @@ That object is not an agent - it is the prose the dialog shows while editing an 
 saved themselves, and the default name a new one gets. It sits outside the agents list so it
 can never be selected as one, and it is read through a separate subcommand so a caller cannot
 pick it up by accident while iterating the catalog.
+
+"box" emits the agent's "box" object as ONE line of JSON: how it runs in an agent-vm box (its
+argv in the guest, network rules, secrets, login hint, env and autonomy levels; the catalog's
+comment names the keys). An agent with no box object, or an unknown id, emits nothing and exits 0:
+"no box recipe" is an answer, and the caller falls back to the agent's own command. The object is
+nested, which TSV cannot carry, so it travels as JSON and is read in Python, never in the shell.
 
 A missing or unreadable catalog is reported on stderr and exits non-zero with NO rows on
 stdout, so the dialog shows an empty list rather than a plausible-looking partial one.
@@ -98,12 +105,22 @@ def emit_custom(data):
     return 0
 
 
+def box_of(data, agent_id):
+    """The box object of the agent with this id, or None."""
+    for agent in agents_of(data):
+        if isinstance(agent, dict) and agent.get("id") == agent_id:
+            box = agent.get("box")
+            return box if isinstance(box, dict) else None
+    return None
+
+
 def main():
     argv = sys.argv[1:]
-    if not argv or argv[0] not in ("rows", "custom"):
-        sys.stderr.write("usage: acp_catalog.py rows|custom [<catalog.json>]\n")
+    if not argv or argv[0] not in ("rows", "custom", "box") or (argv[0] == "box" and len(argv) < 2):
+        sys.stderr.write("usage: acp_catalog.py rows|custom [<catalog.json>] | box <id> [<catalog.json>]\n")
         return 2
-    path = argv[1] if len(argv) > 1 else default_catalog_path()
+    rest = argv[2:] if argv[0] == "box" else argv[1:]
+    path = rest[0] if rest else default_catalog_path()
     try:
         data = load(path)
     except Exception as exc:            # unreadable, absent, malformed - all the same to us
@@ -112,6 +129,17 @@ def main():
 
     if argv[0] == "custom":
         return emit_custom(data)
+
+    if argv[0] == "box":
+        try:
+            box = box_of(data, argv[1])
+        except Exception as exc:
+            sys.stderr.write("acp_catalog: cannot read %s: %s\n" % (path, exc))
+            return 1
+        if box is not None:
+            json.dump(box, sys.stdout, separators=(",", ":"))
+            sys.stdout.write("\n")
+        return 0
 
     try:
         agents = agents_of(data)

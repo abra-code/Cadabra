@@ -8,6 +8,12 @@ otherwise the transport is plain chat (no --mcp-config).
 
 Usage:
     acp_transport_json.py <agent_bin> <engine> <target> <mcp_config_path> <cwd> [tools]
+                          [--box NAME --agent-vm PATH --project DIR [--read-only]
+                           --level free|ask|plan [--agent-id ID]
+                           [--secret NAME ...] [--env NAME=VALUE ...]]
+
+    The named options come after the positional ones and apply to engine "external" only: the
+    agent runs in an agent-vm box (see "IN A BOX" below).
 
     [tools] is optional and defaults to "true": "readonly" hands the external agent only
     the servers that have no gated tools (see acp_mcp_servers); anything else hands over
@@ -37,15 +43,42 @@ external agent neither understands it nor needs it: it runs its own permission m
 raises ACP `session/request_permission`, which the Chat element already renders. Passing it
 on would be a foreign key in a spec-defined object for no gain.
 
+IN A BOX (--box): the agent is wrapped in `agent-vm exec`, which runs it in the box with the
+project shared at the same path:
+    agent-vm exec --box B --project P [--read-only] [--secret S ...] [--env N=V ...] -- <argv>
+- <argv> is the catalog's box.argv for --agent-id when the catalog has one (the agent's normal
+  command may name a path on this Mac that does not exist in the box), else the user's command.
+  So the caller passes --agent-id only for a catalog row whose command the user has not edited:
+  an edited command is the user's and must run as typed.
+- The environment goes through `--env`, so it reaches the program in the guest: the catalog's
+  box.env, then the level's env, then the caller's --env, a later value replacing an earlier one.
+  No env.PATH: the guest has its own PATH, and the Mac's would mean nothing there.
+- Secrets are agent-vm Keychain secrets, named with --secret; their values never pass through
+  here (agent-vm puts them into the program's environment in the guest).
+- The level (--level, required with --box) is how much the agent asks before acting, applied the way
+  the catalog's box.levels says: an ACP session mode goes out as "sessionConfig": {"mode": ...}
+  for ChatView to set after session/new; extra env joins the environment; a level the agent
+  cannot do ("unavailable") is refused with nothing on stdout, like an empty command.
+- cwd is the project, which is also its path in the box. startupTimeoutSeconds is 60: the box is
+  started before this transport is used, so the time covers only the agent's own start.
+- No mcpServers yet: Cadabra's servers live at Mac paths, and the copy of them into the box
+  (the plan's D11) is later work. A server list is dropped with a note on stderr.
+
 Writes one line of JSON to stdout and nothing else, so the caller's stdout stays
 pure JSON.
 """
+import argparse
 import json
 import os
 import shlex
 import sys
 
 import acp_agent_env
+import acp_catalog
+
+# Boxed agents get this long to answer initialize and session/new (a cold Node start in the guest).
+BOX_STARTUP_TIMEOUT_SECONDS = 60
+LEVELS = ("free", "ask", "plan")
 
 
 def read_servers(cfg):
@@ -135,8 +168,104 @@ def acp_mcp_servers(servers, readonly_only=False):
     return out
 
 
+def parse_box_options(words):
+    """The named options after the positional ones, or None when there are none."""
+    if not words:
+        return None
+    # No abbreviations: "--read" must not quietly mean --read-only. And no default level: the UI
+    # decides it (free by default in a box), and a caller that forgot it must not get the freest.
+    parser = argparse.ArgumentParser(prog="acp_transport_json.py", add_help=False, allow_abbrev=False)
+    parser.add_argument("--box", required=True)
+    parser.add_argument("--agent-vm", required=True)
+    parser.add_argument("--project", required=True)
+    parser.add_argument("--read-only", action="store_true")
+    parser.add_argument("--agent-id", default="")
+    parser.add_argument("--level", required=True, choices=LEVELS)
+    parser.add_argument("--secret", action="append", default=[])
+    parser.add_argument("--env", action="append", default=[])
+    return parser.parse_args(words)
+
+
+def catalog_box(agent_id):
+    """The catalog's box object for this agent id, or None (no id, no object, or no catalog)."""
+    if not agent_id:
+        return None
+    try:
+        return acp_catalog.box_of(acp_catalog.load(acp_catalog.default_catalog_path()), agent_id)
+    except Exception as exc:
+        # Visible, since the fallback is the user's command, which may be a path on this Mac.
+        sys.stderr.write("acp_transport_json: cannot read the agent catalog (%s); using the agent's own command\n" % exc)
+        return None
+
+
+def box_transport(options, user_argv):
+    """The transport for an agent in a box, or None after a message on stderr."""
+    if not options.box:
+        sys.stderr.write("acp_transport_json: --box needs a box name\n")
+        return None
+    if not os.path.isabs(options.project):
+        sys.stderr.write("acp_transport_json: the project must be an absolute path\n")
+        return None
+    if not os.path.isabs(options.agent_vm):
+        sys.stderr.write("acp_transport_json: the agent-vm path must be absolute\n")
+        return None
+    recipe = catalog_box(options.agent_id) or {}
+    argv = recipe.get("argv") if isinstance(recipe.get("argv"), list) else None
+    argv = [str(a) for a in argv if str(a) != ""] if argv else user_argv
+    if not argv:
+        sys.stderr.write("acp_transport_json: external agent has an empty command\n")
+        return None
+
+    environment = {}
+    base_env = recipe.get("env")
+    if isinstance(base_env, dict):
+        environment.update({str(k): str(v) for k, v in base_env.items()})
+    session_config = {}
+    levels = recipe.get("levels") if isinstance(recipe.get("levels"), dict) else {}
+    level = levels.get(options.level)
+    if isinstance(level, dict):
+        if level.get("unavailable"):
+            sys.stderr.write("acp_transport_json: %s\n" % level["unavailable"])
+            return None
+        if isinstance(level.get("env"), dict):
+            environment.update({str(k): str(v) for k, v in level["env"].items()})
+        if level.get("mode"):
+            session_config["mode"] = str(level["mode"])
+    for entry in options.env:
+        name, separator, value = entry.partition("=")
+        if not separator or not name:
+            sys.stderr.write("acp_transport_json: --env needs NAME=VALUE, not %r\n" % entry)
+            return None
+        environment[name] = value
+
+    command = [options.agent_vm, "exec", "--box", options.box, "--project", options.project]
+    if options.read_only:
+        command.append("--read-only")
+    for name in options.secret:
+        command += ["--secret", name]
+    for name in sorted(environment):
+        command += ["--env", "%s=%s" % (name, environment[name])]
+    command += ["--"] + argv
+    transport = {"command": command, "cwd": options.project,
+                 "startupTimeoutSeconds": BOX_STARTUP_TIMEOUT_SECONDS}
+    if session_config:
+        transport["sessionConfig"] = session_config
+    return transport
+
+
 def main():
-    agent, engine, target, cfg, cwd = sys.argv[1:6]
+    positional = sys.argv[1:]
+    named = []
+    for index, word in enumerate(positional):
+        if index >= 5 and word.startswith("--"):
+            positional, named = positional[:index], positional[index:]
+            break
+    try:
+        options = parse_box_options(named)
+    except SystemExit:
+        # argparse has written its message to stderr; nothing on stdout, so the caller alerts.
+        return
+    agent, engine, target, cfg, cwd = positional[0:5]
     # The session's tools setting, as the dialog's picker tags spell it: "true" (all
     # servers), "readonly" (only servers with no gated tools), "false" (no config was
     # generated at all, so there is nothing here to filter). Optional and defaulting to
@@ -148,7 +277,7 @@ def main():
     # disagreeing about the same input - which is how a permission gap opens without anyone
     # editing the line that has the bug. "false" lands here too and costs nothing: that path
     # deleted the config, so there are no servers to filter.
-    tools = sys.argv[6] if len(sys.argv) > 6 else "true"
+    tools = positional[5] if len(positional) > 5 else "true"
     # NO --digest-backend IS PASSED, and that is a decision rather than an omission. It is a launch
     # flag: the agent fixes its summarizer when it starts, so a value here would answer for every
     # conversation the window ever opens. Which model summarizes a condensed restore is a per
@@ -181,6 +310,15 @@ def main():
             # one.
             sys.stderr.write("acp_transport_json: external agent has an empty command\n")
             return
+        if options is not None:
+            transport = box_transport(options, argv)
+            if transport is None:
+                return
+            if tools != "false" and read_servers(cfg):
+                sys.stderr.write("acp_transport_json: tools are not passed to an agent in a box yet\n")
+            json.dump({"protocol": "acp", "transport": transport}, sys.stdout)
+            sys.stdout.write("\n")
+            return
         # env.PATH, because the app's own PATH is not enough to launch an agent that is an
         # interpreter script. ChatView merges this over the inherited environment and it is
         # what resolves the shebang's `node` (ACPChatTransport.swift:92). The probe behind the
@@ -192,6 +330,12 @@ def main():
             transport["mcpServers"] = servers
         json.dump({"protocol": "acp", "transport": transport}, sys.stdout)
         sys.stdout.write("\n")
+        return
+
+    if options is not None:
+        # Only an external agent runs in a box in this version; mlx-agent with its tools in a box
+        # is the plan's D11. Refusing beats silently running on this Mac.
+        sys.stderr.write("acp_transport_json: --box applies to engine external only\n")
         return
 
     # Dispatched explicitly rather than "openai or else --model": the on-device engine has no

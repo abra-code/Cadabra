@@ -38,7 +38,14 @@
     "",
     "The custom row is not an agent and has no vendor, so its url is not a product page: it points",
     "at the registry of ACP agents, which is what someone about to type a command is looking for.",
-    "selection.changed.sh gives that row a different link LABEL for the same reason."
+    "selection.changed.sh gives that row a different link LABEL for the same reason.",
+    "",
+    "\"box\" (optional) is how the agent runs in an agent-vm box: argv in the guest (its normal",
+    "command may name a Mac path), allow (network rules), secrets (agent-vm Keychain secrets the",
+    "agent reads from its environment; any one is enough), login (how to log in inside a kept box",
+    "instead), env (always set in the box), levels (how each autonomy level - free, ask, plan - is",
+    "applied: an ACP session mode, extra env, a limit the UI states, or unavailable with the reason)",
+    "and note. Read with acp_catalog.py box <id>; the rows subcommand never emits it."
   ],
   "agents": [
     {
@@ -49,7 +56,37 @@
       "url": "https://github.com/agentclientprotocol/claude-agent-acp",
       "summary": "An adapter that exposes Anthropic's Claude Agent SDK to any ACP client.",
       "note": "Claude Code speaks no ACP itself; this adapter wraps it. It needs no login of its own - it uses your existing Claude Code credentials.",
-      "verification": "Probed: initialize ok at 0.69.0, protocolVersion 1, loadSession, authMethods empty. Takes no arguments - src/index.ts falls through to runAcp() with zero args. npm bin claude-agent-acp."
+      "verification": "Probed: initialize ok at 0.69.0, protocolVersion 1, loadSession, authMethods empty. Takes no arguments - src/index.ts falls through to runAcp() with zero args. npm bin claude-agent-acp. In a box (spike S3, 2026-09-26, 0.81.2): runs without @anthropic-ai/claude-code; CLAUDE_CODE_OAUTH_TOKEN through exec --secret works; a /login made in box shell is a file (~/.claude/.credentials.json) and exec'd programs use it; hosts api.anthropic.com (platform.claude.com for login); CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1 drops telemetry and halves a short turn; modes default, acceptEdits, plan, auto, bypassPermissions.",
+      "box": {
+        "argv": ["claude-agent-acp"],
+        "allow": ["pack:anthropic"],
+        "secrets": [
+          {
+            "env": "CLAUDE_CODE_OAUTH_TOKEN",
+            "label": "Claude subscription token (run claude setup-token on this Mac)"
+          },
+          {
+            "env": "ANTHROPIC_API_KEY",
+            "label": "Anthropic API key"
+          }
+        ],
+        "login": "Or log in inside a kept box: agent-vm box shell <box>, then claude-agent-acp --cli and /login. Open the address it prints in this Mac's browser.",
+        "env": {
+          "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1"
+        },
+        "levels": {
+          "free": {
+            "mode": "bypassPermissions"
+          },
+          "ask": {
+            "mode": "default"
+          },
+          "plan": {
+            "mode": "plan"
+          }
+        },
+        "note": "Needs a subscription token, an API key, or a login made inside a kept box. Your Claude login on this Mac is not visible in the box."
+      }
     },
     {
       "id": "codex-acp",
@@ -59,7 +96,36 @@
       "url": "https://github.com/agentclientprotocol/codex-acp",
       "summary": "An adapter that exposes OpenAI's Codex coding assistant to any ACP client.",
       "note": "OpenAI's Codex speaks no ACP itself; this adapter wraps it. Install the npm package @agentclientprotocol/codex-acp, which provides the codex-acp command.",
-      "verification": "NOT PROBED. ACP registry 1.4.0, npx distribution with no args; bin name codex-acp confirmed from npm package metadata."
+      "verification": "NOT PROBED. ACP registry 1.4.0, npx distribution with no args; bin name codex-acp confirmed from npm package metadata. In a box (spike S4, 2026-09-26, 1.13.1 with codex-cli 0.156.1): ChatGPT Free login with codex-acp cli login --device-auth, stored in ~/.codex/auth.json; hosts chatgpt.com, auth.openai.com; modes read-only (Ask for approval), agent (default), agent-full-access; no mode asks before writes inside the working folder.",
+      "box": {
+        "argv": ["codex-acp"],
+        "allow": ["pack:openai"],
+        "secrets": [
+          {
+            "env": "CODEX_API_KEY",
+            "label": "Codex API key"
+          },
+          {
+            "env": "OPENAI_API_KEY",
+            "label": "OpenAI API key"
+          }
+        ],
+        "login": "Or log in inside a kept box: agent-vm box shell <box>, then codex-acp cli login --device-auth, and enter the code in this Mac's browser. Works with a ChatGPT account.",
+        "env": {},
+        "levels": {
+          "free": {
+            "mode": "agent-full-access"
+          },
+          "ask": {
+            "mode": "read-only",
+            "limit": "Codex does not ask before changing files in the project; it asks for files outside it and for internet use."
+          },
+          "plan": {
+            "unavailable": "Codex has no plan-only mode that holds. Share the project read-only instead."
+          }
+        },
+        "note": "Needs an API key or a ChatGPT login made inside a kept box."
+      }
     },
     {
       "id": "cursor",
@@ -139,7 +205,45 @@
       "url": "https://opencode.ai",
       "summary": "An open source AI coding agent that runs in the terminal, from Anomaly.",
       "note": "May need its own login (opencode auth login) before prompts work.",
-      "verification": "Probed: initialize ok as OpenCode 1.17.13, loadSession, MCP http+sse."
+      "verification": "Probed: initialize ok as OpenCode 1.17.13, loadSession, MCP http+sse. In a box (spike S4, 2026-09-26, 1.18.32): free Zen models with no account; hosts opencode.ai, models.opencode.ai; default permissions do not ask; OPENCODE_CONFIG_CONTENT with permission ask makes it ask (verified), and replaces a config file; OPENCODE_DISABLE_AUTOUPDATE=1 did not stop two refused registry.npmjs.org connections.",
+      "box": {
+        "argv": ["opencode", "acp"],
+        "allow": ["opencode.ai", "models.opencode.ai"],
+        "secrets": [
+          {
+            "env": "ANTHROPIC_API_KEY",
+            "label": "Anthropic API key"
+          },
+          {
+            "env": "OPENAI_API_KEY",
+            "label": "OpenAI API key"
+          }
+        ],
+        "login": "Or log in inside a kept box: agent-vm box shell <box>, then opencode auth login.",
+        "env": {
+          "OPENCODE_DISABLE_AUTOUPDATE": "1"
+        },
+        "levels": {
+          "free": {
+            "env": {
+              "OPENCODE_CONFIG_CONTENT": "{\"permission\":{\"edit\":\"allow\",\"bash\":\"allow\",\"webfetch\":\"allow\"}}"
+            }
+          },
+          "ask": {
+            "env": {
+              "OPENCODE_CONFIG_CONTENT": "{\"permission\":{\"edit\":\"ask\",\"bash\":\"ask\",\"webfetch\":\"ask\"}}",
+              "OPENCODE_DISABLE_PROJECT_CONFIG": "1"
+            }
+          },
+          "plan": {
+            "env": {
+              "OPENCODE_CONFIG_CONTENT": "{\"permission\":{\"edit\":\"deny\",\"bash\":\"deny\",\"webfetch\":\"deny\"}}",
+              "OPENCODE_DISABLE_PROJECT_CONFIG": "1"
+            }
+          }
+        },
+        "note": "Works without an account on OpenCode Zen's free models. Other providers need their key, or opencode auth login inside a kept box; add their hosts to the box."
+      }
     },
     {
       "id": "qwen-code",
