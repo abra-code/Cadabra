@@ -181,10 +181,20 @@ boxes_read_jobs() {
 }
 
 # boxes_busy_kind <uuid> <target>  ->  the kind of the running job on target, from the cache.
+# A job on several images names them all in one target ("image:dev,dev-node"), so an image is
+# busy when its name is one of them.
 boxes_busy_kind() {
     local _file="$(boxes_cache "$1" jobs)"
     [ -f "$_file" ] || return 0
-    /usr/bin/awk -F'\t' -v target="$2" '$3 == target && $5 == "running" { print $2; exit }' "$_file"
+    /usr/bin/awk -F'\t' -v target="$2" '
+        $5 != "running" { next }
+        $3 == target { print $2; exit }
+        {
+            split($3, side, ":"); split(target, want, ":")
+            if (side[1] != want[1]) next
+            n = split(substr($3, length(side[1]) + 2), name, ",")
+            for (i = 1; i <= n; i++) if (side[1] ":" name[i] == target) { print $2; exit }
+        }' "$_file"
 }
 
 # boxes_show_jobs <uuid>  ->  the jobs table and the progress bar of the newest running job.
@@ -244,11 +254,16 @@ boxes_read_boxes() {
 }
 
 # boxes_busy_table <uuid>  ->  "target=kind" for every running job, space-separated, for the State
-# columns. One line, because awk -v refuses a newline in a value.
+# columns. One line, because awk -v refuses a newline in a value. A job on several images
+# ("image:dev,dev-node") gives one pair per image.
 boxes_busy_table() {
     local _file="$(boxes_cache "$1" jobs)"
     [ -f "$_file" ] || return 0
-    /usr/bin/awk -F'\t' '$5 == "running" { printf "%s=%s ", $3, $2 }' "$_file"
+    /usr/bin/awk -F'\t' '$5 == "running" {
+        split($3, side, ":")
+        n = split(substr($3, length(side[1]) + 2), name, ",")
+        for (i = 1; i <= n; i++) printf "%s:%s=%s ", side[1], name[i], $2
+    }' "$_file"
 }
 
 # boxes_show_images <uuid>  ->  the images table from the cache.
@@ -272,6 +287,7 @@ boxes_show_images() {
             if ($1 in kind) state = kind[$1] == "update-guest" ? "updating..." : (kind[$1] == "image-setup" ? "setting up..." : (kind[$1] == "image-create" ? "building..." : "busy..."))
             printf "%s\t%s\t%s\t%s\t%s\t%s\n", $1, state, $4, $5, $6, $7
         }' "$_file" | "$dialog" "$_uuid" "$BOXES_IMAGES_ID" omc_table_set_rows_from_stdin
+    boxes_show_updates "$_uuid"
 }
 
 # boxes_show_boxes <uuid>  ->  the boxes table from the cache.
@@ -566,7 +582,7 @@ boxes_poll() {
     local _seen="$(boxes_key cadabra_boxes_seen "$_uuid")"
     local _was="$("$pasteboard" "$_watch" get) $("$pasteboard" "$_seen" get) "
     "$pasteboard" "$_watch" set ""
-    local _now _ended _kinds
+    local _now _ended _kinds _built _extra
     local _holder
     while :; do
         _holder="$("$pasteboard" "$_key" get)"
@@ -590,6 +606,27 @@ boxes_poll() {
         boxes_reselect "$_uuid"
         if [ -n "$_ended" ]; then
             boxes_show_selected "$_uuid"
+            # A build or guest update may leave the image without Full Disk Access (a new guest
+            # daemon has never been granted it): offer the setup now. A guest update that failed
+            # partway still changed the images before the failure; their Needs say which.
+            _built="$(/usr/bin/awk -F'\t' -v was=" $_was" '
+                ($5 == "done" && ($2 == "image-create" || $2 == "update-guest") || $5 == "failed" && $2 == "update-guest") && index(was, " " $1 " ") {
+                    n = split(substr($3, 7), name, ",")
+                    # Once per image, however many finished jobs covered it.
+                    for (i = 1; i <= n; i++) if (!(name[i] in seen)) { seen[name[i]] = 1; printf "%s ", name[i] }
+                }' "$(boxes_cache "$_uuid" jobs)")"
+            if [ -n "$_built" ]; then
+                # The names are agent-vm names, so word splitting is safe.
+                boxes_offer_setup "$_uuid" $_built
+                # A setup the offer started is polled like any job: it joins this pass's set.
+                _extra="$("$pasteboard" "$_watch" get)"
+                "$pasteboard" "$_watch" set ""
+                _now="$_now$_extra "
+                case "$_now" in
+                    *[!\ ]*) ;;
+                    *) _now="" ;;
+                esac
+            fi
         fi
         [ -z "$_now" ] && break
         _was="$_now"
@@ -1065,4 +1102,109 @@ VALUES
 boxes_ni_forget() {
     "$pasteboard" "$(boxes_key cadabra_boxes_ni_images "$1")" set ""
     "$pasteboard" "$(boxes_key cadabra_boxes_ni_recipes "$1")" set ""
+}
+
+# -- Images that need something: Update All, and Full Disk Access after a build -------------
+
+BOXES_UPDATES_TEXT_ID=133
+BOXES_UPDATE_ALL_ID=132
+
+# boxes_update_candidates <uuid>  ->  the ready images whose guest daemon lacks features of this
+# agent-vm's (need "guest-update") and that no job holds, one name per line, from the cache.
+boxes_update_candidates() {
+    local _file="$(boxes_cache "$1" images)"
+    [ -f "$_file" ] || return 0
+    /usr/bin/awk -F'\t' -v held="$(boxes_busy_table "$1")" '
+        BEGIN {
+            n = split(held, pair, " ")
+            for (i = 1; i <= n; i++) { split(pair[i], part, "="); if (part[1] ~ /^image:/) busy[substr(part[1], 7)] = 1 }
+        }
+        $2 == "ready" && ("," $15 ",") ~ /,guest-update,/ && !($1 in busy) { print $1 }' "$_file"
+}
+
+# boxes_show_updates <uuid>  ->  "N images need a guest update" with Update All beside it, or
+# neither. After an agent-vm update (the bundled one, or a developer build) every image built
+# before it needs this, which is why it is one button rather than one per image.
+boxes_show_updates() {
+    local _uuid="$1"
+    local _count="$(boxes_update_candidates "$_uuid" | /usr/bin/awk 'NF { n++ } END { print n + 0 }')"
+    if [ "$_count" -eq 0 ]; then
+        "$dialog" "$_uuid" "$BOXES_UPDATES_TEXT_ID" ""
+        "$dialog" "$_uuid" "$BOXES_UPDATE_ALL_ID" omc_hide
+        return 0
+    fi
+    if [ "$_count" -eq 1 ]; then
+        "$dialog" "$_uuid" "$BOXES_UPDATES_TEXT_ID" "1 image needs a guest update"
+    else
+        "$dialog" "$_uuid" "$BOXES_UPDATES_TEXT_ID" "$_count images need a guest update"
+    fi
+    "$dialog" "$_uuid" "$BOXES_UPDATE_ALL_ID" omc_show
+}
+
+# boxes_update_all <uuid>  ->  asks, then updates every candidate in one job; 0 when started or
+# declined, otherwise agent-vm's or the library's refusal is shown in an alert.
+boxes_update_all() {
+    local _uuid="$1"
+    local _images="$(boxes_update_candidates "$_uuid")"
+    [ -n "$_images" ] || return 0
+    local _list="$(printf '%s\n' "$_images" | /usr/bin/awk 'NF { printf "%s%s", sep, $0; sep = ", " }')"
+    "$alert" --level caution --title "Update the guest in these images?" --ok "Update All" --cancel "Cancel" \
+        "$_list. Each image is booted in turn, a minute or two each, to install the agent-vm-guest that comes with this agent-vm. Boxes made from them before keep their old guest until they are made again."
+    if [ $? -ne 0 ]; then
+        return 0
+    fi
+    # The names are agent-vm names (letters, digits, ".", "_", "-"), so word splitting is safe.
+    local _job
+    _job="$(agentvm_image_update_guest_job $_images)"
+    local _status=$?
+    if [ "$_status" -ne 0 ]; then
+        boxes_alert_error "Could not start the guest update" "$_status"
+        return 0
+    fi
+    boxes_after_job_start "$_uuid" "$_job"
+}
+
+# boxes_offer_setup <uuid> <images...>  ->  of the images a finished job just built or updated,
+# the ready ones that need Full Disk Access (their guest daemon has no grant, or a new daemon
+# was never checked); offers to set up the first now, naming the rest. Without it, programs in
+# their boxes cannot read the shared project. One offer and at most one setup per pass: each
+# setup is an interactive VM window, and macOS runs two VMs at most, so after Update All a
+# setup per image would soon be refused. The others keep their Needs, and their own Full Disk
+# Access... button.
+boxes_offer_setup() {
+    local _uuid="$1"
+    shift
+    local _file="$(boxes_cache "$_uuid" images)"
+    local _image _row _state _kinds _need=""
+    for _image in "$@"; do
+        _row="$(boxes_row "$_file" "$_image")"
+        _state="$(boxes_field "$_row" 2)"
+        _kinds="$(boxes_field "$_row" 15)"
+        [ "$_state" = "ready" ] || continue
+        case ",$_kinds," in
+            *,full-disk-access,*) _need="${_need:+$_need }$_image" ;;
+        esac
+    done
+    [ -n "$_need" ] || return 0
+    local _first="${_need%% *}"
+    local _others=""
+    [ "$_need" != "$_first" ] && _others="${_need#* }"
+    local _more=""
+    if [ -n "$_others" ]; then
+        _more=" It is needed in $(printf '%s' "$_others" | /usr/bin/sed 's/ /, /g') too: set those up one at a time afterwards, with each image's Full Disk Access... button."
+    fi
+    "$alert" --level note --title "Set up Full Disk Access in $_first?" --ok "Set Up Now" --cancel "Later" \
+        "Programs in boxes made from $_first cannot read the shared project until agent-vm-guest has Full Disk Access. Setting it up opens the image in a window: open System Settings > Privacy & Security > Full Disk Access, drag agent-vm-guest into the list (it is in /usr/local/libexec), turn it on, and enter the password if asked (the window's Type Password button types it). Then close the window.$_more"
+    if [ $? -ne 0 ]; then
+        return 0
+    fi
+    local _job
+    _job="$(agentvm_image_setup_job "$_first")"
+    local _status=$?
+    if [ "$_status" -ne 0 ]; then
+        boxes_alert_error "Could not open $_first" "$_status"
+        return 0
+    fi
+    local _watch="$(boxes_key cadabra_boxes_watch "$_uuid")"
+    "$pasteboard" "$_watch" set "$("$pasteboard" "$_watch" get) $_job"
 }

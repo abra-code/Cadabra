@@ -19,9 +19,32 @@
           "properties": { "text": "Checking agent-vm...", "font": "subheadline" }
         },
         {
-          "type": "Text",
-          "id": 101,
-          "properties": { "text": "", "font": "caption", "foregroundStyle": "secondary" }
+          "type": "HStack",
+          "properties": { "spacing": 8, "alignment": "center", "frame": { "maxWidth": "infinity" } },
+          "children": [
+            {
+              "type": "Text",
+              "id": 101,
+              "properties": { "text": "", "font": "caption", "foregroundStyle": "secondary" }
+            },
+            { "type": "Spacer" },
+            {
+              "type": "Text",
+              "id": 133,
+              "properties": { "text": "", "font": "caption" }
+            },
+            {
+              "type": "Button",
+              "id": 132,
+              "properties": {
+                "title": "Update All",
+                "controlSize": "small",
+                "hidden": true,
+                "help": "Install this agent-vm's guest daemon into every image that needs it, one after another",
+                "actionID": "aichat.boxes.images.update.all"
+              }
+            }
+          ]
         },
         {
           "type": "HStack",

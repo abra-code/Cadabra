@@ -535,6 +535,82 @@ chains_reset
 omc_run aichat.boxes.activated
 check "  and the next activation asks for none" "0" "$(chain_asked aichat.boxes.poll)"
 
+# -----------------------------------------------------------------------------------------
+section "images with an old guest daemon: the banner and Update All"
+fake_reset
+open_window
+check "all five fixture images need it" "5 images need a guest update" "$(ui_value "$BOXES_UPDATES_TEXT_ID")"
+check "  Update All is shown"          "1" "$(ui_visible "$BOXES_UPDATE_ALL_ID")"
+alerts_reset
+alert_answers_reset
+alert_answer 1
+omc_run aichat.boxes.images.update.all
+check "it asks first, naming them"     "1" "$(alerts_mention "dev, dev-agents, dev-node, dev-xcode, dev-xcode-ios")"
+check "  and Cancel means no"          "0" "$(fake_asked "image update-guest")"
+fake_reset 2
+open_window
+alert_answer 0
+omc_run aichat.boxes.images.update.all
+check "OK: one job, one agent-vm run for all of them" "1" "$(/bin/cat "$FAKE_AGENTVM_DIR/log" 2>/dev/null | /usr/bin/grep -c '^image update-guest dev dev-agents dev-node dev-xcode dev-xcode-ios --json$' | /usr/bin/tr -d ' ')"
+check "  each image shows it"          "5" "$(ui_rows "$BOXES_IMAGES_ID" | /usr/bin/grep -c "${TAB}updating...${TAB}")"
+check "  and the banner goes"          "0" "$(ui_visible "$BOXES_UPDATE_ALL_ID")"
+select_image dev-node
+check "  the image's own Update Guest is off meanwhile" "0" "$(ui_enabled "$BOXES_IMAGE_UPDATE_ID")"
+wait_jobs_done
+printf '%s' '[{"name":"dev","state":"ready","macOSVersion":"27.0","needs":[]}]' > "$FAKE_AGENTVM_DIR/image-list.json"
+open_window
+check "no image needs it: no banner"   "" "$(ui_value "$BOXES_UPDATES_TEXT_ID")"
+check "  and no button"                "0" "$(ui_visible "$BOXES_UPDATE_ALL_ID")"
+
+section "after a build, an image without Full Disk Access gets the offer"
+fake_reset 0
+printf '%s' '[{"name":"dev","state":"ready","needs":[]},{"name":"dev-node","state":"ready","needs":[{"kind":"full-disk-access","reason":"not-checked"}]}]' > "$FAKE_AGENTVM_DIR/image-list.json"
+open_window
+alerts_reset
+alert_answers_reset
+alert_answer 0
+select_image dev-node
+omc_run aichat.boxes.image.update.guest
+omc_run aichat.boxes.poll
+check "the finished job leads to the offer"  "1" "$(alerts_mention "Set up Full Disk Access in dev-node")"
+check "  Set Up Now starts the setup job"    "1" "$(fake_asked "image setup dev-node --json")"
+check "  which the same loop saw through"    "1" "$(ui_rows "$BOXES_JOBS_ID" | /usr/bin/grep -c "^Set up Full Disk Access in dev-node${TAB}done")"
+alerts_reset
+alert_answer 1
+select_image dev
+omc_run aichat.boxes.image.update.guest
+omc_run aichat.boxes.poll
+check "an image that needs nothing: no offer" "0" "$(alerts_mention "Set up Full Disk Access")"
+
+section "after Update All, one offer at a time, naming the others"
+fake_reset 0
+printf '%s' '[{"name":"dev","state":"ready","needs":[{"kind":"guest-update"},{"kind":"full-disk-access","reason":"not-checked"}]},{"name":"dev-node","state":"ready","needs":[{"kind":"guest-update"},{"kind":"full-disk-access","reason":"not-checked"}]}]' > "$FAKE_AGENTVM_DIR/image-list.json"
+open_window
+alerts_reset
+alert_answers_reset
+alert_answer 0 0
+omc_run aichat.boxes.images.update.all
+omc_run aichat.boxes.poll
+check "one offer for the pair, not one each" "1" "$(alerts_mention "Set up Full Disk Access in")"
+check "  for the first image"                "1" "$(alerts_mention "Set up Full Disk Access in dev\?")"
+check "  naming the other"                   "1" "$(alerts_mention "It is needed in dev-node too")"
+check "  and one setup, not two"             "1" "$(/bin/cat "$FAKE_AGENTVM_DIR/log" | /usr/bin/grep -c '^image setup' | /usr/bin/tr -d ' ')"
+
+section "a guest update that failed partway still gets the offer"
+fake_reset 0
+printf '%s' '[{"name":"dev","state":"ready","needs":[{"kind":"full-disk-access","reason":"not-checked"}]}]' > "$FAKE_AGENTVM_DIR/image-list.json"
+printf 'the guest daemon of dev-node did not answer; dev was updated' > "$FAKE_AGENTVM_DIR/fail-image-update-guest"
+open_window
+alerts_reset
+alert_answers_reset
+alert_answer 1
+select_image dev
+omc_run aichat.boxes.image.update.guest
+omc_run aichat.boxes.poll
+check "the job failed"                       "1" "$(ui_rows "$BOXES_JOBS_ID" | /usr/bin/grep -c "^Update the guest in dev${TAB}failed")"
+check "  and the offer was still made"       "1" "$(alerts_mention "Set up Full Disk Access in dev")"
+check "  Later starts nothing"               "0" "$(/bin/cat "$FAKE_AGENTVM_DIR/log" | /usr/bin/grep -c '^image setup' | /usr/bin/tr -d ' ')"
+
 section "every view id constant is defined once"
 # A later definition silently wins in sh, so a reused name retargets every earlier use: a
 # header button's constant once took over the New Box window's image picker.

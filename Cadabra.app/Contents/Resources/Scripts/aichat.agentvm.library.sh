@@ -482,8 +482,10 @@ agentvm_vm_slot_free() {
 
 # -- Jobs: long agent-vm commands that outlive the window --------------------------------
 # agentvm_job.py runs them detached, in the folder agentvm_jobs_dir names; see its header.
-# A job's target ("box:<name>", "image:<name>") is what it works on: one job per target at a
-# time, so a second start of a box, or a delete during a guest update, is refused up front.
+# A job's target ("box:<name>", "image:<name>", or "image:a,b" for a guest update of several)
+# is what it works on. agentvm_job.py runs one job per target at a time, comparing whole
+# targets, so a second start of a box is refused up front; agentvm_job_busy also sees an image
+# inside a several-image target, and agent-vm's own lock on each image is the final guard.
 
 # agentvm_jobs_dir  ->  where the jobs live.
 agentvm_jobs_dir() {
@@ -531,8 +533,16 @@ agentvm_jobs() {
 }
 
 # agentvm_job_busy <target>  ->  the title of the running job that holds target, or nothing.
+# A several-image target ("image:a,b") holds each of its images.
 agentvm_job_busy() {
-    agentvm_jobs | /usr/bin/awk -F'\t' -v target="$1" '$3 == target && $5 == "running" { print $4; exit }'
+    agentvm_jobs | /usr/bin/awk -F'\t' -v target="$1" '
+        $5 != "running" { next }
+        $3 == target { print $4; exit }
+        {
+            split($3, side, ":")
+            n = split(substr($3, length(side[1]) + 2), name, ",")
+            for (i = 1; i <= n; i++) if (side[1] ":" name[i] == target) { print $4; exit }
+        }'
 }
 
 # _agentvm_job_call <command> <id>  ->  agentvm_job.py <command> for one job; its refusal is left
@@ -587,12 +597,28 @@ agentvm_box_stop_job() {
     agentvm_job_start box-stop "box:$1" "Stop $1" box stop "$1"
 }
 
-# agentvm_image_update_guest_job <image>  ->  the job id. Boots the image to install the guest
-# daemon next to agent-vm into it, so it needs a free virtual machine slot.
+# agentvm_image_update_guest_job <image>...  ->  the job id. Boots each image in turn to install
+# the guest daemon next to agent-vm into it, so it needs a free virtual machine slot. Several
+# images are one job, one agent-vm run: they update one after another, where separate jobs
+# would compete for the two slots. The target names them all ("image:dev,dev-node"), and
+# agentvm_job.py's one-job-per-target rule compares whole targets, so each image is also
+# guarded by agent-vm's own lock on it.
 agentvm_image_update_guest_job() {
-    _agentvm_need_name image "$1" || return $?
+    if [ $# -eq 0 ]; then
+        _agentvm_refuse 2 "agentvm_image_update_guest_job needs at least one image."
+        return 2
+    fi
+    local _image _names=""
+    for _image in "$@"; do
+        _agentvm_need_name image "$_image" || return $?
+        _names="${_names:+$_names,}$_image"
+    done
     agentvm_vm_slot_free || return $?
-    agentvm_job_start update-guest "image:$1" "Update the guest in $1" image update-guest "$1"
+    if [ $# -eq 1 ]; then
+        agentvm_job_start update-guest "image:$1" "Update the guest in $1" image update-guest "$1"
+        return $?
+    fi
+    agentvm_job_start update-guest "image:$_names" "Update the guest in $# images" image update-guest "$@"
 }
 
 # agentvm_image_setup_job <image>  ->  the job id. Opens the image in a window where the user

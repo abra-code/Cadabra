@@ -94,6 +94,19 @@ check "  naming the job in the way" "Start b1 is still running for b1. Wait for 
 check "busy says which job"         "Start b1" "$(with_fake agentvm_job_busy box:b1)"
 check "another box is not busy"     ""         "$(with_fake agentvm_job_busy box:b2)"
 
+section "a guest update of several images is one job that holds each of them"
+multi=$(with_fake agentvm_image_update_guest_job dev dev-node); rc=$?
+check "started"                     "0" "$rc"
+check "  titled with the count"     "Update the guest in 2 images" "$(job_row "$multi" | col 4)"
+check "  one target naming both"    "image:dev,dev-node" "$(job_row "$multi" | col 3)"
+check "busy: each image"            "Update the guest in 2 images" "$(with_fake agentvm_job_busy image:dev-node)"
+check "  but not a prefix of a name" "" "$(with_fake agentvm_job_busy image:dev-no)"
+check "  nor a box of that name"    "" "$(with_fake agentvm_job_busy box:dev)"
+/bin/sleep 0.3
+check "agent-vm got both, in order" "image update-guest dev dev-node --json" "$(/usr/bin/grep '^image update-guest' "$FAKE_AGENTVM_DIR/log")"
+with_fake agentvm_job_cancel "$multi" >/dev/null
+wait_until "$multi" canceled >/dev/null
+
 section "the orphan reaper leaves the runner alone"
 runner=$(/bin/cat "$JOBS/$id/pid" 2>/dev/null)
 args=$(/bin/ps -o args= -p "$runner" 2>/dev/null)
