@@ -1,0 +1,95 @@
+{
+  "type": "VStack",
+  "properties": {
+    "spacing": 10,
+    "alignment": "leading",
+    "padding": "default",
+    "frame": { "minWidth": 600, "idealWidth": 660, "minHeight": 600, "idealHeight": 680 }
+  },
+  "children": [
+    {
+      "type": "Text",
+      "properties": {
+        "text": "An image is a macOS installation that boxes are made from. Install macOS from a restore image, or add tools to an image you have, with a recipe. The build runs on after this window closes; the Box Manager shows its progress.",
+        "font": "callout",
+        "foregroundStyle": "secondary",
+        "frame": { "maxWidth": "infinity", "alignment": "leading" }
+      }
+    },
+    {
+      "type": "Form",
+      "properties": { "frame": { "maxWidth": "infinity" } },
+      "children": [
+        { "type": "TextField", "id": 700, "properties": { "title": "Name", "text": "", "prompt": "lower-case letters, digits, \".\", \"_\" and \"-\"" } },
+        { "type": "Picker", "id": 701, "properties": { "title": "Start from", "options": ["A restore image", "An existing image"], "pickerStyle": "segmented", "actionID": "aichat.boxes.image.new.source.changed" } },
+        {
+          "type": "HStack",
+          "properties": { "spacing": 8 },
+          "children": [
+            { "type": "TextField", "id": 711, "properties": { "title": "Restore image", "text": "", "prompt": "a macOS .ipsw file" } },
+            { "type": "Button", "id": 712, "properties": { "title": "Choose...", "actionID": "aichat.boxes.image.new.ipsw.browse" } }
+          ]
+        },
+        { "type": "Picker", "id": 715, "properties": { "title": "Base image", "options": ["-"], "pickerStyle": "menu", "disabled": true } },
+        { "type": "Picker", "id": 720, "properties": { "title": "Recipe", "options": ["None"], "pickerStyle": "menu", "actionID": "aichat.boxes.image.new.recipe.changed" } },
+        {
+          "type": "HStack",
+          "properties": { "spacing": 8 },
+          "children": [
+            { "type": "TextField", "id": 721, "properties": { "title": "Recipe file", "text": "", "prompt": "a recipe.json of your own", "disabled": true } },
+            { "type": "Button", "id": 722, "properties": { "title": "Choose...", "disabled": true, "actionID": "aichat.boxes.image.new.recipe.browse" } }
+          ]
+        },
+        { "type": "TextField", "id": 730, "properties": { "title": "CPUs", "text": "", "prompt": "4, or the base image's" } },
+        { "type": "TextField", "id": 731, "properties": { "title": "Memory (GB)", "text": "", "prompt": "8, or the base image's" } },
+        { "type": "TextField", "id": 732, "properties": { "title": "Disk (GB)", "text": "", "prompt": "64, or the base image's" } }
+      ]
+    },
+    {
+      "type": "Text",
+      "id": 740,
+      "properties": { "text": "", "font": "caption", "foregroundStyle": "secondary", "frame": { "maxWidth": "infinity", "alignment": "leading" } }
+    },
+    {
+      "type": "Text",
+      "properties": { "text": "Recipe inputs and parameters, one per line as name=value (an input's value is a file on this Mac):", "font": "caption" }
+    },
+    {
+      "type": "GroupBox",
+      "properties": { "frame": { "maxWidth": "infinity", "maxHeight": "infinity" } },
+      "children": [
+        {
+          "type": "TextEditor",
+          "id": 741,
+          "properties": {
+            "text": "",
+            "font": { "size": 11, "design": "monospaced" },
+            "frame": { "maxWidth": "infinity", "minHeight": 80, "maxHeight": "infinity" }
+          }
+        }
+      ]
+    },
+    {
+      "type": "HStack",
+      "properties": { "spacing": 8, "frame": { "maxWidth": "infinity" } },
+      "children": [
+        {
+          "type": "Text",
+          "id": 743,
+          "properties": { "text": "", "font": "caption", "foregroundStyle": "secondary", "frame": { "maxWidth": "infinity", "alignment": "leading" } }
+        },
+        { "type": "Button", "id": 742, "properties": { "title": "Choose Input File...", "disabled": true, "help": "Choose the file for the recipe's input", "actionID": "aichat.boxes.image.new.input.browse" } }
+      ]
+    },
+    {
+      "type": "HStack",
+      "properties": { "spacing": 8, "frame": { "maxWidth": "infinity" } },
+      "children": [
+        { "type": "Text", "id": 750, "properties": { "text": "", "font": "caption", "foregroundStyle": "red" } },
+        { "type": "Spacer" },
+        { "type": "Button", "id": 751, "properties": { "title": "Cancel", "keyboardShortcut": { "key": "escape" }, "actionID": "aichat.boxes.image.new.cancel" } },
+        { "type": "Button", "id": 752, "properties": { "title": "Build", "buttonStyle": "borderedProminent", "keyboardShortcut": { "key": "return" }, "actionID": "aichat.boxes.image.new.create" } }
+      ]
+    }
+  ]
+}

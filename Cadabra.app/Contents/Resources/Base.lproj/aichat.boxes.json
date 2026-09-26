@@ -41,6 +41,16 @@
             { "type": "Spacer" },
             {
               "type": "Button",
+              "id": 122,
+              "properties": {
+                "title": "New Image...",
+                "controlSize": "small",
+                "help": "Install macOS from a restore image, or add tools to an image with a recipe",
+                "actionID": "aichat.boxes.image.new"
+              }
+            },
+            {
+              "type": "Button",
               "id": 121,
               "properties": {
                 "title": "New Box...",
@@ -183,6 +193,7 @@
               "properties": { "spacing": 8, "hidden": true },
               "children": [
                 { "type": "Button", "id": 541, "properties": { "title": "New Box...", "help": "Create a box from this image", "actionID": "aichat.boxes.image.new.box" } },
+                { "type": "Button", "id": 546, "properties": { "title": "New Image...", "help": "Build a new image from this one with a recipe", "actionID": "aichat.boxes.image.new.from" } },
                 { "type": "Button", "id": 542, "properties": { "title": "Update Guest", "help": "Install this Cadabra's agent-vm-guest into the image", "actionID": "aichat.boxes.image.update.guest" } },
                 { "type": "Button", "id": 543, "properties": { "title": "Full Disk Access...", "help": "Open the image to give agent-vm-guest Full Disk Access", "actionID": "aichat.boxes.image.setup" } },
                 { "type": "Button", "id": 544, "properties": { "systemImage": "folder", "help": "Show the image's folder in the Finder", "actionID": "aichat.boxes.reveal" } },

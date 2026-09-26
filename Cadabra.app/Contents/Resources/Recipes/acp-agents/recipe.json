@@ -1,0 +1,36 @@
+{
+  "version": 1,
+  "description": "ACP agents: Claude Agent ACP, Codex ACP and opencode (needs Node: build from an image with Recipes/homebrew-node)",
+  "parameters": {
+    "claude_acp": {
+      "description": "version of @agentclientprotocol/claude-agent-acp (latest, or empty, for the newest)",
+      "default": "0.81.2"
+    },
+    "codex_acp": {
+      "description": "version of @agentclientprotocol/codex-acp (latest, or empty, for the newest)",
+      "default": "1.13.1"
+    },
+    "opencode": {
+      "description": "version of opencode-ai (latest, or empty, for the newest)",
+      "default": "1.18.32"
+    },
+    "extras": {
+      "description": "more npm packages to install, separated by spaces (not expanded as file names), for example @google/gemini-cli @github/copilot; empty for none",
+      "default": ""
+    }
+  },
+  "steps": [
+    {
+      "name": "ACP agents from npm",
+      "run": "set -f; npm install --global --no-fund --no-audit \"@agentclientprotocol/claude-agent-acp@$AGENT_VM_PARAM_CLAUDE_ACP\" \"@agentclientprotocol/codex-acp@$AGENT_VM_PARAM_CODEX_ACP\" \"opencode-ai@$AGENT_VM_PARAM_OPENCODE\" $AGENT_VM_PARAM_EXTRAS",
+      "timeoutSeconds": 1800
+    }
+  ],
+  "checks": [
+    "for command in claude-agent-acp codex-acp opencode; do command -v \"$command\" > /dev/null || { echo \"$command is not on the path\"; exit 1; }; done; echo \"claude-agent-acp, codex-acp and opencode are installed\"",
+    "claude-agent-acp --cli --version",
+    "home=$(mktemp -d) || exit 1; CODEX_HOME=\"$home\" codex-acp cli -V; status=$?; rm -rf \"$home\"; exit $status",
+    "opencode --version",
+    "npm ls --global --depth 0 | tr '\\n' ' '"
+  ]
+}

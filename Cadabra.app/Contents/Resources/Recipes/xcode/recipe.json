@@ -1,0 +1,39 @@
+{
+  "version": 1,
+  "description": "Xcode from a .xip you downloaded (next: Recipes/xcode-platforms for simulator runtimes)",
+  "commandLineTools": true,
+  "inputs": {
+    "xcode": {
+      "description": "an Xcode .xip from https://developer.apple.com/download/all/ (any Apple ID; Apple does not offer it without one)"
+    }
+  },
+  "steps": [
+    {
+      "name": "Expand the .xip into /Applications (xip replaces the folder it expands into, so the step changes into it again after)",
+      "user": "root",
+      "run": "work=/private/var/tmp/agent-vm-xcode; rm -rf \"$work\" && mkdir -p \"$work\" && cd \"$work\" && /usr/bin/xip --expand \"$AGENT_VM_INPUT_XCODE\" && cd \"$work\" && apps=$(ls -d *.app) && [ \"$(printf '%s\\n' \"$apps\" | wc -l)\" -eq 1 ] && rm -rf \"/Applications/$apps\" && mv \"$apps\" /Applications/ && cd / && rm -rf \"$work\" && echo \"/Applications/$apps\" > /private/var/tmp/agent-vm-xcode-path",
+      "timeoutSeconds": 3600
+    },
+    {
+      "name": "Check that it is Apple's Xcode",
+      "user": "root",
+      "run": "app=$(cat /private/var/tmp/agent-vm-xcode-path) && /usr/bin/codesign --verify --strict -R='anchor apple and identifier \"com.apple.dt.Xcode\"' \"$app\" && echo \"$app: signed by Apple\""
+    },
+    {
+      "name": "Select it, accept its license, and install its first-launch packages",
+      "user": "root",
+      "run": "app=$(cat /private/var/tmp/agent-vm-xcode-path) && rm -f /private/var/tmp/agent-vm-xcode-path && /usr/bin/xcode-select --switch \"$app\" && /usr/bin/xcodebuild -license accept && /usr/bin/xcodebuild -runFirstLaunch"
+    },
+    {
+      "name": "Let the box user debug without an administrator prompt",
+      "user": "root",
+      "run": "/usr/sbin/DevToolsSecurity -enable && /usr/sbin/dseditgroup -o edit -a \"$AGENT_VM_BOX_USER\" -t user _developer"
+    }
+  ],
+  "checks": [
+    "xcodebuild -version | tr '\\n' ' '",
+    "xcode-select -p",
+    "xcrun --sdk iphoneos --show-sdk-version",
+    "swift --version 2>&1 | head -1"
+  ]
+}

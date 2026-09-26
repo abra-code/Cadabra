@@ -373,6 +373,7 @@
         "INIT_SUBCOMMAND_ID" : "aichat.boxes.init",
         "IS_BLOCKING" : false,
         "JSON_NAME" : "aichat.boxes",
+        "WINDOW_DID_ACTIVATE_SUBCOMMAND_ID" : "aichat.boxes.activated",
         "WINDOW_TITLE" : "Cadabra - Boxes"
       },
       "COMMAND_ID" : "aichat.boxes",
@@ -554,6 +555,79 @@
     },
     {
       "COMMAND_ID" : "aichat.boxes.box.new.cancel",
+      "EXECUTION_MODE" : "exe_script_file",
+      "NAME" : "Cadabra"
+    },
+    {
+      "COMMAND_ID" : "aichat.boxes.activated",
+      "EXECUTION_MODE" : "exe_script_file",
+      "NAME" : "Cadabra"
+    },
+    {
+      "COMMAND_ID" : "aichat.boxes.image.new.from",
+      "ENVIRONMENT_VARIABLES" : {
+        "OMC_ACTIONUI_TABLE_200_COLUMN_1_VALUE" : ""
+      },
+      "EXECUTION_MODE" : "exe_script_file",
+      "NAME" : "Cadabra"
+    },
+    {
+      "ACTIONUI_WINDOW" : {
+        "INIT_SUBCOMMAND_ID" : "aichat.boxes.image.new.init",
+        "IS_BLOCKING" : false,
+        "JSON_NAME" : "aichat.boxes.image.new",
+        "WINDOW_TITLE" : "New Image"
+      },
+      "COMMAND_ID" : "aichat.boxes.image.new",
+      "EXECUTION_MODE" : "exe_shell_script",
+      "NAME" : "Cadabra"
+    },
+    {
+      "COMMAND_ID" : "aichat.boxes.image.new.init",
+      "EXECUTION_MODE" : "exe_script_file",
+      "NAME" : "Cadabra"
+    },
+    {
+      "COMMAND_ID" : "aichat.boxes.image.new.source.changed",
+      "EXECUTION_MODE" : "exe_script_file",
+      "NAME" : "Cadabra"
+    },
+    {
+      "COMMAND_ID" : "aichat.boxes.image.new.recipe.changed",
+      "EXECUTION_MODE" : "exe_script_file",
+      "NAME" : "Cadabra"
+    },
+    {
+      "CHOOSE_FILE_DIALOG" : {
+        "MESSAGE" : "Choose a macOS restore image (.ipsw)"
+      },
+      "COMMAND_ID" : "aichat.boxes.image.new.ipsw.browse",
+      "EXECUTION_MODE" : "exe_script_file",
+      "NAME" : "Cadabra"
+    },
+    {
+      "CHOOSE_FILE_DIALOG" : {
+        "MESSAGE" : "Choose an image recipe (recipe.json)"
+      },
+      "COMMAND_ID" : "aichat.boxes.image.new.recipe.browse",
+      "EXECUTION_MODE" : "exe_script_file",
+      "NAME" : "Cadabra"
+    },
+    {
+      "CHOOSE_FILE_DIALOG" : {
+        "MESSAGE" : "Choose the file for the recipe's input"
+      },
+      "COMMAND_ID" : "aichat.boxes.image.new.input.browse",
+      "EXECUTION_MODE" : "exe_script_file",
+      "NAME" : "Cadabra"
+    },
+    {
+      "COMMAND_ID" : "aichat.boxes.image.new.create",
+      "EXECUTION_MODE" : "exe_script_file",
+      "NAME" : "Cadabra"
+    },
+    {
+      "COMMAND_ID" : "aichat.boxes.image.new.cancel",
       "EXECUTION_MODE" : "exe_script_file",
       "NAME" : "Cadabra"
     },

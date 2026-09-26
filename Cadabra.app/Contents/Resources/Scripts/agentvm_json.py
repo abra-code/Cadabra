@@ -20,6 +20,7 @@ Usage (the JSON on stdin):
     agentvm_json.py packs     <- agent-vm box packs --json
     agentvm_json.py execlog   <- agent-vm box execlog <box> --json
     agentvm_json.py netlog    <- agent-vm box netlog <box> --json
+    agentvm_json.py recipe <recipe.json>   an image recipe file, read directly
 The job-log readers at the end (log_progress, log_error) are for agentvm_job.py, which imports
 this file.
 
@@ -49,6 +50,11 @@ this file.
   macOS privacy prompts the run waited on, joined with "; ".
 "netlog" emits one row per entry, oldest first:
     time, decision, host, port, method, reason
+"recipe" emits the recipe, then one row per input and per parameter, in the file's order:
+    kind (recipe, input or parameter), name, required, default, description
+  The recipe's own row carries commandLineTools in the default column (true, false, or "-" when
+  the recipe leaves it to agent-vm). Inputs are always required; a parameter is required when it
+  has no default. An empty default is shown as "-", like any empty field.
 Input that is not JSON, or JSON of the wrong shape, is reported on stderr and exits 1 with
 nothing on stdout, so a caller never reads a plausible-looking partial row.
 """
@@ -268,13 +274,42 @@ def log_error(path):
     return "\n".join(lines)
 
 
+# -- An image recipe, for the New Image window -------------------------------------------
+
+def recipe_rows(path):
+    """A recipe file's description, inputs and parameters (see the docstring's "recipe")."""
+    try:
+        with open(path, encoding="utf-8") as source:
+            recipe = json.load(source)
+    except OSError as problem:
+        raise ValueError(f"cannot read {path}: {problem.strerror}")
+    recipe = need_object(recipe, path)
+    tools = recipe.get("commandLineTools")
+    yield row(["recipe", None, None, tools if isinstance(tools, bool) else None,
+               recipe.get("description")])
+    for name, spec in sub(recipe, "inputs").items():
+        spec = spec if isinstance(spec, dict) else {}
+        yield row(["input", name, True, None, spec.get("description")])
+    for name, spec in sub(recipe, "parameters").items():
+        spec = spec if isinstance(spec, dict) else {}
+        has_default = "default" in spec
+        yield row(["parameter", name, not has_default, spec.get("default") if has_default else None,
+                   spec.get("description")])
+
+
 COMMANDS = {"version": version_rows, "status": status_rows, "doctor": doctor_rows,
             "images": image_rows, "boxes": box_rows, "packs": pack_rows,
             "execlog": execlog_rows, "netlog": netlog_rows}
 
 
 def main(argv):
-    if len(argv) == 2 and argv[1] in COMMANDS:
+    if len(argv) == 3 and argv[1] == "recipe":
+        try:
+            lines = list(recipe_rows(argv[2]))
+        except (ValueError, UnicodeDecodeError) as problem:
+            sys.stderr.write(f"agentvm_json.py recipe: {problem}\n")
+            return 1
+    elif len(argv) == 2 and argv[1] in COMMANDS:
         try:
             data = json.load(sys.stdin)
             lines = list(COMMANDS[argv[1]](data))
@@ -282,7 +317,8 @@ def main(argv):
             sys.stderr.write(f"agentvm_json.py {argv[1]}: {problem}\n")
             return 1
     else:
-        sys.stderr.write("usage: agentvm_json.py " + "|".join(COMMANDS) + " < agent-vm-output.json\n")
+        sys.stderr.write("usage: agentvm_json.py " + "|".join(COMMANDS) + " < agent-vm-output.json\n"
+                         "       agentvm_json.py recipe <recipe.json>\n")
         return 2
     for line in lines:
         sys.stdout.write(line + "\n")

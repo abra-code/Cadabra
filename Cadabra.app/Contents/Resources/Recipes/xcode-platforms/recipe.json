@@ -1,0 +1,35 @@
+{
+  "version": 1,
+  "description": "Simulator runtimes and Xcode components (needs Xcode: build from an image with Recipes/xcode)",
+  "parameters": {
+    "platforms": {
+      "description": "simulator runtimes, separated by spaces: iOS, watchOS, tvOS or visionOS, each optionally @version (iOS@26.5) for an older one; about 8 GB each; empty for none",
+      "default": "iOS"
+    },
+    "components": {
+      "description": "Xcode components, separated by spaces (MetalToolchain compiles .metal shaders, about 840 MB); empty for none",
+      "default": "MetalToolchain"
+    }
+  },
+  "steps": [
+    {
+      "name": "Simulator runtimes",
+      "run": "for platform in $AGENT_VM_PARAM_PLATFORMS; do case \"$platform\" in *@*) xcodebuild -downloadPlatform \"${platform%@*}\" -buildVersion \"${platform#*@}\" || exit 1;; *) xcodebuild -downloadPlatform \"$platform\" || exit 1;; esac; done",
+      "timeoutSeconds": 3600
+    },
+    {
+      "name": "Prepare the runtimes' shared caches, so each box's first simulator starts sooner",
+      "run": "if [ -n \"$AGENT_VM_PARAM_PLATFORMS\" ]; then xcrun simctl runtime dyld_shared_cache update --all; fi",
+      "timeoutSeconds": 3600
+    },
+    {
+      "name": "Components",
+      "run": "for component in $AGENT_VM_PARAM_COMPONENTS; do xcodebuild -downloadComponent \"$component\" || exit 1; done",
+      "timeoutSeconds": 3600
+    }
+  ],
+  "checks": [
+    "echo \"$(xcrun simctl runtime list | grep -c '(Ready)') simulator runtimes ready\"",
+    "for component in $AGENT_VM_PARAM_COMPONENTS; do xcodebuild -showComponent \"$component\" | grep -q 'Status: installed' || { echo \"$component is not installed\"; exit 1; }; done; echo \"components: ${AGENT_VM_PARAM_COMPONENTS:-none}\""
+  ]
+}

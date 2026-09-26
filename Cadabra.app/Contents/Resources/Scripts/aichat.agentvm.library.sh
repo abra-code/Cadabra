@@ -603,6 +603,149 @@ agentvm_image_setup_job() {
     agentvm_job_start image-setup "image:$1" "Set up Full Disk Access in $1" image setup "$1"
 }
 
+# -- Building an image -------------------------------------------------------------------
+
+# The recipes Cadabra ships (copies of agent-vm's, see Recipes/README.md), one folder each.
+agentvm_recipes_dir="$OMC_APP_BUNDLE_PATH/Contents/Resources/Recipes"
+
+# agentvm_recipes  ->  one row per shipped recipe: folder name, path of its recipe.json,
+# description. Sorted by folder name (byte order, on the name alone: the glob's own order puts
+# "xcode-platforms/" before "xcode/"); a folder whose recipe cannot be read is left out.
+agentvm_recipes() {
+    local _recipe _row
+    for _recipe in "$agentvm_recipes_dir"/*/recipe.json; do
+        [ -f "$_recipe" ] || continue
+        _row="$("$agentvm_python" "$agentvm_json_py" recipe "$_recipe" 2>/dev/null | /usr/bin/head -1)"
+        [ -n "$_row" ] || continue
+        printf '%s\t%s\t%s\n' "$(/usr/bin/basename "$(/usr/bin/dirname "$_recipe")")" "$_recipe" \
+            "$(printf '%s\n' "$_row" | /usr/bin/cut -f5)"
+    done | LC_ALL=C /usr/bin/sort -t "$(printf '\t')" -k1,1
+}
+
+# agentvm_recipe_info <recipe.json>  ->  the recipe's rows (agentvm_json.py recipe): the recipe
+# itself, then its inputs and parameters. Fails, with the reason for agentvm_last_error, when
+# the path is not absolute or the file is not a recipe.
+agentvm_recipe_info() {
+    case "$1" in
+        /*) ;;
+        *) _agentvm_refuse 2 "The recipe must be given as a full path, not \"$1\"."
+           return 2 ;;
+    esac
+    "$agentvm_python" "$agentvm_json_py" recipe "$1" 2>"$agentvm_err_file"
+    local _status=$?
+    if [ "$_status" -eq 0 ]; then
+        /bin/rm -f "$agentvm_err_file"
+    fi
+    return "$_status"
+}
+
+# _agentvm_recipe_name <name>  ->  0 when it is a name agent-vm accepts for a recipe input or
+# parameter: lower-case letters, digits and "_", starting with a letter, at most 32 characters.
+_agentvm_recipe_name() {
+    case "$1" in
+        [abcdefghijklmnopqrstuvwxyz]*) ;;
+        *) return 1 ;;
+    esac
+    case "$1" in
+        *[!abcdefghijklmnopqrstuvwxyz0123456789_]*) return 1 ;;
+    esac
+    [ "${#1}" -le 32 ]
+}
+
+# agentvm_image_create_job <image> <ipsw|from> <source> <recipe.json or ""> <cpus> <memory GB>
+#                          <disk GB> [set:NAME=VALUE | input:NAME=PATH ...]  ->  the job id.
+# source is the restore image's full path (ipsw) or the image to start from (from). cpus,
+# memory and disk may be empty for agent-vm's defaults (or the base image's). Each set: becomes
+# a --set for one of the recipe's parameters, each input: an --input with a file on this Mac;
+# agent-vm itself refuses a name the recipe does not declare and a missing required one.
+# Installing from a restore image takes minutes, a recipe on an existing image as long as its
+# steps; either way it boots a virtual machine, so it needs a free slot.
+agentvm_image_create_job() {
+    if [ $# -lt 7 ]; then
+        _agentvm_refuse 2 "agentvm_image_create_job needs an image, a source kind and source, a recipe, CPUs, memory and disk."
+        return 2
+    fi
+    _agentvm_need_name image "$1" || return $?
+    local _image="$1" _kind="$2" _source="$3" _recipe="$4" _cpus="$5" _memory="$6" _disk="$7"
+    shift 7
+    # The extras are validated and turned into options in place, as in agentvm_box_create:
+    # each is taken off the front and put back at the end as its option and value.
+    local _extras=$# _extra _name _value
+    while [ "$_extras" -gt 0 ]; do
+        _extra="$1"
+        shift
+        case "$_extra" in
+            set:*=*)   _name="${_extra#set:}"; _value="${_name#*=}"; _name="${_name%%=*}" ;;
+            input:*=*) _name="${_extra#input:}"; _value="${_name#*=}"; _name="${_name%%=*}" ;;
+            *) _agentvm_refuse 2 "\"$_extra\" is neither a recipe parameter (set:NAME=VALUE) nor an input (input:NAME=PATH)."
+               return 2 ;;
+        esac
+        if ! _agentvm_recipe_name "$_name"; then
+            _agentvm_refuse 2 "\"$_name\" is not a recipe input or parameter name: lower-case letters, digits and \"_\", starting with a letter."
+            return 2
+        fi
+        case "$_extra" in
+            set:*) set -- "$@" --set "$_name=$_value" ;;
+            input:*)
+                case "$_value" in
+                    /*) ;;
+                    *) _agentvm_refuse 2 "The file for the recipe input $_name must be a full path, not \"$_value\"."
+                       return 2 ;;
+                esac
+                if [ ! -f "$_value" ]; then
+                    _agentvm_refuse 2 "The file for the recipe input $_name, $_value, does not exist."
+                    return 2
+                fi
+                set -- "$@" --input "$_name=$_value" ;;
+        esac
+        _extras=$((_extras - 1))
+    done
+    case "$_kind" in
+        ipsw)
+            case "$_source" in
+                /*.ipsw) ;;
+                *) _agentvm_refuse 2 "The restore image must be the full path of an .ipsw file, not \"$_source\"."
+                   return 2 ;;
+            esac
+            if [ ! -f "$_source" ]; then
+                _agentvm_refuse 2 "The restore image $_source does not exist."
+                return 2
+            fi
+            set -- --ipsw "$_source" "$@" ;;
+        from)
+            _agentvm_need_name image "$_source" || return $?
+            set -- --from "$_source" "$@" ;;
+        *)  _agentvm_refuse 2 "The source must be ipsw or from, not \"$_kind\"."
+            return 2 ;;
+    esac
+    if [ -n "$_recipe" ]; then
+        case "$_recipe" in
+            /*) ;;
+            *) _agentvm_refuse 2 "The recipe must be given as a full path, not \"$_recipe\"."
+               return 2 ;;
+        esac
+        if [ ! -f "$_recipe" ]; then
+            _agentvm_refuse 2 "The recipe $_recipe does not exist."
+            return 2
+        fi
+        set -- "$@" --recipe "$_recipe"
+    fi
+    if [ -n "$_cpus" ]; then
+        _agentvm_need_count "The number of CPUs" "$_cpus" || return $?
+        set -- "$@" --cpus "$_cpus"
+    fi
+    if [ -n "$_memory" ]; then
+        _agentvm_need_count "The memory in GB" "$_memory" || return $?
+        set -- "$@" --memory-gb "$_memory"
+    fi
+    if [ -n "$_disk" ]; then
+        _agentvm_need_count "The disk size in GB" "$_disk" || return $?
+        set -- "$@" --disk-gb "$_disk"
+    fi
+    agentvm_vm_slot_free || return $?
+    agentvm_job_start image-create "image:$_image" "Build image $_image" image create "$_image" "$@"
+}
+
 # -- A shell in a box, in Terminal -------------------------------------------------------
 
 # _agentvm_quote <text>  ->  text as one single-quoted shell word.

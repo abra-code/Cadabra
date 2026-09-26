@@ -106,6 +106,7 @@ check "the header says so"             "Boxes are not available" "$(ui_value "$B
 check "  and why, naming the versions" "1" "$(cad_has "$(ui_value "$BOXES_NOTES_ID")" "needs agent-vm 0.2.0 or later")"
 check "the picker is off"              "0" "$(ui_enabled "$BOXES_KIND_ID")"
 check "New Box is off"                 "0" "$(ui_enabled "$BOXES_NEW_BOX_ID")"
+check "New Image is off"               "0" "$(ui_enabled "$BOXES_HEADER_NEW_IMAGE_ID")"
 check "nothing was listed"             "0" "$(fake_asked "image list")"
 
 # -----------------------------------------------------------------------------------------
@@ -371,6 +372,173 @@ omc_control "$BOXES_NEW_RULES_ID" "pack:npm"
 omc_control "$BOXES_NEW_DISPOSABLE_ID" false
 omc_run aichat.boxes.box.new.create
 check "network off takes no rules" "1" "$(fake_asked "box create offline --image dev --net off --json")"
+
+# -----------------------------------------------------------------------------------------
+RECIPES="$OMC_APP_BUNDLE_PATH/Contents/Resources/Recipes"
+
+section "New Image from This...: the window starts from that image"
+fake_reset
+open_window
+manager="$OMC_ACTIONUI_WINDOW_UUID"
+select_image dev-node
+check "the image offers it"          "1" "$(ui_enabled "$BOXES_IMAGE_NEW_FROM_ID")"
+chains_reset
+omc_run aichat.boxes.image.new.from
+check "the New Image window is asked for" "1" "$(chain_asked aichat.boxes.image.new)"
+omc_window_switch newimage
+omc_control_defaults aichat.boxes.image.new
+omc_run aichat.boxes.image.new.init
+check "the ready images are offered"  '["dev","dev-agents","dev-node","dev-xcode","dev-xcode-ios"]' "$(ui_prop "$BOXES_NI_BASE_ID" options)"
+check "  starting from an existing image" "2" "$(ui_value "$BOXES_NI_SOURCE_ID")"
+check "  dev-node chosen"             "3" "$(ui_value "$BOXES_NI_BASE_ID")"
+check "  its picker on"               "1" "$(ui_enabled "$BOXES_NI_BASE_ID")"
+check "  and the restore image off"   "0" "$(ui_enabled "$BOXES_NI_IPSW_ID")"
+check "the recipes, by description, between None and your own" '["None","ACP agents: Claude Agent ACP, Codex ACP and opencode","Homebrew and Node","Xcode from a .xip you downloaded","Simulator runtimes and Xcode components","A recipe file of your own"]' "$(ui_prop "$BOXES_NI_RECIPE_ID" options)"
+check "the hand-off was read once"    "" "$(cad_pb_get cadabra_boxes_new_image_base)"
+
+section "choosing a recipe fills in its inputs and parameters"
+omc_control "$BOXES_NI_RECIPE_ID" 2
+omc_run aichat.boxes.image.new.recipe.changed
+check "ACP agents: each parameter with its default" "claude_acp=0.81.2
+codex_acp=1.13.1
+opencode=1.18.32
+extras=" "$(ui_value "$BOXES_NI_VALUES_ID")"
+check "  what each one is"            "1" "$(cad_has "$(ui_value "$BOXES_NI_DECLS_ID")" "claude_acp: version of @agentclientprotocol/claude-agent-acp")"
+check "  no input to choose"          "0" "$(ui_enabled "$BOXES_NI_INPUT_BROWSE_ID")"
+omc_control "$BOXES_NI_DISK_ID" ""
+omc_control "$BOXES_NI_RECIPE_ID" 4
+omc_run aichat.boxes.image.new.recipe.changed
+check "Xcode: its one input, empty"   "xcode=" "$(ui_value "$BOXES_NI_VALUES_ID")"
+check "  marked as a file"            "1" "$(cad_has "$(ui_value "$BOXES_NI_DECLS_ID")" "xcode (a file): an Xcode .xip")"
+check "  the input's chooser is on"   "1" "$(ui_enabled "$BOXES_NI_INPUT_BROWSE_ID")"
+check "  a 128 GB disk suggested"     "128" "$(ui_value "$BOXES_NI_DISK_ID")"
+check "  its own-file field stays off" "0" "$(ui_enabled "$BOXES_NI_RECIPE_FILE_ID")"
+printf 'xip' > "$OMCTEST_WORK/Xcode 27.xip"
+omc_control "$BOXES_NI_VALUES_ID" "xcode="
+omc_dialog_answer choose_file "$OMCTEST_WORK/Xcode 27.xip"
+omc_run aichat.boxes.image.new.input.browse
+check "Choose Input File... fills the input's line" "xcode=$OMCTEST_WORK/Xcode 27.xip" "$(ui_value "$BOXES_NI_VALUES_ID")"
+: > "$OMCTEST_WORK/X\tb.xip"
+omc_control "$BOXES_NI_VALUES_ID" "xcode="
+omc_dialog_answer choose_file "$OMCTEST_WORK/X\tb.xip"
+omc_run aichat.boxes.image.new.input.browse
+check "  a backslash in the file's name stays" "xcode=$OMCTEST_WORK/X\tb.xip" "$(ui_value "$BOXES_NI_VALUES_ID")"
+omc_control "$BOXES_NI_RECIPE_ID" 1
+omc_run aichat.boxes.image.new.recipe.changed
+check "None clears them"              "" "$(ui_value "$BOXES_NI_VALUES_ID")"
+omc_control "$BOXES_NI_RECIPE_ID" 6
+omc_control "$BOXES_NI_RECIPE_FILE_ID" ""
+omc_run aichat.boxes.image.new.recipe.changed
+check "A recipe file of your own: its field on" "1" "$(ui_enabled "$BOXES_NI_RECIPE_FILE_ID")"
+printf '%s' '{"version":1,"description":"Mine","parameters":{"size":{"default":"10"}},"steps":[]}' > "$OMCTEST_WORK/mine.json"
+omc_dialog_answer choose_file "$OMCTEST_WORK/mine.json"
+omc_run aichat.boxes.image.new.recipe.browse
+check "  a chosen file is shown at once" "size=10" "$(ui_value "$BOXES_NI_VALUES_ID")"
+check "  and its description"         "Mine" "$(ui_value "$BOXES_NI_ABOUT_ID")"
+printf 'not json' > "$OMCTEST_WORK/bad.json"
+omc_dialog_answer choose_file "$OMCTEST_WORK/bad.json"
+omc_run aichat.boxes.image.new.recipe.browse
+check "a file that is not a recipe: says so" "1" "$(cad_has "$(ui_value "$BOXES_NI_STATUS_ID")" "agentvm_json.py recipe")"
+check "  and the previous recipe's lines go" "" "$(ui_value "$BOXES_NI_VALUES_ID")"
+check "  with its description"        "" "$(ui_value "$BOXES_NI_ABOUT_ID")"
+
+section "Build: the fields become agent-vm's arguments, and the job goes to the Box Manager"
+omc_control "$BOXES_NI_NAME_ID" "dev-xcode2"
+omc_control "$BOXES_NI_SOURCE_ID" 2
+omc_control "$BOXES_NI_BASE_ID" 1
+omc_control "$BOXES_NI_RECIPE_ID" 4
+omc_control "$BOXES_NI_VALUES_ID" "# the Xcode archive
+xcode=$OMCTEST_WORK/Xcode 27.xip
+"
+omc_control "$BOXES_NI_CPUS_ID" ""
+omc_control "$BOXES_NI_MEMORY_ID" ""
+omc_control "$BOXES_NI_DISK_ID" "128"
+omc_run aichat.boxes.image.new.create
+check_status "create ran"             0
+check "the window closes"             "1" "$(journal_count "$OMC_ACTIONUI_WINDOW_UUID" omc_window omc_terminate_ok)"
+wait_jobs_done
+check "agent-vm got every field" "image create dev-xcode2 --from dev --input xcode=$OMCTEST_WORK/Xcode 27.xip --recipe $RECIPES/xcode/recipe.json --disk-gb 128 --json" "$(/usr/bin/grep '^image create dev-xcode2' "$FAKE_AGENTVM_DIR/log")"
+check "the Box Manager lists the job" "1" "$(ui_rows "$BOXES_JOBS_ID" "$manager" | /usr/bin/grep -c "^Build image dev-xcode2")"
+check "  and watches it"              "1" "$(cad_pb_get "cadabra_boxes_watch_$manager" | /usr/bin/grep -c .)"
+
+section "Build refuses, and says why in the window"
+omc_window_switch newimage2
+omc_control_defaults aichat.boxes.image.new
+omc_run aichat.boxes.image.new.init
+check "no hand-off: a restore image"  "1" "$(ui_value "$BOXES_NI_SOURCE_ID")"
+omc_control "$BOXES_NI_NAME_ID" "base"
+omc_control "$BOXES_NI_IPSW_ID" ""
+omc_run aichat.boxes.image.new.create
+check "no restore image chosen"       "Choose a macOS restore image (.ipsw)." "$(ui_value "$BOXES_NI_STATUS_ID")"
+check "  the window stays"            "0" "$(journal_count "$OMC_ACTIONUI_WINDOW_UUID" omc_window omc_terminate_ok)"
+printf 'ipsw' > "$OMCTEST_WORK/R.ipsw"
+omc_control "$BOXES_NI_IPSW_ID" "$OMCTEST_WORK/R.ipsw"
+omc_control "$BOXES_NI_NAME_ID" ""
+omc_run aichat.boxes.image.new.create
+check "no name"                       "The image needs a name." "$(ui_value "$BOXES_NI_STATUS_ID")"
+omc_control "$BOXES_NI_NAME_ID" "base"
+omc_control "$BOXES_NI_RECIPE_ID" 3
+omc_control "$BOXES_NI_VALUES_ID" "just words"
+omc_run aichat.boxes.image.new.create
+check "a line without ="              "\"just words\" is not a name=value line." "$(ui_value "$BOXES_NI_STATUS_ID")"
+omc_control "$BOXES_NI_VALUES_ID" "claude_acpp=latest"
+omc_control "$BOXES_NI_RECIPE_ID" 2
+omc_run aichat.boxes.image.new.create
+check "a misspelled name is refused in the window" "The recipe has no input or parameter named \"claude_acpp\"." "$(ui_value "$BOXES_NI_STATUS_ID")"
+omc_control "$BOXES_NI_RECIPE_ID" 3
+omc_control "$BOXES_NI_RECIPE_ID" 4
+omc_control "$BOXES_NI_VALUES_ID" "xcode="
+omc_run aichat.boxes.image.new.create
+check "an input with no file"         "The recipe input xcode needs a file." "$(ui_value "$BOXES_NI_STATUS_ID")"
+omc_control "$BOXES_NI_VALUES_ID" "xcode=/nowhere/X.xip"
+omc_run aichat.boxes.image.new.create
+check "a missing input file: the library's reason" "The file for the recipe input xcode, /nowhere/X.xip, does not exist." "$(ui_value "$BOXES_NI_STATUS_ID")"
+printf '%s' '{"version":1,"parameters":{"need":{"description":"no default"}},"steps":[]}' > "$OMCTEST_WORK/need.json"
+omc_control "$BOXES_NI_RECIPE_ID" 6
+omc_control "$BOXES_NI_RECIPE_FILE_ID" "$OMCTEST_WORK/need.json"
+omc_control "$BOXES_NI_VALUES_ID" "need="
+omc_run aichat.boxes.image.new.create
+check "a required parameter left empty" "The recipe parameter need needs a value." "$(ui_value "$BOXES_NI_STATUS_ID")"
+omc_control "$BOXES_NI_RECIPE_FILE_ID" "$OMCTEST_WORK/bad.json"
+omc_run aichat.boxes.image.new.create
+check "a recipe that cannot be read"  "1" "$(cad_has "$(ui_value "$BOXES_NI_STATUS_ID")" "agentvm_json.py recipe")"
+check "  and nothing was built"       "0" "$(/bin/cat "$FAKE_AGENTVM_DIR/log" | /usr/bin/grep -c '^image create base' | /usr/bin/tr -d ' ')"
+
+section "the Box Manager coming back to the front starts a loop for running jobs"
+fake_reset 3
+ui_reset
+omc_window_switch manager2
+omc_control_defaults aichat.boxes
+omc_run aichat.boxes.init
+id=$(cad_call_lib aichat.agentvm.library.sh agentvm_box_stop_job try1)
+chains_reset
+omc_run aichat.boxes.activated
+check "a running job and no loop: one is asked for" "1" "$(chain_asked aichat.boxes.poll)"
+check "  and the job is listed"      "1" "$(ui_rows "$BOXES_JOBS_ID" | /usr/bin/grep -c "^Stop try1${TAB}running")"
+cad_pb_set "cadabra_boxes_poll_$OMC_ACTIONUI_WINDOW_UUID" "poll-123"
+chains_reset
+omc_run aichat.boxes.activated
+check "a loop already polling: no second one" "0" "$(chain_asked aichat.boxes.poll)"
+cad_call_lib aichat.agentvm.library.sh agentvm_job_cancel "$id"
+wait_jobs_done
+cad_pb_set "cadabra_boxes_poll_$OMC_ACTIONUI_WINDOW_UUID" ""
+chains_reset
+omc_run aichat.boxes.activated
+check "no running job: no loop"       "0" "$(chain_asked aichat.boxes.poll)"
+cad_pb_set "cadabra_boxes_watch_$OMC_ACTIONUI_WINDOW_UUID" " $id"
+chains_reset
+omc_run aichat.boxes.activated
+check "a watched job that ended unseen: one pass is asked for" "1" "$(chain_asked aichat.boxes.poll)"
+omc_run aichat.boxes.poll
+check "  which takes the watch list"  "" "$(cad_pb_get "cadabra_boxes_watch_$OMC_ACTIONUI_WINDOW_UUID")"
+chains_reset
+omc_run aichat.boxes.activated
+check "  and the next activation asks for none" "0" "$(chain_asked aichat.boxes.poll)"
+
+section "every view id constant is defined once"
+# A later definition silently wins in sh, so a reused name retargets every earlier use: a
+# header button's constant once took over the New Box window's image picker.
+check "no constant is defined twice" "" "$(/usr/bin/sed -n 's/^\(BOXES_[A-Z_]*_ID\)=.*/\1/p' "$OMC_APP_BUNDLE_PATH/Contents/Resources/Scripts/aichat.boxes.library.sh" | /usr/bin/sort | /usr/bin/uniq -d)"
 
 section "cumulative: no handler wrote to a view id the window does not declare"
 check "no undeclared ids" "" "$(ui_unknown_writes)"

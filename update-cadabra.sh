@@ -163,6 +163,9 @@ REPLAY_BIN="$APP_BUNDLE/Contents/Support/replay"
 AGENTVM_DIR="$APP_BUNDLE/Contents/Support/AgentVM"
 AGENTVM_BIN="$AGENTVM_DIR/agent-vm"
 AGENTVM_GUEST_BIN="$AGENTVM_DIR/agent-vm-guest"
+# agent-vm's image recipes the Box Manager's New Image window offers (copied with the binaries).
+AGENTVM_RECIPES_DIR="$APP_BUNDLE/Contents/Resources/Recipes"
+AGENTVM_RECIPES="homebrew-node acp-agents xcode xcode-platforms"
 
 # The Python tier lives under Contents/Library, not Contents/Support: Support holds the
 # native engines this script builds, Library holds the embedded interpreter and the
@@ -1006,6 +1009,24 @@ update_agentvm() {
     done
 
     [ -f "$AGENTVM_REPO/LICENSE" ] && /bin/cp -f "$AGENTVM_REPO/LICENSE" "${AGENTVM_BIN}.LICENSE"
+
+    # The image recipes the Box Manager offers, from the same checkout as the binaries, so the
+    # recipes a Cadabra build ships are the ones its agent-vm was tested with. Copied, never
+    # generated: agent-vm records a recipe's digest in every image built from it. Resources/
+    # Recipes is tracked in this repository, so a refresh shows up as a diff to commit.
+    local recipe
+    for recipe in $AGENTVM_RECIPES; do
+        [ -f "$AGENTVM_REPO/Recipes/$recipe/recipe.json" ] \
+            || fail "agent-vm checkout has no Recipes/$recipe/recipe.json; the Box Manager offers it."
+        /bin/rm -rf "${AGENTVM_RECIPES_DIR:?}/$recipe"
+        /bin/mkdir -p "$AGENTVM_RECIPES_DIR" || fail "Could not create $AGENTVM_RECIPES_DIR"
+        /bin/cp -R "$AGENTVM_REPO/Recipes/$recipe" "$AGENTVM_RECIPES_DIR/" \
+            || fail "Could not copy the recipe $recipe into $AGENTVM_RECIPES_DIR"
+        # A checkout's stray Finder files are not part of the recipe and would be sealed into
+        # the bundle.
+        /usr/bin/find "$AGENTVM_RECIPES_DIR/$recipe" -name '.DS_Store' -delete
+    done
+    echo "  Recipes: $AGENTVM_RECIPES"
 
     AGENTVM_STATUS="deployed"
     echo "  ${GREEN}Deployed${RESET} agent-vm and agent-vm-guest"

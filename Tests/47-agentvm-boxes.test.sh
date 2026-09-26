@@ -262,6 +262,82 @@ check "  and no file is written outside Shells" "0" "$([ -e "$HOME/Library/Appli
 lib agentvm_last_error >/dev/null
 cad_reset
 
+section "the recipes Cadabra ships"
+RECIPES="$OMC_APP_BUNDLE_PATH/Contents/Resources/Recipes"
+rows=$(lib agentvm_recipes)
+check "four, by folder name" "acp-agents homebrew-node xcode xcode-platforms" "$(printf '%s\n' "$rows" | col 1 | /usr/bin/tr '\n' ' ' | /usr/bin/sed 's/ $//')"
+check "  each with its recipe.json" "$RECIPES/xcode/recipe.json" "$(printf '%s\n' "$rows" | /usr/bin/awk -F'\t' '$1 == "xcode" { print $2 }')"
+check "  and its description" "Homebrew and Node" "$(printf '%s\n' "$rows" | /usr/bin/awk -F'\t' '$1 == "homebrew-node" { print $3 }')"
+check "homebrew-node's copied file came along" "1" "$([ -f "$RECIPES/homebrew-node/files/zprofile" ] && echo 1 || echo 0)"
+
+section "a recipe's inputs and parameters"
+rows=$(lib agentvm_recipe_info "$RECIPES/xcode/recipe.json")
+check "the recipe row: kind, -, -, commandLineTools" "recipe${TAB}-${TAB}-${TAB}true" "$(printf '%s\n' "$rows" | /usr/bin/head -1 | /usr/bin/cut -f1-4)"
+check "one input, always required" "input${TAB}xcode${TAB}true${TAB}-" "$(printf '%s\n' "$rows" | /usr/bin/awk -F'\t' '$1 == "input"' | /usr/bin/cut -f1-4)"
+rows=$(lib agentvm_recipe_info "$RECIPES/acp-agents/recipe.json")
+check "parameters with defaults are not required" "parameter${TAB}claude_acp${TAB}false${TAB}0.81.2" "$(printf '%s\n' "$rows" | /usr/bin/awk -F'\t' '$2 == "claude_acp"' | /usr/bin/cut -f1-4)"
+check "an empty default is \"-\"" "-" "$(printf '%s\n' "$rows" | /usr/bin/awk -F'\t' '$2 == "extras" { print $4 }')"
+printf '%s' '{"version":1,"description":"a\tb","parameters":{"need":{"description":"no default"}},"steps":[]}' > "$OMCTEST_WORK/r.json"
+rows=$(lib agentvm_recipe_info "$OMCTEST_WORK/r.json")
+check "a parameter without a default is required" "true" "$(printf '%s\n' "$rows" | /usr/bin/awk -F'\t' '$2 == "need" { print $3 }')"
+check "  and a tab in a description stays in its field" "a?b" "$(printf '%s\n' "$rows" | /usr/bin/head -1 | col 5)"
+out=$(lib agentvm_recipe_info recipe.json); rc=$?
+check "a relative path is refused" "2" "$rc"
+lib agentvm_last_error >/dev/null
+printf 'not json' > "$OMCTEST_WORK/bad.json"
+out=$(lib agentvm_recipe_info "$OMCTEST_WORK/bad.json"); rc=$?
+check "a file that is not a recipe fails" "1" "$rc"
+check "  saying so" "1" "$(cad_has "$(message "$rc")" "agentvm_json.py recipe")"
+
+section "building an image: the argv"
+fake_reset
+/usr/bin/sed 's/"warning"/"ok"/g' "$FIXTURES/doctor.json" > "$FAKE_AGENTVM_DIR/doctor.json"
+printf 'xip' > "$OMCTEST_WORK/Xcode.xip"
+printf 'ipsw' > "$OMCTEST_WORK/Restore.ipsw"
+# wait_log <pattern> - until the detached job's agent-vm call is in the fake's log (5 s at most).
+wait_log() {
+    w_left=50
+    while [ "$w_left" -gt 0 ]; do
+        /usr/bin/grep -q "$1" "$FAKE_AGENTVM_DIR/log" 2>/dev/null && return 0
+        w_left=$((w_left - 1))
+        /bin/sleep 0.1
+    done
+}
+id=$(with_fake agentvm_image_create_job dev-xc from dev "$RECIPES/xcode/recipe.json" 2 "" 128 "input:xcode=$OMCTEST_WORK/Xcode.xip" "set:mode=a=b c"); rc=$?
+check "from an image, with a recipe: started" "0" "$rc"
+wait_log "^image create dev-xc"
+check "  the argv, every option in place" "image create dev-xc --from dev --input xcode=$OMCTEST_WORK/Xcode.xip --set mode=a=b c --recipe $RECIPES/xcode/recipe.json --cpus 2 --disk-gb 128 --json" "$(/usr/bin/grep '^image create dev-xc' "$FAKE_AGENTVM_DIR/log")"
+id=$(with_fake agentvm_image_create_job base ipsw "" "" "" "" "" 2>/dev/null); rc=$?
+check "from a restore image with no path: refused" "2" "$rc"
+lib agentvm_last_error >/dev/null
+id=$(with_fake agentvm_image_create_job base ipsw "$OMCTEST_WORK/Restore.ipsw" "" "" "" ""); rc=$?
+check "from a restore image: started" "0" "$rc"
+wait_log "^image create base"
+check "  the argv" "image create base --ipsw $OMCTEST_WORK/Restore.ipsw --json" "$(/usr/bin/grep '^image create base' "$FAKE_AGENTVM_DIR/log")"
+
+section "building an image: what is refused before agent-vm runs"
+fake_reset
+/usr/bin/sed 's/"warning"/"ok"/g' "$FIXTURES/doctor.json" > "$FAKE_AGENTVM_DIR/doctor.json"
+refused_build() {
+    with_fake agentvm_image_create_job "$@" >/dev/null
+    rb_rc=$?
+    rb_msg=$(message "$rb_rc")
+    printf '%s|%s' "$rb_rc" "$(/bin/cat "$FAKE_AGENTVM_DIR/log" 2>/dev/null | /usr/bin/grep -c '^image create' | /usr/bin/tr -d ' ')"
+}
+check "a relative restore image"       "2|0" "$(refused_build x ipsw Restore.ipsw "" "" "" "")"
+check "a file that is not an .ipsw"    "2|0" "$(refused_build x ipsw "$OMCTEST_WORK/Xcode.xip" "" "" "" "")"
+check "a restore image that is missing" "2|0" "$(refused_build x ipsw /nowhere/R.ipsw "" "" "" "")"
+check "a base image name like an option" "2|0" "$(refused_build x from -dev "" "" "" "")"
+check "a relative recipe"              "2|0" "$(refused_build x from dev recipe.json "" "" "")"
+check "a parameter name in capitals"   "2|0" "$(refused_build x from dev "$RECIPES/acp-agents/recipe.json" "" "" "" "set:Extras=x")"
+check "an input with a relative file"  "2|0" "$(refused_build x from dev "$RECIPES/xcode/recipe.json" "" "" "" "input:xcode=Xcode.xip")"
+check "an input with a missing file"   "2|0" "$(refused_build x from dev "$RECIPES/xcode/recipe.json" "" "" "" "input:xcode=/nowhere.xip")"
+check "an extra that is neither"       "2|0" "$(refused_build x from dev "" "" "" "" "xcode=/a")"
+check "a disk size that is not a number" "2|0" "$(refused_build x from dev "" "" "" 1TB)"
+check "too few arguments"              "2|0" "$(refused_build x from dev)"
+/bin/cp "$FIXTURES/doctor.json" "$FAKE_AGENTVM_DIR/doctor.json"
+check "no free VM slot"                "1|0" "$(refused_build x from dev "" "" "" "")"
+
 section "cumulative: no handler wrote to a view id the window does not declare"
 check "no undeclared ids" "" "$(ui_unknown_writes)"
 

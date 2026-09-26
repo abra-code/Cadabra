@@ -28,7 +28,7 @@
 #   box shell <name>, and the long ones, which print progress events on stderr like agent-vm
 #   and exit 130 (SIGINT) or 143 (SIGTERM) when stopped:
 #   box start <name> [--owner-pid N] --json, box stop <name> --json,
-#   image update-guest <name> --json, image setup <name> --json.
+#   image update-guest <name> --json, image setup <name> --json, image create <name> ... --json.
 # Anything else fails with status 64, so a test that reaches an unimplemented command finds out.
 
 state="${FAKE_AGENTVM_DIR:?fake_agent_vm: FAKE_AGENTVM_DIR is not set}"
@@ -138,6 +138,8 @@ case "$1 $2" in
         progress "$fixtures/update-guest.events" "the guest update of $3" ;;
     "image setup")
         progress "$fixtures/update-guest.events" "the setup of $3" ;;
+    "image create")
+        progress "$fixtures/image-create.events" "the build of $3" ;;
     *)
         printf 'Error: fake_agent_vm does not implement: %s\n' "$*" >&2
         exit 64 ;;

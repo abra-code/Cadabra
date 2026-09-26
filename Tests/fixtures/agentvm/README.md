@@ -12,5 +12,6 @@ Real `--json` answers of agent-vm, which `Tests/helpers/fake_agent_vm.sh` serves
 - `box-create.json` - `box create <box> --image dev --memory-gb 4 --allow pack:npm --allow example.com --disposable`.
 - `box-start.json`, `box-start.events`, `box-stop.events` - what `box start` prints on standard output, and the progress events of `box start` and `box stop` on standard error.
 - `update-guest.events` - made by hand, following the steps agent-vm's `Docs/progress-events.md` lists for `image update-guest` (a guest update boots a VM, which the capture avoided).
+- `image-create.events` - made by hand the same way, for `image create --from dev --recipe homebrew-node` (clone, boot, the recipe and its four steps with a line of their output, shutdown).
 
 Captured on 2026-09-24 (agent-vm 0.1.8: version, doctor, status) and 2026-09-25 (agent-vm 0.2.1: the rest) with `Tests/helpers/refresh_agentvm_fixtures.py`, which replaces the home folder with `/Users/you` and re-serializes with sorted keys. When agent-vm's JSON changes, run it again (its usage says how to prepare the boxes; `--lifecycle` starts a virtual machine) and rerun the suite: the drift checks fail when a field the library reads is gone. `--import` sanitizes a capture made by hand.

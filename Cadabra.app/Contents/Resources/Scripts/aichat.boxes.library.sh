@@ -121,6 +121,7 @@ boxes_busy_word() {
         box-stop)     echo "stopping..." ;;
         update-guest) echo "updating..." ;;
         image-setup)  echo "setting up..." ;;
+        image-create) echo "building..." ;;
         *)            echo "busy..." ;;
     esac
 }
@@ -143,7 +144,7 @@ boxes_show_header() {
         "$dialog" "$_uuid" "$BOXES_HEADER_ID" "Boxes are not available"
         "$dialog" "$_uuid" "$BOXES_NOTES_ID" "$_reason"
         local _id
-        for _id in $BOXES_KIND_ID $BOXES_REFRESH_ID $BOXES_NEW_BOX_ID; do
+        for _id in $BOXES_KIND_ID $BOXES_REFRESH_ID $BOXES_NEW_BOX_ID $BOXES_HEADER_NEW_IMAGE_ID; do
             "$dialog" "$_uuid" "$_id" omc_disable
         done
         return 1
@@ -268,7 +269,7 @@ boxes_show_images() {
         {
             state = $2
             if ($3 != "-") state = state " (" $3 ")"
-            if ($1 in kind) state = kind[$1] == "update-guest" ? "updating..." : (kind[$1] == "image-setup" ? "setting up..." : "busy...")
+            if ($1 in kind) state = kind[$1] == "update-guest" ? "updating..." : (kind[$1] == "image-setup" ? "setting up..." : (kind[$1] == "image-create" ? "building..." : "busy..."))
             printf "%s\t%s\t%s\t%s\t%s\t%s\n", $1, state, $4, $5, $6, $7
         }' "$_file" | "$dialog" "$_uuid" "$BOXES_IMAGES_ID" omc_table_set_rows_from_stdin
 }
@@ -408,6 +409,7 @@ boxes_show_image() {
     [ "$_state" = "ready" ] && _ready=1
     [ -z "$_busy" ] && _free=1
     boxes_enable "$_uuid" "$BOXES_IMAGE_NEW_BOX_ID" "$_ready"
+    boxes_enable "$_uuid" "$BOXES_IMAGE_NEW_FROM_ID" "$_ready"
     boxes_enable "$_uuid" "$BOXES_IMAGE_UPDATE_ID" "$((_ready * _free))"
     boxes_enable "$_uuid" "$BOXES_IMAGE_SETUP_ID" "$((_ready * _free))"
     boxes_enable "$_uuid" "$BOXES_IMAGE_REVEAL_ID" "$([ -n "$_path" ] && echo 1 || echo 0)"
@@ -577,7 +579,7 @@ boxes_poll() {
         if [ -n "$_ended" ]; then
             _kinds="$(printf '%s\n' "$_ended" | /usr/bin/tr '\n' ' ')"
             case " $_kinds" in
-                *" update-guest "*|*" image-setup "*) boxes_read_images "$_uuid" ;;
+                *" update-guest "*|*" image-setup "*|*" image-create "*) boxes_read_images "$_uuid" ;;
             esac
             boxes_read_boxes "$_uuid"
             boxes_show_header "$_uuid" >/dev/null
@@ -742,4 +744,325 @@ RULES
     fi
     "$dialog" "$_uuid" "$BOXES_NEW_STATUS_ID" ""
     return 0
+}
+
+# -- The Box Manager coming back to the front, and jobs started from other windows -----------
+
+BOXES_HEADER_NEW_IMAGE_ID=122
+BOXES_IMAGE_NEW_FROM_ID=546
+
+# boxes_activated <uuid>  ->  the Box Manager became the active window again: repaints the jobs,
+# and starts a poll loop when jobs run (or a watched one ended unseen) and none is polling. A
+# job started from another window
+# (New Image) has no loop of its own, since a loop chained from there would run in that
+# window's context; this is where one begins.
+boxes_activated() {
+    local _uuid="$1"
+    boxes_read_jobs "$_uuid" || return 0
+    boxes_show_jobs "$_uuid"
+    boxes_show_images "$_uuid"
+    boxes_show_boxes "$_uuid"
+    local _running="$(boxes_running_count "$_uuid")"
+    local _holder="$("$pasteboard" "$(boxes_key cadabra_boxes_poll "$_uuid")" get)"
+    # A watched job that already ended (the window was elsewhere for the whole build, or
+    # agent-vm refused at once) still needs one pass, which reads the lists it changed.
+    local _watched="$("$pasteboard" "$(boxes_key cadabra_boxes_watch "$_uuid")" get | /usr/bin/tr -d ' ')"
+    [ -n "$_watched" ] && _running=$((_running + 1))
+    if [ "$_running" -gt 0 ] && [ -z "$_holder" ]; then
+        "$next_command" "$OMC_CURRENT_COMMAND_GUID" "aichat.boxes.poll"
+    fi
+}
+
+# boxes_manager_job_started <job id>  ->  the open Box Manager (if any) lists a job another
+# window started, and watches it: its next poll loop counts it as ended even if it ends before
+# the loop's first pass.
+boxes_manager_job_started() {
+    local _uuid="$("$pasteboard" "$BOXES_MANAGER_KEY" get)"
+    [ -n "$_uuid" ] || return 0
+    local _watch="$(boxes_key cadabra_boxes_watch "$_uuid")"
+    "$pasteboard" "$_watch" set "$("$pasteboard" "$_watch" get) $1"
+    boxes_read_jobs "$_uuid"
+    boxes_show_jobs "$_uuid"
+    boxes_show_images "$_uuid"
+}
+
+# -- The New Image window (aichat.boxes.image.new.json) ---------------------------------------
+
+BOXES_NI_NAME_ID=700
+BOXES_NI_SOURCE_ID=701
+BOXES_NI_IPSW_ID=711
+BOXES_NI_IPSW_BROWSE_ID=712
+BOXES_NI_BASE_ID=715
+BOXES_NI_RECIPE_ID=720
+BOXES_NI_RECIPE_FILE_ID=721
+BOXES_NI_RECIPE_BROWSE_ID=722
+BOXES_NI_CPUS_ID=730
+BOXES_NI_MEMORY_ID=731
+BOXES_NI_DISK_ID=732
+BOXES_NI_ABOUT_ID=740
+BOXES_NI_VALUES_ID=741
+BOXES_NI_INPUT_BROWSE_ID=742
+BOXES_NI_DECLS_ID=743
+BOXES_NI_STATUS_ID=750
+BOXES_NI_BUILD_ID=752
+
+# The image "New Image from This..." was pressed on, handed to the window it opens; read once.
+BOXES_NI_BASE_KEY="cadabra_boxes_new_image_base"
+
+# _boxes_json_list  ->  stdin's lines as a JSON array of strings (for a Picker's options).
+_boxes_json_list() {
+    /usr/bin/awk 'BEGIN { printf "[" }
+        { gsub(/\\/, "\\\\"); gsub(/"/, "\\\""); printf "%s\"%s\"", sep, $0; sep = "," }
+        END { print "]" }'
+}
+
+# boxes_ni_setting <uuid> <name>  ->  one of the window's remembered lists (images, recipes).
+boxes_ni_setting() {
+    "$pasteboard" "$(boxes_key "cadabra_boxes_ni_$2" "$1")" get
+}
+
+# boxes_ni_init <uuid>  ->  fills the window: the ready images for "An existing image" (the one
+# "New Image from This..." was pressed on chosen), and the recipes Cadabra ships. Both pickers
+# deliver 1-based indexes, so their ordered lists are kept on the pasteboard.
+boxes_ni_init() {
+    local _uuid="$1"
+    local _wanted="$("$pasteboard" "$BOXES_NI_BASE_KEY" get)"
+    "$pasteboard" "$BOXES_NI_BASE_KEY" set ""
+    local _images
+    _images="$(boxes_new_images)"
+    local _status=$?
+    if [ "$_status" -ne 0 ]; then
+        "$dialog" "$_uuid" "$BOXES_NI_STATUS_ID" "Could not list the images: $(agentvm_last_error "$_status")"
+        _images=""
+    fi
+    "$pasteboard" "$(boxes_key cadabra_boxes_ni_images "$_uuid")" set "$_images"
+    if [ -n "$_images" ]; then
+        "$dialog" "$_uuid" "$BOXES_NI_BASE_ID" omc_set_property options "$(printf '%s\n' "$_images" | _boxes_json_list)"
+    fi
+    # Recipe picker: "None", each shipped recipe by its description up to the first " (",
+    # then "A recipe file of your own".
+    local _recipes="$(agentvm_recipes)"
+    "$pasteboard" "$(boxes_key cadabra_boxes_ni_recipes "$_uuid")" set "$(printf '%s\n' "$_recipes" | /usr/bin/cut -f2)"
+    "$dialog" "$_uuid" "$BOXES_NI_RECIPE_ID" omc_set_property options "$( {
+        printf 'None\n'
+        printf '%s\n' "$_recipes" | /usr/bin/awk -F'\t' 'NF { d = $3; i = index(d, " ("); if (i > 1) d = substr(d, 1, i - 1); print d }'
+        printf 'A recipe file of your own\n'
+    } | _boxes_json_list)"
+    "$dialog" "$_uuid" "$BOXES_NI_RECIPE_ID" "1"
+    local _index=""
+    [ -n "$_wanted" ] && _index="$(printf '%s\n' "$_images" | /usr/bin/awk -v want="$_wanted" '$0 == want { print NR; exit }')"
+    if [ -n "$_index" ]; then
+        "$dialog" "$_uuid" "$BOXES_NI_SOURCE_ID" "2"
+        "$dialog" "$_uuid" "$BOXES_NI_BASE_ID" "$_index"
+        boxes_ni_source "$_uuid" 2
+    else
+        "$dialog" "$_uuid" "$BOXES_NI_SOURCE_ID" "1"
+        [ -n "$_images" ] && "$dialog" "$_uuid" "$BOXES_NI_BASE_ID" "1"
+        boxes_ni_source "$_uuid" 1
+    fi
+}
+
+# boxes_ni_source <uuid> <1|2>  ->  enables the restore-image field (1) or the base picker (2).
+boxes_ni_source() {
+    if [ "$2" = "2" ]; then
+        "$dialog" "$1" "$BOXES_NI_IPSW_ID" omc_disable
+        "$dialog" "$1" "$BOXES_NI_IPSW_BROWSE_ID" omc_disable
+        "$dialog" "$1" "$BOXES_NI_BASE_ID" omc_enable
+    else
+        "$dialog" "$1" "$BOXES_NI_BASE_ID" omc_disable
+        "$dialog" "$1" "$BOXES_NI_IPSW_ID" omc_enable
+        "$dialog" "$1" "$BOXES_NI_IPSW_BROWSE_ID" omc_enable
+    fi
+}
+
+# boxes_ni_recipe_path <uuid> <picker index> <recipe file field>  ->  the recipe the picker
+# names: nothing for "None", a shipped recipe's path, or the file field for the last option.
+boxes_ni_recipe_path() {
+    local _count="$(boxes_ni_setting "$1" recipes | /usr/bin/awk 'NF { n++ } END { print n + 0 }')"
+    case "$2" in
+        ''|*[!0123456789]*|1) return 0 ;;
+    esac
+    if [ "$2" -gt "$((_count + 1))" ]; then
+        case "$3" in
+            "~/"*) printf '%s\n' "$HOME/${3#"~/"}" ;;
+            *)     printf '%s\n' "$3" ;;
+        esac
+        return 0
+    fi
+    boxes_ni_setting "$1" recipes | /usr/bin/awk -v n="$(($2 - 1))" 'NF && ++i == n { print; exit }'
+}
+
+# boxes_ni_show_recipe <uuid> <picker index> <recipe file field> <disk field>  ->  the recipe's
+# description, its inputs and parameters as editable name=value lines (defaults filled in),
+# and what each one means. The Xcode recipe gets a larger disk, as its README asks.
+boxes_ni_show_recipe() {
+    local _uuid="$1" _index="$2" _file="$3" _disk="$4"
+    local _count="$(boxes_ni_setting "$_uuid" recipes | /usr/bin/awk 'NF { n++ } END { print n + 0 }')"
+    local _own=0
+    case "$_index" in
+        ''|*[!0123456789]*) ;;
+        *) [ "$_index" -gt "$((_count + 1))" ] && _own=1 ;;
+    esac
+    boxes_enable "$_uuid" "$BOXES_NI_RECIPE_FILE_ID" "$_own"
+    boxes_enable "$_uuid" "$BOXES_NI_RECIPE_BROWSE_ID" "$_own"
+    "$dialog" "$_uuid" "$BOXES_NI_STATUS_ID" ""
+    local _path="$(boxes_ni_recipe_path "$_uuid" "$_index" "$_file")"
+    local _rows=""
+    local _status=0
+    if [ -n "$_path" ]; then
+        _rows="$(agentvm_recipe_info "$_path")"
+        _status=$?
+    fi
+    # No recipe, or one that cannot be read: nothing of the previous recipe stays on show.
+    if [ -z "$_path" ] || [ "$_status" -ne 0 ]; then
+        "$dialog" "$_uuid" "$BOXES_NI_ABOUT_ID" ""
+        "$dialog" "$_uuid" "$BOXES_NI_VALUES_ID" ""
+        "$dialog" "$_uuid" "$BOXES_NI_DECLS_ID" ""
+        "$dialog" "$_uuid" "$BOXES_NI_INPUT_BROWSE_ID" omc_disable
+        [ "$_status" -ne 0 ] && "$dialog" "$_uuid" "$BOXES_NI_STATUS_ID" "$(agentvm_last_error "$_status")"
+        return 0
+    fi
+    "$dialog" "$_uuid" "$BOXES_NI_ABOUT_ID" "$(printf '%s\n' "$_rows" | /usr/bin/awk -F'\t' '$1 == "recipe" && $5 != "-" { print $5 }')"
+    "$dialog" "$_uuid" "$BOXES_NI_VALUES_ID" "$(printf '%s\n' "$_rows" | /usr/bin/awk -F'\t' '
+        $1 == "input"     { print $2 "=" }
+        $1 == "parameter" { print $2 "=" ($4 == "-" ? "" : $4) }')"
+    "$dialog" "$_uuid" "$BOXES_NI_DECLS_ID" "$(printf '%s\n' "$_rows" | /usr/bin/awk -F'\t' '
+        $1 == "input"     { print $2 " (a file): " $5 }
+        $1 == "parameter" { print $2 ": " ($5 == "-" ? "" : $5) ($3 == "true" ? " (required)" : "") }')"
+    local _inputs="$(printf '%s\n' "$_rows" | /usr/bin/awk -F'\t' '$1 == "input" { n++ } END { print n + 0 }')"
+    boxes_enable "$_uuid" "$BOXES_NI_INPUT_BROWSE_ID" "$([ "$_inputs" -gt 0 ] && echo 1 || echo 0)"
+    if [ "$(/usr/bin/basename "$(/usr/bin/dirname "$_path")")" = "xcode" ] && [ -z "$_disk" ]; then
+        "$dialog" "$_uuid" "$BOXES_NI_DISK_ID" "128"
+    fi
+}
+
+# boxes_ni_set_input <values text> <recipe.json> <file>  ->  the values text with the recipe's
+# first input set to file (the line replaced, or added when missing).
+boxes_ni_set_input() {
+    local _input="$(agentvm_recipe_info "$2" 2>/dev/null | /usr/bin/awk -F'\t' '$1 == "input" { print $2; exit }')"
+    agentvm_last_error >/dev/null
+    if [ -z "$_input" ]; then
+        printf '%s\n' "$1"
+        return 0
+    fi
+    # The file comes through the environment: awk -v turns a backslash in a file name into an
+    # escape sequence.
+    printf '%s\n' "$1" | BOXES_NI_FILE="$3" /usr/bin/awk -v name="$_input" '
+        BEGIN { file = ENVIRON["BOXES_NI_FILE"] }
+        { line = $0; sub(/^[ \t]+/, "", line) }
+        index(line, name "=") == 1 && !done { print name "=" file; done = 1; next }
+        { print }
+        END { if (!done) print name "=" file }' | /usr/bin/awk 'NF || seen { print; seen = 1 }'
+}
+
+# boxes_ni_create <uuid>  ->  0 once the build started as a job (its id is in $boxes_ni_job);
+# otherwise the reason is in the window's status line and it returns non-zero.
+boxes_ni_create() {
+    local _uuid="$1"
+    local _name="$OMC_ACTIONUI_VIEW_700_VALUE"
+    local _ipsw="$OMC_ACTIONUI_VIEW_711_VALUE"
+    local _recipe="$(boxes_ni_recipe_path "$_uuid" "$OMC_ACTIONUI_VIEW_720_VALUE" "$OMC_ACTIONUI_VIEW_721_VALUE")"
+    local _kind _source
+    boxes_ni_job=""
+    case "$_ipsw" in
+        "~/"*) _ipsw="$HOME/${_ipsw#"~/"}" ;;
+    esac
+    if [ "$OMC_ACTIONUI_VIEW_701_VALUE" = "2" ]; then
+        _kind=from
+        case "$OMC_ACTIONUI_VIEW_715_VALUE" in
+            ''|*[!0123456789]*) _source="" ;;
+            *) _source="$(boxes_ni_setting "$_uuid" images | /usr/bin/awk -v n="$OMC_ACTIONUI_VIEW_715_VALUE" 'NF && ++i == n { print; exit }')" ;;
+        esac
+        if [ -z "$_source" ]; then
+            "$dialog" "$_uuid" "$BOXES_NI_STATUS_ID" "Choose the image to start from."
+            return 2
+        fi
+    else
+        _kind=ipsw
+        _source="$_ipsw"
+        if [ -z "$_source" ]; then
+            "$dialog" "$_uuid" "$BOXES_NI_STATUS_ID" "Choose a macOS restore image (.ipsw)."
+            return 2
+        fi
+    fi
+    if [ -z "$_name" ]; then
+        "$dialog" "$_uuid" "$BOXES_NI_STATUS_ID" "The image needs a name."
+        return 2
+    fi
+    # The values: name=value lines. A name the recipe declares as an input becomes input:, any
+    # other set: (agent-vm refuses a name the recipe does not declare, with its own message).
+    # A recipe that cannot be read is refused here, while the window still holds the fields.
+    local _inputs="" _required="" _declared=""
+    if [ -n "$_recipe" ]; then
+        local _decls
+        _decls="$(agentvm_recipe_info "$_recipe")"
+        local _decls_status=$?
+        if [ "$_decls_status" -ne 0 ]; then
+            "$dialog" "$_uuid" "$BOXES_NI_STATUS_ID" "$(agentvm_last_error "$_decls_status")"
+            return "$_decls_status"
+        fi
+        _inputs=" $(printf '%s\n' "$_decls" | /usr/bin/awk -F'\t' '$1 == "input" { printf "%s ", $2 }')"
+        # Parameters without a default: the prefilled "name=" line would set them to empty
+        # text, which agent-vm accepts, so its "must be set" check never fires.
+        _required=" $(printf '%s\n' "$_decls" | /usr/bin/awk -F'\t' '$1 == "parameter" && $3 == "true" { printf "%s ", $2 }')"
+        # Every name the recipe declares: a misspelled one is refused here, where the fields
+        # can still be corrected, rather than by agent-vm after the window has closed.
+        _declared=" $(printf '%s\n' "$_decls" | /usr/bin/awk -F'\t' '$1 == "input" || $1 == "parameter" { printf "%s ", $2 }')"
+    fi
+    set --
+    local _line _key _value
+    while IFS= read -r _line; do
+        _line="$(printf '%s' "$_line" | /usr/bin/sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')"
+        case "$_line" in
+            ''|'#'*) continue ;;
+            *=*) ;;
+            *) "$dialog" "$_uuid" "$BOXES_NI_STATUS_ID" "\"$_line\" is not a name=value line."
+               return 2 ;;
+        esac
+        [ -n "$_recipe" ] || continue
+        _key="${_line%%=*}"
+        _value="${_line#*=}"
+        case "$_declared" in
+            *" $_key "*) ;;
+            *) "$dialog" "$_uuid" "$BOXES_NI_STATUS_ID" "The recipe has no input or parameter named \"$_key\"."
+               return 2 ;;
+        esac
+        case "$_inputs" in
+            *" $_key "*)
+                case "$_value" in
+                    "~/"*) _value="$HOME/${_value#"~/"}" ;;
+                esac
+                if [ -z "$_value" ]; then
+                    "$dialog" "$_uuid" "$BOXES_NI_STATUS_ID" "The recipe input $_key needs a file."
+                    return 2
+                fi
+                set -- "$@" "input:$_key=$_value" ;;
+            *)
+                case "$_required" in
+                    *" $_key "*)
+                        if [ -z "$_value" ]; then
+                            "$dialog" "$_uuid" "$BOXES_NI_STATUS_ID" "The recipe parameter $_key needs a value."
+                            return 2
+                        fi ;;
+                esac
+                set -- "$@" "set:$_key=$_value" ;;
+        esac
+    done <<VALUES
+$OMC_ACTIONUI_VIEW_741_VALUE
+VALUES
+    "$dialog" "$_uuid" "$BOXES_NI_STATUS_ID" "Starting the build..."
+    boxes_ni_job="$(agentvm_image_create_job "$_name" "$_kind" "$_source" "$_recipe" \
+        "$OMC_ACTIONUI_VIEW_730_VALUE" "$OMC_ACTIONUI_VIEW_731_VALUE" "$OMC_ACTIONUI_VIEW_732_VALUE" "$@")"
+    local _status=$?
+    if [ "$_status" -ne 0 ]; then
+        "$dialog" "$_uuid" "$BOXES_NI_STATUS_ID" "$(agentvm_last_error "$_status")"
+        return "$_status"
+    fi
+    return 0
+}
+
+# boxes_ni_forget <uuid>  ->  the window's pasteboard lists, when it closes.
+boxes_ni_forget() {
+    "$pasteboard" "$(boxes_key cadabra_boxes_ni_images "$1")" set ""
+    "$pasteboard" "$(boxes_key cadabra_boxes_ni_recipes "$1")" set ""
 }
