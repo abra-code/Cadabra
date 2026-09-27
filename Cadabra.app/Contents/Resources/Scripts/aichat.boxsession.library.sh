@@ -183,7 +183,9 @@ boxsession_meta_fields() {
 #   Box s3, project read-only - 4 hosts reached, 2 refused
 # Its tooltip names the hosts. The counts cover the connections of every program in the box
 # since the agent started, from agent-vm's network log; the chat entry handler refreshes them
-# in the background after each message. The window's pasteboard key aichatv2_boxline_<window>
+# in the background after each message. The line also counts the macOS permission prompts those
+# programs met (" - 1 permission prompt", from the exec log), and the refresh that first finds
+# one tells the user in an alert. The window's pasteboard key aichatv2_boxline_<window>
 # holds what the refreshes need: box TAB since TAB the line's first part.
 # The line's text is set as the Label's value, not with omc_set_property title: a Label shows its
 # value, which ActionUI seeds from the title once, at insertion, so a later title change is not
@@ -194,6 +196,9 @@ boxsession_line_id=544
 # every session it served (up to 64 MB). agent-vm itself still reads the whole log, but the rows
 # converted and counted here stay few; the most _agentvm_need_count accepts.
 boxsession_line_netlog_last=999
+# How many of the exec log's last runs a refresh reads for permission prompts. The agent is one
+# long run; the programs it starts in the box are not runs of their own.
+boxsession_line_execlog_last=200
 # How many host names the tooltip lists of each kind.
 boxsession_line_hosts_shown=6
 
@@ -227,6 +232,7 @@ boxsession_line_show() {
         _head="Box $2"
     fi
     pb_set "aichatv2_boxline_$1" "$2$boxsession_tab$_since$boxsession_tab$_head"
+    pb_set "aichatv2_boxprompts_$1" ""
     "$dialog" "$1" "$boxsession_line_id" omc_remove_element 2>/dev/null
     "$dialog" "$1" "$boxsession_line_slot_id" omc_insert_element "{\"type\":\"Label\",\"id\":$boxsession_line_id,\"properties\":{\"title\":\"\",\"systemImage\":\"shippingbox\",\"font\":\"footnote\",\"foregroundStyle\":\"secondary\",\"padding\":{\"top\":0,\"leading\":14,\"bottom\":6,\"trailing\":14},\"frame\":{\"maxWidth\":\"infinity\",\"alignment\":\"leading\"}}}"
     "$dialog" "$1" "$boxsession_line_id" "$_head - no connections yet"
@@ -282,9 +288,94 @@ _boxsession_hosts_text() {
     }'
 }
 
-# boxsession_line_refresh <window>  ->  0. Restates the line from the box's network log. Nothing
-# for a window without a line. A log that cannot be read says so on the line, with agent-vm's
-# reason in the tooltip.
+# boxsession_prompts <box> <since>  ->  the macOS permission prompts programs in the box met
+# since <since>, from agent-vm's exec log, each once, in the order met: what (agent-vm's words:
+# "the Downloads folder", "a Keychain item") TAB whether agent-vm stopped the program (true or
+# false). Nobody can answer such a prompt inside a box. agent-vm's status on failure, with its
+# reason left for agentvm_last_error.
+boxsession_prompts() {
+    local _rows
+    _rows="$(agentvm_execlog "$1" "$boxsession_line_execlog_last")"
+    local _status=$?
+    if [ "$_status" -ne 0 ]; then
+        return "$_status"
+    fi
+    printf '%s\n' "$_rows" | /usr/bin/awk -F'\t' -v since="$2" '
+        NF == 0 || $1 < since || $5 == "-" { next }
+        {
+            n = split($5, what, "; ")
+            for (i = 1; i <= n; i++) {
+                if (what[i] == "" || (what[i] in seen)) continue
+                seen[what[i]] = 1
+                print what[i] "\t" $6
+            }
+        }'
+}
+
+# _boxsession_prompt_notice <window> <box> <prompts>  ->  0. Tells the user, once per prompt
+# and window, that a program in the box met a permission prompt: the lines of boxsession_prompts
+# whose prompt is not among those already told, kept tab-joined in aichatv2_boxprompts_<window>.
+# Kept by name, not by count: the list is in the order the runs started, so a new prompt of an
+# earlier run (the agent's, when another program ran in the box since) lands before prompts
+# already told. They are stored before the alert, which waits for OK, so the next refresh does
+# not tell them again.
+_boxsession_prompt_notice() {
+    local _told="$(pb_get "aichatv2_boxprompts_$1")"
+    local _new="$(printf '%s\n' "$3" | _told="$_told" /usr/bin/awk -F'\t' '
+        BEGIN { n = split(ENVIRON["_told"], list, "\t"); for (i = 1; i <= n; i++) told[list[i]] = 1 }
+        NF > 0 && !($1 in told) { told[$1] = 1; print }')"
+    if [ -z "$_new" ]; then
+        return 0
+    fi
+    local _names="$(printf '%s\n' "$_new" | /usr/bin/awk -F'\t' '{ text = text (NR > 1 ? "\t" : "") $1 } END { print text }')"
+    pb_set "aichatv2_boxprompts_$1" "$_told${_told:+$boxsession_tab}$_names"
+    local _what="$(printf '%s\n' "$_new" | /usr/bin/awk -F'\t' '{ text = text (NR > 1 ? ", " : "") $1 } END { print text }')"
+    local _stopped="$(printf '%s\n' "$_new" | /usr/bin/awk -F'\t' '$2 == "true" { s = 1 } END { print (s ? "yes" : "no") }')"
+    local _boxes
+    _boxes="$(agentvm_boxes)"
+    local _status=$?
+    if [ "$_status" -ne 0 ]; then
+        agentvm_last_error "$_status" >/dev/null
+        _boxes=""
+    fi
+    local _image="$(printf '%s\n' "$_boxes" | /usr/bin/awk -F'\t' -v box="$2" '$1 == box { print $3; exit }')"
+    local _outcome
+    if [ "$_stopped" = "yes" ]; then
+        _outcome="Nobody can answer that prompt inside the box, so agent-vm stopped the program. The agent may report that a command failed."
+    else
+        _outcome="Nobody can answer that prompt inside the box, so the program may wait until it is answered on the box's screen (Tools > AgentVM, Boxes, View and Control)."
+    fi
+    # The advice agent-vm itself gives: a Keychain dialog is avoided by logging in with the program
+    # inside the box, so the item is its own; any other prompt by Full Disk Access for the image.
+    local _kinds="$(printf '%s\n' "$_new" | /usr/bin/awk -F'\t' '$1 == "a Keychain item" { k = 1; next } { o = 1 } END { print (k ? "k" : "") (o ? "o" : "") }')"
+    local _fix=""
+    case "$_kinds" in
+        *o*)
+            if [ -n "$_image" ] && [ "$_image" != "-" ]; then
+                _fix="To let programs in boxes use protected folders, give the image $_image Full Disk Access: Tools > AgentVM, Images, then the Full Disk Access... button. A box made before that keeps the access it had."
+            else
+                _fix="To let programs in boxes use protected folders, give the box's image Full Disk Access: Tools > AgentVM, Images, then the Full Disk Access... button. A box made before that keeps the access it had."
+            fi ;;
+    esac
+    case "$_kinds" in
+        *k*)
+            _fix="${_fix}${_fix:+
+
+}A Keychain item belongs to the program that made it. Log in with the agent inside a kept box (Select ACP Agent, Keys..., then Log in inside the box), so the item is its own and nobody is asked." ;;
+    esac
+    "$alert" --level caution --title "$APPLET_NAME" --ok "OK" \
+        "A program in box $2 needed macOS permission to use $_what.
+
+$_outcome
+
+$_fix"
+    return 0
+}
+
+# boxsession_line_refresh <window>  ->  0. Restates the line from the box's network log, and
+# the permission prompts its programs met from its exec log, telling the user of a new prompt
+# once. Nothing for a window without a line. A network log that cannot be read says so on the
+# line, with agent-vm's reason in the tooltip; an exec log that cannot be read adds nothing.
 boxsession_line_refresh() {
     local _stamp="$(pb_get "aichatv2_boxline_$1")"
     if [ -z "$_stamp" ]; then
@@ -294,20 +385,47 @@ boxsession_line_refresh() {
     local _rest="${_stamp#*"$boxsession_tab"}"
     local _since="${_rest%%"$boxsession_tab"*}"
     local _head="${_rest#*"$boxsession_tab"}"
+    local _tail _help
     local _counts
     _counts="$(boxsession_net_counts "$_box" "$_since")"
     local _status=$?
     if [ "$_status" -ne 0 ] || [ -z "$_counts" ]; then
-        local _why="$(agentvm_last_error "$_status")"
-        "$dialog" "$1" "$boxsession_line_id" "$_head - network log unavailable"
-        "$dialog" "$1" "$boxsession_line_id" omc_set_property help "$_why"
-        return 0
+        _tail="network log unavailable"
+        _help="$(agentvm_last_error "$_status")"
+    else
+        _boxsession_net_text "$_box" "$_counts"
     fi
+    local _prompts
+    _prompts="$(boxsession_prompts "$_box" "$_since")"
+    _status=$?
+    if [ "$_status" -ne 0 ]; then
+        agentvm_last_error "$_status" >/dev/null
+        _prompts=""
+    fi
+    local _prompt_count="$(printf '%s\n' "$_prompts" | /usr/bin/awk 'NF > 0 { n++ } END { print n + 0 }')"
+    if [ "$_prompt_count" = "1" ]; then
+        _tail="$_tail - 1 permission prompt"
+    elif [ "$_prompt_count" != "0" ]; then
+        _tail="$_tail - $_prompt_count permission prompts"
+    fi
+    if [ "$_prompt_count" != "0" ]; then
+        _help="Permission prompts nobody in the box could answer: $(printf '%s\n' "$_prompts" | /usr/bin/awk -F'\t' 'NF > 0 { text = text (text == "" ? "" : ", ") $1 } END { print text }')$boxsession_newline$_help"
+    fi
+    "$dialog" "$1" "$boxsession_line_id" "$_head - $_tail"
+    "$dialog" "$1" "$boxsession_line_id" omc_set_property help "$_help"
+    if [ "$_prompt_count" != "0" ]; then
+        _boxsession_prompt_notice "$1" "$_box" "$_prompts"
+    fi
+    return 0
+}
+
+# _boxsession_net_text <box> <boxsession_net_counts row>  ->  sets _tail and _help, the caller's
+# locals, to the network part of the line and its tooltip.
+_boxsession_net_text() {
     local _reached _refused _failed _reached_hosts _refused_hosts _failed_hosts _partial
     IFS="$boxsession_tab" read -r _reached _refused _failed _reached_hosts _refused_hosts _failed_hosts _partial <<EOF
-$_counts
+$2
 EOF
-    local _tail
     if [ "$_reached" = "0" ] && [ "$_refused" = "0" ] && [ "$_failed" = "0" ]; then
         _tail="no connections yet"
     elif [ "$_reached" = "0" ]; then
@@ -323,7 +441,7 @@ EOF
     if [ "$_failed" != "0" ]; then
         _tail="$_tail, $_failed failed"
     fi
-    local _help=""
+    _help=""
     local _part _line
     for _part in "Reached|$_reached_hosts" "Refused|$_refused_hosts" "Failed|$_failed_hosts"; do
         _line="$(_boxsession_hosts_text "${_part%%|*}" "${_part#*|}")"
@@ -331,14 +449,11 @@ EOF
             _help="$_help$_line$boxsession_newline"
         fi
     done
-    _help="${_help}Counted for every program in box $_box since the agent started, as each connection ends (one still open, such as the agent's own to its model provider, is counted when it closes)"
+    _help="${_help}Counted for every program in box $1 since the agent started, as each connection ends (one still open, such as the agent's own to its model provider, is counted when it closes)"
     if [ "$_partial" = "yes" ]; then
         _help="$_help, over its last $boxsession_line_netlog_last connections"
     fi
-    _help="$_help. Programs in the box reach only the hosts its rules allow; agent-vm box netlog $_box --denied lists the refused ones."
-    "$dialog" "$1" "$boxsession_line_id" "$_head - $_tail"
-    "$dialog" "$1" "$boxsession_line_id" omc_set_property help "$_help"
-    return 0
+    _help="$_help. Programs in the box reach only the hosts its rules allow; agent-vm box netlog $1 --denied lists the refused ones."
 }
 
 # boxsession_box_users <box>  ->  how many rows name the box.
@@ -525,6 +640,7 @@ boxsession_release() {
     # The box line has nothing left to count for this window; a refresh started after this finds
     # no stamp and does nothing.
     pb_set "aichatv2_boxline_$1" ""
+    pb_set "aichatv2_boxprompts_$1" ""
     local _box="$(printf '%s\n' "$_row" | /usr/bin/cut -f2)"
     local _disposable="$(printf '%s\n' "$_row" | /usr/bin/cut -f3)"
     if [ "$_disposable" != "yes" ]; then

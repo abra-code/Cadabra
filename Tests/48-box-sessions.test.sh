@@ -571,4 +571,112 @@ check "a message does"                 "Box b1 - 2 hosts reached, 1 refused, 1 f
 cad_pb_set "aichatv2_boxline_$win" ""
 cad_pb_set "aichatv2_session_$win" ""
 
+section "the box line counts the permission prompts its programs met, and tells of a new one once"
+# execlog_fixture [stopped]  ->  an exec log: a run before the agent started (a prompt not
+# counted), the agent's run with two prompts, and a later run meeting one of them again.
+execlog_fixture() {
+    /bin/cat > "$FAKE_AGENTVM_DIR/execlog.json" <<JSONEOF
+[
+  {"argv": ["/usr/bin/true"], "id": "a0", "prompts": ["the Desktop folder"], "started": "2026-09-27T09:00:00Z", "status": 0, "user": "agent"},
+  {"argv": ["claude-agent-acp"], "id": "a1", "prompts": ["the Downloads folder", "a Keychain item"], "started": "2026-09-27T10:00:30Z", "stoppedOnPrompt": ${1:-true}, "user": "agent"},
+  {"argv": ["/bin/ls"], "id": "a2", "prompts": ["the Downloads folder"], "started": "2026-09-27T10:02:00Z", "status": 1, "user": "agent"}
+]
+JSONEOF
+}
+PBOX=cadabra-spike
+fake_reset
+/bin/cp "$FIXTURES/box-status-ready.json" "$FAKE_AGENTVM_DIR/box-$PBOX.json"
+netlog_fixture
+execlog_fixture
+check "the prompts since the agent started, each once, in order, with whether the program was stopped" \
+    "the Downloads folder${TAB}true
+a Keychain item${TAB}true" "$(with_fake boxsession_prompts "$PBOX" "$since")"
+check "  read from the exec log's last runs" "1" "$(cad_has "$(logged 'box execlog')" "box execlog $PBOX --last 200")"
+cad_pb_set aichatv2_boxline_w1 "$PBOX${TAB}$since${TAB}Box $PBOX"
+cad_pb_set aichatv2_boxprompts_w1 ""
+cad_journal_reset
+alerts_reset
+with_fake boxsession_line_refresh w1
+check "the line counts them" "Box $PBOX - 2 hosts reached, 1 refused, 1 failed - 2 permission prompts" "$(line_title)"
+check "  and the tooltip names them first" "1" "$(cad_has "$(line_help)" 'Permission prompts nobody in the box could answer: the Downloads folder, a Keychain item Reached: api.anthropic.com')"
+check "an alert tells of them"           "1" "$(alerts_count)"
+check "  naming what they were for"      "1" "$(alerts_mention 'needed macOS permission to use the Downloads folder, a Keychain item')"
+check "  that agent-vm stopped the program" "1" "$(alerts_mention 'so agent-vm stopped the program')"
+check "  and the image to give Full Disk Access" "1" "$(alerts_mention 'give the image dev-agents Full Disk Access')"
+check "  and, for the Keychain item, logging in inside a kept box" "1" "$(alerts_mention 'Log in with the agent inside a kept box')"
+with_fake boxsession_line_refresh w1
+check "the next refresh tells nothing again" "1" "$(alerts_count)"
+check "  and still counts them"          "1" "$(cad_has "$(line_title)" '- 2 permission prompts')"
+/bin/cat > "$FAKE_AGENTVM_DIR/execlog.json" <<'JSONEOF'
+[
+  {"argv": ["claude-agent-acp"], "id": "a1", "prompts": ["the Downloads folder", "a Keychain item", "the microphone"], "started": "2026-09-27T10:00:30Z", "user": "agent"}
+]
+JSONEOF
+alerts_reset
+with_fake boxsession_line_refresh w1
+check "a new prompt is told"             "1" "$(alerts_count)"
+check "  alone"                          "1|0" "$(alerts_mention 'permission to use the microphone.')|$(alerts_mention 'Downloads')"
+check "  and a program not stopped may still wait" "1" "$(alerts_mention 'the program may wait until it is answered')"
+check "  with no Keychain advice for a prompt that is not one" "1|0" "$(alerts_mention 'Full Disk Access')|$(alerts_mention 'Keychain item belongs')"
+/bin/cat > "$FAKE_AGENTVM_DIR/execlog.json" <<'JSONEOF'
+[
+  {"argv": ["claude-agent-acp"], "id": "a1", "prompts": ["the Downloads folder", "a Keychain item", "the microphone"], "started": "2026-09-27T10:00:30Z", "user": "agent"},
+  {"argv": ["/bin/ls"], "id": "a3", "prompts": ["the Documents folder"], "started": "2026-09-27T10:05:00Z", "status": 1, "user": "agent"}
+]
+JSONEOF
+alerts_reset
+with_fake boxsession_line_refresh w1
+check "a later run's prompt is told"     "1|1" "$(alerts_count)|$(alerts_mention 'permission to use the Documents folder.')"
+/bin/cat > "$FAKE_AGENTVM_DIR/execlog.json" <<'JSONEOF'
+[
+  {"argv": ["claude-agent-acp"], "id": "a1", "prompts": ["the Downloads folder", "a Keychain item", "the microphone", "the camera"], "started": "2026-09-27T10:00:30Z", "stoppedOnPrompt": true, "user": "agent"},
+  {"argv": ["/bin/ls"], "id": "a3", "prompts": ["the Documents folder"], "started": "2026-09-27T10:05:00Z", "status": 1, "user": "agent"}
+]
+JSONEOF
+alerts_reset
+with_fake boxsession_line_refresh w1
+check "then a new prompt of an earlier run is told, listed before it" "1|1|0" \
+    "$(alerts_count)|$(alerts_mention 'permission to use the camera.')|$(alerts_mention 'Documents')"
+check "  with that run stopped"          "1" "$(alerts_mention 'so agent-vm stopped the program')"
+check "  and every prompt told is kept"  "5" "$(cad_pb_get aichatv2_boxprompts_w1 | /usr/bin/awk -F'\t' '{ print NF }')"
+/bin/cat > "$FAKE_AGENTVM_DIR/execlog.json" <<'JSONEOF'
+[
+  {"argv": ["claude-agent-acp"], "id": "a1", "prompts": ["a Keychain item"], "started": "2026-09-27T10:00:30Z", "stoppedOnPrompt": true, "user": "agent"}
+]
+JSONEOF
+cad_pb_set aichatv2_boxprompts_w1 ""
+alerts_reset
+with_fake boxsession_line_refresh w1
+check "a Keychain prompt alone gets the login advice only" "1|0" "$(alerts_mention 'Keychain item belongs')|$(alerts_mention 'Full Disk Access')"
+fake_reset
+/bin/cp "$FIXTURES/box-status-ready.json" "$FAKE_AGENTVM_DIR/box-$PBOX.json"
+netlog_fixture
+printf '[]\n' > "$FAKE_AGENTVM_DIR/execlog.json"
+cad_pb_set aichatv2_boxprompts_w1 ""
+cad_journal_reset
+alerts_reset
+with_fake boxsession_line_refresh w1
+check "no prompt: nothing on the line"   "Box $PBOX - 2 hosts reached, 1 refused, 1 failed" "$(line_title)"
+check "  and no alert"                   "0" "$(alerts_count)"
+execlog_fixture
+printf 'the exec log is damaged\n' > "$FAKE_AGENTVM_DIR/fail-box-execlog"
+cad_journal_reset
+with_fake boxsession_line_refresh w1
+/bin/rm -f "$FAKE_AGENTVM_DIR/fail-box-execlog"
+check "an exec log agent-vm cannot give leaves the network part" "Box $PBOX - 2 hosts reached, 1 refused, 1 failed" "$(line_title)"
+check "  with no alert"                  "0" "$(alerts_count)"
+printf '1\n' > "$FAKE_AGENTVM_DIR/exit"
+cad_journal_reset
+with_fake boxsession_line_refresh w1
+/bin/rm -f "$FAKE_AGENTVM_DIR/exit"
+check "neither log: the line says the network log is unavailable" "Box $PBOX - network log unavailable" "$(line_title)"
+cad_pb_set aichatv2_boxprompts_w1 "2"
+printf 'w1\t%s\tno\t%s\tno\t1\n' "$PBOX" "$PROJECT" > "$REGISTRY"
+with_fake boxsession_line_show w1 "$PBOX"
+check "a new line forgets the prompts told" "" "$(cad_pb_get aichatv2_boxprompts_w1)"
+cad_pb_set aichatv2_boxprompts_w1 "2"
+with_fake boxsession_release w1
+check "  and so does a release"          "" "$(cad_pb_get aichatv2_boxprompts_w1)"
+/bin/rm -f "$REGISTRY"
+
 omctest_end
