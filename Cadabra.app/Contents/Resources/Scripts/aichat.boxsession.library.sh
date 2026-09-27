@@ -85,7 +85,7 @@ _boxsession_rewrite() {
     _boxsession_lock
     local _status=$?
     if [ "$_status" -ne 0 ]; then
-        _agentvm_refuse 1 "The box session list ($_file) is locked by another Cadabra task, or its folder cannot be written."
+        _agentvm_refuse 1 "The AgentVM box session list ($_file) is locked by another Cadabra task, or its folder cannot be written."
         return 1
     fi
     local _tmp="$_file.tmp.$$"
@@ -102,7 +102,7 @@ _boxsession_rewrite() {
     /bin/rm -f "$_tmp"
     _boxsession_unlock
     if [ "$_status" -ne 0 ]; then
-        _agentvm_refuse 1 "The box session list ($_file) could not be rewritten."
+        _agentvm_refuse 1 "The AgentVM box session list ($_file) could not be rewritten."
         return 1
     fi
     return 0
@@ -127,7 +127,7 @@ boxsession_registry_add() {
     for _field in "$@"; do
         case "$_field" in
             *"$boxsession_tab"*|*"$boxsession_newline"*)
-                _agentvm_refuse 2 "A tab or a line break cannot be part of a box session's window, box or project."
+                _agentvm_refuse 2 "A tab or a line break cannot be part of an AgentVM box session's window, box or project."
                 return 2 ;;
         esac
     done
@@ -212,10 +212,10 @@ boxsession_line_head() {
     fi
     printf '%s\n' "$_fields" | /usr/bin/awk -F'\t' '{
         if ($3 == "yes") {
-            head = "Disposable box " $1
+            head = "Disposable AgentVM box " $1
             if ($2 != "-") head = head " from " $2
         } else {
-            head = "Box " $1
+            head = "AgentVM box " $1
         }
         if ($5 == "yes") head = head ", project read-only"
         print head
@@ -229,14 +229,14 @@ boxsession_line_show() {
     local _since="$(/bin/date -u +%Y-%m-%dT%H:%M:%SZ)"
     local _head="$(boxsession_line_head "$1")"
     if [ -z "$_head" ]; then
-        _head="Box $2"
+        _head="AgentVM box $2"
     fi
     pb_set "aichatv2_boxline_$1" "$2$boxsession_tab$_since$boxsession_tab$_head"
     pb_set "aichatv2_boxprompts_$1" ""
     "$dialog" "$1" "$boxsession_line_id" omc_remove_element 2>/dev/null
     "$dialog" "$1" "$boxsession_line_slot_id" omc_insert_element "{\"type\":\"Label\",\"id\":$boxsession_line_id,\"properties\":{\"title\":\"\",\"systemImage\":\"shippingbox\",\"font\":\"footnote\",\"foregroundStyle\":\"secondary\",\"padding\":{\"top\":0,\"leading\":14,\"bottom\":6,\"trailing\":14},\"frame\":{\"maxWidth\":\"infinity\",\"alignment\":\"leading\"}}}"
     "$dialog" "$1" "$boxsession_line_id" "$_head - no connections yet"
-    "$dialog" "$1" "$boxsession_line_id" omc_set_property help "Programs in the box reach only the hosts its rules allow. The counts start when the agent does."
+    "$dialog" "$1" "$boxsession_line_id" omc_set_property help "Programs in the AgentVM box reach only the hosts its rules allow. The counts start when the agent does."
 }
 
 # boxsession_net_counts <box> <since>  ->  one row from the box's network log since <since> (an
@@ -361,10 +361,10 @@ _boxsession_prompt_notice() {
         *k*)
             _fix="${_fix}${_fix:+
 
-}A Keychain item belongs to the program that made it. Log in with the agent inside a kept box (Select ACP Agent, Keys..., then Log in inside the box), so the item is its own and nobody is asked." ;;
+}A Keychain item belongs to the program that made it. Log in with the agent inside a kept box (Select ACP Agent, Keys..., then Log in inside the AgentVM box), so the item is its own and nobody is asked." ;;
     esac
     "$alert" --level caution --title "$APPLET_NAME" --ok "OK" \
-        "A program in box $2 needed macOS permission to use $_what.
+        "A program in AgentVM box $2 needed macOS permission to use $_what.
 
 $_outcome
 
@@ -409,7 +409,7 @@ boxsession_line_refresh() {
         _tail="$_tail - $_prompt_count permission prompts"
     fi
     if [ "$_prompt_count" != "0" ]; then
-        _help="Permission prompts nobody in the box could answer: $(printf '%s\n' "$_prompts" | /usr/bin/awk -F'\t' 'NF > 0 { text = text (text == "" ? "" : ", ") $1 } END { print text }')$boxsession_newline$_help"
+        _help="Permission prompts nobody in the AgentVM box could answer: $(printf '%s\n' "$_prompts" | /usr/bin/awk -F'\t' 'NF > 0 { text = text (text == "" ? "" : ", ") $1 } END { print text }')$boxsession_newline$_help"
     fi
     "$dialog" "$1" "$boxsession_line_id" "$_head - $_tail"
     "$dialog" "$1" "$boxsession_line_id" omc_set_property help "$_help"
@@ -449,7 +449,7 @@ EOF
             _help="$_help$_line$boxsession_newline"
         fi
     done
-    _help="${_help}Counted for every program in box $1 since the agent started, as each connection ends (one still open, such as the agent's own to its model provider, is counted when it closes)"
+    _help="${_help}Counted for every program in AgentVM box $1 since the agent started, as each connection ends (one still open, such as the agent's own to its model provider, is counted when it closes)"
     if [ "$_partial" = "yes" ]; then
         _help="$_help, over its last $boxsession_line_netlog_last connections"
     fi
@@ -530,7 +530,7 @@ $_rules
 EOF
             agentvm_box_create "$_box" "$_image" "" "" allowlist yes "$@" || return $? ;;
         *)
-            _agentvm_refuse 2 "\"$_run_in\" is not a box choice: box:<name> or new:<image>."
+            _agentvm_refuse 2 "\"$_run_in\" is not an AgentVM box choice: box:<name> or new:<image>."
             return 2 ;;
     esac
     boxsession_registry_add "$_window" "$_box" "$_disposable" "$_project" "$_read_only" || return $?

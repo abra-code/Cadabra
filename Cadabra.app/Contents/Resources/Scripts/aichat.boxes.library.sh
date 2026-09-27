@@ -945,7 +945,7 @@ boxes_ni_init() {
     fi
 }
 
-# boxes_ni_source <uuid> <1|2>  ->  enables the restore-image field (1) or the base picker (2).
+# boxes_ni_source <uuid> <1|2>  ->  enables the restore file field (1) or the base picker (2).
 boxes_ni_source() {
     if [ "$2" = "2" ]; then
         "$dialog" "$1" "$BOXES_NI_IPSW_ID" omc_disable
@@ -1064,7 +1064,7 @@ boxes_ni_create() {
         _kind=ipsw
         _source="$_ipsw"
         if [ -z "$_source" ]; then
-            "$dialog" "$_uuid" "$BOXES_NI_STATUS_ID" "Choose a macOS restore image (.ipsw)."
+            "$dialog" "$_uuid" "$BOXES_NI_STATUS_ID" "Choose a macOS restore file (.ipsw)."
             return 2
         fi
     fi

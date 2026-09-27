@@ -171,9 +171,9 @@ EOF
 
     "$dialog" "$_uuid" omc_window "Keys for $_label"
     if [ -n "$_keys" ]; then
-        "$dialog" "$_uuid" "$KEYS_INTRO_ID" markdown "**$_label** can use one of these keys in a box. AgentVM keeps them in your login Keychain by variable name, so agents that use the same variable share one key."
+        "$dialog" "$_uuid" "$KEYS_INTRO_ID" markdown "**$_label** can use one of these keys in an AgentVM box. AgentVM keeps them in your login Keychain by variable name, so agents that use the same variable share one key."
     else
-        "$dialog" "$_uuid" "$KEYS_INTRO_ID" markdown "Cadabra knows no key **$_label** takes. It can still log in inside a kept box."
+        "$dialog" "$_uuid" "$KEYS_INTRO_ID" markdown "Cadabra knows no key **$_label** takes. It can still log in inside a kept AgentVM box."
     fi
     printf '%s' "$_rows" | "$dialog" "$_uuid" "$KEYS_TABLE_ID" omc_table_set_rows_from_stdin
     "$dialog" "$_uuid" "$KEYS_TABLE_ID" omc_deselect
@@ -202,7 +202,7 @@ keys_paint_login() {
         box:?*)
             local _box="${keys_run_in#box:}"
             if agentvm_valid_name "$_box"; then
-                _text="Opens Terminal with a shell in the kept box $_box, starting the box first if it is stopped. A login made there stays in $_box for later sessions."
+                _text="Opens Terminal with a shell in the kept AgentVM box $_box, starting the box first if it is stopped. A login made there stays in $_box for later sessions."
                 if [ -n "$_hint" ]; then
                     _text="$_text In the shell: $_hint"
                 fi
@@ -212,7 +212,7 @@ keys_paint_login() {
                 return 0
             fi ;;
         new:?*)
-            _text="The agent runs in a new disposable box for each conversation, and a login made in one is deleted with it. To log in, choose a kept box in Runs in, or make one in Tools > AgentVM." ;;
+            _text="The agent runs in a new disposable AgentVM box for each conversation, and a login made in one is deleted with it. To log in, choose a kept box in Runs in, or make one in Tools > AgentVM." ;;
         *)
             _text="The agent runs on this Mac, where it uses its own login." ;;
     esac

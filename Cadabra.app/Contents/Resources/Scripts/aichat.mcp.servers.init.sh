@@ -108,15 +108,15 @@ pb_set "aichatv2_toolsbox_${window_uuid}" "$box_agent"
 if [ -n "$box_agent" ]; then
     run_in="$(acp_agent_run_in "$box_agent")"
     case "$run_in" in
-        box:?*) where="Runs in the kept box ${run_in#box:}" ;;
-        new:?*) where="Runs in a new disposable box from ${run_in#new:}" ;;
-        *)      where="Runs in a box whose setting cannot be read. Choose it again in Select ACP Agent." ;;
+        box:?*) where="Runs in the kept AgentVM box ${run_in#box:}" ;;
+        new:?*) where="Runs in a new disposable AgentVM box from ${run_in#new:}" ;;
+        *)      where="Runs in an AgentVM box whose setting cannot be read. Choose it again in Select ACP Agent." ;;
     esac
     case "$(acp_agent_read_only "$box_agent")" in
         yes) read_only=true ;;
         *)   read_only=false ;;
     esac
-    "$dialog" "$window_uuid" $PROJECT_NOTE_ID "The folder shared with the box, at the same path. The agent works on it there."
+    "$dialog" "$window_uuid" $PROJECT_NOTE_ID "The folder shared with the AgentVM box, at the same path. The agent works on it there."
     "$dialog" "$window_uuid" $SERVERS_AREA_ID omc_hide
     "$dialog" "$window_uuid" $RESET_BTN_ID omc_hide
     "$dialog" "$window_uuid" $BOX_WHERE_TEXT_ID "$where"

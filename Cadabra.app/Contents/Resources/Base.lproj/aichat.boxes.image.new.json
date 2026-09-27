@@ -10,7 +10,7 @@
     {
       "type": "Text",
       "properties": {
-        "text": "An image is a macOS installation that boxes are made from. Install macOS from a restore image, or add tools to an image you have, with a recipe. The build runs on after this window closes; the AgentVM window shows its progress.",
+        "text": "An image is a macOS installation that boxes are made from. Make one from a macOS restore file, or add tools to an existing AgentVM image with a recipe. The build runs on after this window closes; the AgentVM window shows its progress.",
         "font": "callout",
         "foregroundStyle": "secondary",
         "frame": { "maxWidth": "infinity", "alignment": "leading" }
@@ -21,12 +21,12 @@
       "properties": { "frame": { "maxWidth": "infinity" } },
       "children": [
         { "type": "TextField", "id": 700, "properties": { "title": "Name", "text": "", "prompt": "lower-case letters, digits, \".\", \"_\" and \"-\"" } },
-        { "type": "Picker", "id": 701, "properties": { "title": "Start from", "options": ["A restore image", "An existing image"], "pickerStyle": "segmented", "actionID": "aichat.boxes.image.new.source.changed" } },
+        { "type": "Picker", "id": 701, "properties": { "title": "Start from", "options": ["A macOS restore file", "An existing AgentVM image"], "pickerStyle": "menu", "actionID": "aichat.boxes.image.new.source.changed" } },
         {
           "type": "HStack",
           "properties": { "spacing": 8 },
           "children": [
-            { "type": "TextField", "id": 711, "properties": { "title": "Restore image", "text": "", "prompt": "a macOS .ipsw file" } },
+            { "type": "TextField", "id": 711, "properties": { "title": "macOS restore file", "text": "", "prompt": "an .ipsw file" } },
             { "type": "Button", "id": 712, "properties": { "title": "Choose...", "actionID": "aichat.boxes.image.new.ipsw.browse" } }
           ]
         },

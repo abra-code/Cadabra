@@ -142,7 +142,7 @@ chat_engine_box_transport() {
 	if [ "$available_status" -ne 0 ]; then
 		echo "box: agent-vm unavailable: $unavailable"
 		"$alert" --level "stop" --title "$APPLET_NAME" --ok "OK" \
-			"This agent is set to run in a box, and boxes cannot be used here.
+			"This agent is set to run in an AgentVM box, and boxes cannot be used here.
 
 $unavailable"
 		return 1
@@ -155,7 +155,7 @@ $unavailable"
 	if [ -z "$project" ] || [ ! -d "$project" ]; then
 		echo "box: no usable project folder (${project:-none})"
 		"$alert" --level "stop" --title "$APPLET_NAME" --ok "OK" \
-			"This agent runs in a box, which works on one project folder shared with it.
+			"This agent runs in an AgentVM box, which works on one project folder shared with it.
 
 Choose the Project folder in Agentic Session Tools, then start the conversation again."
 		return 1
@@ -177,7 +177,7 @@ Choose the Project folder in Agentic Session Tools, then start the conversation 
 		*)
 			echo "box: read-only setting unreadable ($read_only)"
 			"$alert" --level "stop" --title "$APPLET_NAME" --ok "OK" \
-				"Could not start the agent in its box.
+				"Could not start the agent in its AgentVM box.
 
 Whether its project is shared read-only cannot be read from Cadabra's settings. Choose it again in Agentic Session Tools."
 			return 1 ;;
@@ -191,14 +191,14 @@ Whether its project is shared read-only cannot be read from Cadabra's settings. 
 			local why="$(agentvm_last_error "$secret_status")"
 			echo "box: key refused: $why"
 			"$alert" --level "stop" --title "$APPLET_NAME" --ok "OK" \
-				"Could not start the agent in its box.
+				"Could not start the agent in its AgentVM box.
 
 $why"
 			return 1
 		fi
 	fi
 
-	chat_loading_overlay_note "$win" "Starting the agent's box..."
+	chat_loading_overlay_note "$win" "Starting the AgentVM box..."
 	local box
 	box="$(boxsession_start "$win" "$run_in" "$agent" "$project" "$read_only")"
 	local box_status=$?
@@ -207,7 +207,7 @@ $why"
 		echo "box: start failed ($run_in, status $box_status): $why"
 		boxsession_release "$win"
 		"$alert" --level "stop" --title "$APPLET_NAME" --ok "OK" \
-			"Could not start the agent's box.
+			"Could not start the AgentVM box.
 
 $why"
 		return 1
@@ -220,7 +220,7 @@ $why"
 		echo "box: transport refused ($box, level $level): $why"
 		boxsession_release "$win"
 		"$alert" --level "stop" --title "$APPLET_NAME" --ok "OK" \
-			"Could not prepare the agent in its box.
+			"Could not prepare the agent in its AgentVM box.
 
 $why"
 		return 1

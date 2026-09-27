@@ -569,10 +569,10 @@ def _box_phrase(meta):
         return ""
     if box.get("disposable") is True:
         image = box.get("image")
-        phrase = ("Started in a disposable box from %s" % image) if isinstance(image, str) and image \
-            else "Started in a disposable box"
+        phrase = ("Started in a disposable AgentVM box from %s" % image) if isinstance(image, str) and image \
+            else "Started in a disposable AgentVM box"
     else:
-        phrase = "Started in box %s" % box["name"]
+        phrase = "Started in AgentVM box %s" % box["name"]
     if box.get("readOnly") is True:
         phrase += ", project read-only"
     return phrase

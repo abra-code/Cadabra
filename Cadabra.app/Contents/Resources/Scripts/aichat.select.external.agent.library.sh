@@ -360,7 +360,7 @@ agent_run_in_options() {
         found=yes
     fi
     if [ -n "$boxes" ]; then
-        json="$json"',{"section":"Kept boxes"}'
+        json="$json"',{"section":"Kept AgentVM boxes"}'
         while IFS= read -r name; do
             agentvm_valid_name "$name" || continue
             json="$json"',{"title":"'"$name"'","tag":"box:'"$name"'"}'
@@ -372,7 +372,7 @@ $boxes
 BOXES
     fi
     if [ -n "$images" ]; then
-        json="$json"',{"section":"New disposable box from"}'
+        json="$json"',{"section":"New disposable AgentVM box from"}'
         while IFS= read -r name; do
             agentvm_valid_name "$name" || continue
             json="$json"',{"title":"'"$name"'","tag":"new:'"$name"'"}'

@@ -68,7 +68,7 @@
               "properties": {
                 "title": "New Image...",
                 "controlSize": "small",
-                "help": "Install macOS from a restore image, or add tools to an image with a recipe",
+                "help": "Make an image from a macOS restore file, or add tools to an existing image with a recipe",
                 "actionID": "aichat.boxes.image.new"
               }
             },

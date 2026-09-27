@@ -113,7 +113,7 @@ if [ -z "$level" ] && [ "$in_box" = "no" ]; then
 fi
 case "$level" in
     free|ask|plan) ;;
-    *)  "$dialog_tool" "$window_uuid" $RESULT_TEXT_ID "Choose how much this agent asks in the box."
+    *)  "$dialog_tool" "$window_uuid" $RESULT_TEXT_ID "Choose how much this agent asks in the AgentVM box."
         exit 0 ;;
 esac
 if [ "$in_box" = "yes" ]; then

@@ -394,7 +394,7 @@ arm_launch "" "false"
 omc_run aichat.mcp.servers.init
 check "the servers and paths give way"   "0|1" "$(ui_visible "$MCP_SERVERS_AREA_ID")|$(ui_visible "$MCP_BOX_PANEL_ID")"
 check "  and so does Reset to Defaults"  "0" "$(ui_visible "$MCP_RESET_BTN_ID")"
-check "it says where the agent runs"     "Runs in a new disposable box from dev-agents" "$(ui_value "$MCP_BOX_WHERE_TEXT_ID")"
+check "it says where the agent runs"     "Runs in a new disposable AgentVM box from dev-agents" "$(ui_value "$MCP_BOX_WHERE_TEXT_ID")"
 check "  with the agent's read-only choice" "true" "$(ui_value "$MCP_BOX_READ_ONLY_TOGGLE_ID")"
 check "the window keeps the agent for Start" "claude-code-acp" "$(cad_pb_get "aichatv2_toolsbox_$OMC_ACTIONUI_WINDOW_UUID")"
 omc_control "$MCP_BOX_READ_ONLY_TOGGLE_ID" false
@@ -411,7 +411,7 @@ cad_call acp_agent_set_run_in claude-code-acp box:s3
 fresh_window
 arm_launch "" "false"
 omc_run aichat.mcp.servers.init
-check "a kept box"                       "Runs in the kept box s3" "$(ui_value "$MCP_BOX_WHERE_TEXT_ID")"
+check "a kept box"                       "Runs in the kept AgentVM box s3" "$(ui_value "$MCP_BOX_WHERE_TEXT_ID")"
 check "  shared read-write, as stored"   "false" "$(ui_value "$MCP_BOX_READ_ONLY_TOGGLE_ID")"
 # The other direction: the section above stores "no", which a Start that ignored the toggle
 # (or found it unset) would store too.
@@ -458,7 +458,7 @@ cad_call acp_agent_set_run_in claude-code-acp new:dev-agents
 fresh_window
 arm_launch "" "false"
 omc_run aichat.mcp.servers.init
-check "the caption names the share"      "1" "$(cad_has "$(ui_value "$MCP_PROJECT_NOTE_ID")" 'shared with the box')"
+check "the caption names the share"      "1" "$(cad_has "$(ui_value "$MCP_PROJECT_NOTE_ID")" 'shared with the AgentVM box')"
 cad_call acp_agent_set_run_in codex-acp box:s3
 cad_call acp_agent_store codex-acp "codex-acp"
 cad_call acp_agent_set_read_only codex-acp no

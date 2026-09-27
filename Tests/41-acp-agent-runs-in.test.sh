@@ -51,7 +51,7 @@ ui_reset
 omc_run aichat.select.external.agent.init
 check "the row is shown"                 "1" "$(ui_visible "$BOX_ROW_ID")"
 check "the places, grouped" \
-    "mac |Kept boxes box:cadabra-spike box:try1 |New disposable box from new:dev new:dev-agents new:dev-node new:dev-xcode new:dev-xcode-ios" \
+    "mac |Kept AgentVM boxes box:cadabra-spike box:try1 |New disposable AgentVM box from new:dev new:dev-agents new:dev-node new:dev-xcode new:dev-xcode-ios" \
     "$(options)"
 check "an agent with no choice runs on this Mac" "mac" "$(ui_value "$RUN_IN_PICKER_ID")"
 check "  with no level picker"           "0" "$(ui_visible "$LEVEL_PICKER_ID")"

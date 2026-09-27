@@ -24,14 +24,14 @@ if [ "$status" -ne 0 ]; then
 fi
 agent_label="$(keys_agent_label "$keys_agent")"
 if [ "$value" = "none" ]; then
-    keys_status "$window_uuid" "$agent_label gets no key in its box."
+    keys_status "$window_uuid" "$agent_label gets no key in its AgentVM box."
     exit 0
 fi
 label="$(keys_label_of "$keys_agent" "$value")"
 kept="$(agentvm_secrets 2>/dev/null | /usr/bin/awk -F'\t' -v name="$value" '$1 == name { print "yes"; exit }')"
 agentvm_last_error >/dev/null
 if [ -z "$kept" ]; then
-    keys_status "$window_uuid" "$agent_label gets $label in its box once its value is stored: select it above and paste it."
+    keys_status "$window_uuid" "$agent_label gets $label in its AgentVM box once its value is stored: select it above and paste it."
 else
-    keys_status "$window_uuid" "$agent_label gets $label in its box."
+    keys_status "$window_uuid" "$agent_label gets $label in its AgentVM box."
 fi

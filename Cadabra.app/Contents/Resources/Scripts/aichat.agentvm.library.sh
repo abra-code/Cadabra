@@ -850,11 +850,11 @@ agentvm_image_create_job() {
         ipsw)
             case "$_source" in
                 /*.ipsw) ;;
-                *) _agentvm_refuse 2 "The restore image must be the full path of an .ipsw file, not \"$_source\"."
+                *) _agentvm_refuse 2 "The macOS restore file must be the full path of an .ipsw file, not \"$_source\"."
                    return 2 ;;
             esac
             if [ ! -f "$_source" ]; then
-                _agentvm_refuse 2 "The restore image $_source does not exist."
+                _agentvm_refuse 2 "The macOS restore file $_source does not exist."
                 return 2
             fi
             set -- --ipsw "$_source" "$@" ;;

@@ -417,7 +417,7 @@ cad_call acp_agent_store claude-code-acp "claude-agent-acp"
 alerts_reset
 out=$(engine chat_engine_transport_config w1 external "" false "claude-agent-acp")
 check "  and does not run the agent on this Mac" "1|0" "$(printf '%s\n' "$out" | /usr/bin/head -1)|$(cad_has "$out" '"command"')"
-check "  saying why"                     "1" "$(alerts_mention 'not a box choice')"
+check "  saying why"                     "1" "$(alerts_mention 'not an AgentVM box choice')"
 cad_call acp_agent_set_run_in claude-code-acp mac
 
 section "the stored choice decides which path chat init takes"
@@ -491,9 +491,9 @@ cad_journal_reset
 out=$(engine chat_engine_box_transport w1 "claude-agent-acp" claude-code-acp new:dev false)
 box=$(col 2 < "$REGISTRY")
 check "chat init puts the line into its slot" "1" "$(cad_has "$(cad_journal 543)" 'omc_insert_element {"type":"Label","id":544')"
-check "  naming the disposable box and its image" "Disposable box $box from dev - no connections yet" "$(line_title)"
+check "  naming the disposable box and its image" "Disposable AgentVM box $box from dev - no connections yet" "$(line_title)"
 check "  as the Label's value, which is what it shows" "0" "$(cad_has "$(cad_journal 544)" 'omc_set_property title')"
-check "  and remembers the box and the line for the refreshes" "$box${TAB}Disposable box $box from dev" \
+check "  and remembers the box and the line for the refreshes" "$box${TAB}Disposable AgentVM box $box from dev" \
     "$(cad_pb_get aichatv2_boxline_w1 | /usr/bin/cut -f1,3)"
 stamp_since=$(cad_pb_get aichatv2_boxline_w1 | /usr/bin/cut -f2)
 check "  with the moment it started, as agent-vm writes times" "1" \
@@ -507,13 +507,13 @@ check "a box that cannot start puts no line up" "0" "$(cad_writes 543)"
 fake_reset
 netlog_fixture
 printf 'w1\tb1\tno\t%s\tyes\t1\n' "$PROJECT" > "$REGISTRY"
-check "a kept box's line says so, and a read-only share" "Box b1, project read-only" "$(with_fake boxsession_line_head w1)"
-cad_pb_set aichatv2_boxline_w1 "b1${TAB}$since${TAB}Box b1, project read-only"
+check "a kept box's line says so, and a read-only share" "AgentVM box b1, project read-only" "$(with_fake boxsession_line_head w1)"
+cad_pb_set aichatv2_boxline_w1 "b1${TAB}$since${TAB}AgentVM box b1, project read-only"
 cad_journal_reset
 with_fake boxsession_line_refresh w1
-check "a refresh restates the counts" "Box b1, project read-only - 2 hosts reached, 1 refused, 1 failed" "$(line_title)"
+check "a refresh restates the counts" "AgentVM box b1, project read-only - 2 hosts reached, 1 refused, 1 failed" "$(line_title)"
 check "  and names the hosts in the tooltip" \
-    "Reached: api.anthropic.com, registry.npmjs.org Refused: bag.itunes.apple.com Failed: down.example Counted for every program in box b1 since the agent started, as each connection ends (one still open, such as the agent's own to its model provider, is counted when it closes). Programs in the box reach only the hosts its rules allow; agent-vm box netlog b1 --denied lists the refused ones." \
+    "Reached: api.anthropic.com, registry.npmjs.org Refused: bag.itunes.apple.com Failed: down.example Counted for every program in AgentVM box b1 since the agent started, as each connection ends (one still open, such as the agent's own to its model provider, is counted when it closes). Programs in the box reach only the hosts its rules allow; agent-vm box netlog b1 --denied lists the refused ones." \
     "$(line_help)"
 /bin/cat > "$FAKE_AGENTVM_DIR/netlog.json" <<'JSONEOF'
 [
@@ -529,14 +529,14 @@ check "  and names the hosts in the tooltip" \
 JSONEOF
 cad_journal_reset
 with_fake boxsession_line_refresh w1
-check "only refusals: no host reached" "Box b1, project read-only - no host reached, 8 refused" "$(line_title)"
+check "only refusals: no host reached" "AgentVM box b1, project read-only - no host reached, 8 refused" "$(line_title)"
 check "  and a long list is cut short" "1" "$(cad_has "$(line_help)" 'h6.example and 2 more Counted')"
 printf '1\n' > "$FAKE_AGENTVM_DIR/exit"
 printf 'Error: no box b1; `agent-vm box list` shows the existing ones\n' > "$FAKE_AGENTVM_DIR/stderr"
 cad_journal_reset
 with_fake boxsession_line_refresh w1
 /bin/rm -f "$FAKE_AGENTVM_DIR/exit" "$FAKE_AGENTVM_DIR/stderr"
-check "a log agent-vm cannot give says so" "Box b1, project read-only - network log unavailable" "$(line_title)"
+check "a log agent-vm cannot give says so" "AgentVM box b1, project read-only - network log unavailable" "$(line_title)"
 check "  with agent-vm's reason in the tooltip" "1" "$(cad_has "$(line_help)" 'no box b1')"
 cad_pb_set aichatv2_boxline_w2 ""
 cad_journal_reset
@@ -550,7 +550,7 @@ fake_reset
 netlog_fixture
 win="$OMC_ACTIONUI_WINDOW_UUID"
 printf '%s\tb1\tno\t%s\tno\t1\n' "$win" "$PROJECT" > "$REGISTRY"
-cad_pb_set "aichatv2_boxline_$win" "b1${TAB}$since${TAB}Box b1"
+cad_pb_set "aichatv2_boxline_$win" "b1${TAB}$since${TAB}AgentVM box b1"
 cad_pb_set "aichatv2_session_$win" "entry-test"
 cad_journal_reset
 # entry <type>  ->  the entry handler run for one finalized entry of that type.
@@ -566,7 +566,7 @@ entry message
 w_left=50
 # The tooltip is the refresh's last write: waiting for it leaves no child writing after this file ends.
 while [ -z "$(line_help)" ] && [ "$w_left" -gt 0 ]; do w_left=$((w_left - 1)); /bin/sleep 0.1; done
-check "a message does"                 "Box b1 - 2 hosts reached, 1 refused, 1 failed" "$(line_title)"
+check "a message does"                 "AgentVM box b1 - 2 hosts reached, 1 refused, 1 failed" "$(line_title)"
 /bin/rm -f "$REGISTRY"
 cad_pb_set "aichatv2_boxline_$win" ""
 cad_pb_set "aichatv2_session_$win" ""
@@ -592,13 +592,13 @@ check "the prompts since the agent started, each once, in order, with whether th
     "the Downloads folder${TAB}true
 a Keychain item${TAB}true" "$(with_fake boxsession_prompts "$PBOX" "$since")"
 check "  read from the exec log's last runs" "1" "$(cad_has "$(logged 'box execlog')" "box execlog $PBOX --last 200")"
-cad_pb_set aichatv2_boxline_w1 "$PBOX${TAB}$since${TAB}Box $PBOX"
+cad_pb_set aichatv2_boxline_w1 "$PBOX${TAB}$since${TAB}AgentVM box $PBOX"
 cad_pb_set aichatv2_boxprompts_w1 ""
 cad_journal_reset
 alerts_reset
 with_fake boxsession_line_refresh w1
-check "the line counts them" "Box $PBOX - 2 hosts reached, 1 refused, 1 failed - 2 permission prompts" "$(line_title)"
-check "  and the tooltip names them first" "1" "$(cad_has "$(line_help)" 'Permission prompts nobody in the box could answer: the Downloads folder, a Keychain item Reached: api.anthropic.com')"
+check "the line counts them" "AgentVM box $PBOX - 2 hosts reached, 1 refused, 1 failed - 2 permission prompts" "$(line_title)"
+check "  and the tooltip names them first" "1" "$(cad_has "$(line_help)" 'Permission prompts nobody in the AgentVM box could answer: the Downloads folder, a Keychain item Reached: api.anthropic.com')"
 check "an alert tells of them"           "1" "$(alerts_count)"
 check "  naming what they were for"      "1" "$(alerts_mention 'needed macOS permission to use the Downloads folder, a Keychain item')"
 check "  that agent-vm stopped the program" "1" "$(alerts_mention 'so agent-vm stopped the program')"
@@ -656,20 +656,20 @@ cad_pb_set aichatv2_boxprompts_w1 ""
 cad_journal_reset
 alerts_reset
 with_fake boxsession_line_refresh w1
-check "no prompt: nothing on the line"   "Box $PBOX - 2 hosts reached, 1 refused, 1 failed" "$(line_title)"
+check "no prompt: nothing on the line"   "AgentVM box $PBOX - 2 hosts reached, 1 refused, 1 failed" "$(line_title)"
 check "  and no alert"                   "0" "$(alerts_count)"
 execlog_fixture
 printf 'the exec log is damaged\n' > "$FAKE_AGENTVM_DIR/fail-box-execlog"
 cad_journal_reset
 with_fake boxsession_line_refresh w1
 /bin/rm -f "$FAKE_AGENTVM_DIR/fail-box-execlog"
-check "an exec log agent-vm cannot give leaves the network part" "Box $PBOX - 2 hosts reached, 1 refused, 1 failed" "$(line_title)"
+check "an exec log agent-vm cannot give leaves the network part" "AgentVM box $PBOX - 2 hosts reached, 1 refused, 1 failed" "$(line_title)"
 check "  with no alert"                  "0" "$(alerts_count)"
 printf '1\n' > "$FAKE_AGENTVM_DIR/exit"
 cad_journal_reset
 with_fake boxsession_line_refresh w1
 /bin/rm -f "$FAKE_AGENTVM_DIR/exit"
-check "neither log: the line says the network log is unavailable" "Box $PBOX - network log unavailable" "$(line_title)"
+check "neither log: the line says the network log is unavailable" "AgentVM box $PBOX - network log unavailable" "$(line_title)"
 cad_pb_set aichatv2_boxprompts_w1 "2"
 printf 'w1\t%s\tno\t%s\tno\t1\n' "$PBOX" "$PROJECT" > "$REGISTRY"
 with_fake boxsession_line_show w1 "$PBOX"

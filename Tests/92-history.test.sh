@@ -212,11 +212,11 @@ section "the facts line says where a boxed agent's conversation started"
 # "Started": meta.json is written once, and a conversation resumed on this Mac or in another box
 # keeps the box it began in.
 mk_session inbox '{"id":"inbox","created":"2026-05-04T10:11:12Z","agent":"codex","box":{"name":"s3","disposable":false,"project":"/p","readOnly":false}}' "$(local_msg '"one"')"
-check "a kept box by name"         "1" "$(cad_has "$(hist history_info_line inbox)" "Messages: 1   ·   Started in box s3")"
+check "a kept box by name"         "1" "$(cad_has "$(hist history_info_line inbox)" "Messages: 1   ·   Started in AgentVM box s3")"
 mk_session indisp '{"id":"indisp","agent":"opencode","box":{"name":"cadabra-opencode-1a2b3c","disposable":true,"image":"dev-agents","readOnly":true}}' -
-check "a disposable box by its image, with a read-only share" "1" "$(cad_has "$(hist history_info_line indisp)" "Started in a disposable box from dev-agents, project read-only")"
+check "a disposable box by its image, with a read-only share" "1" "$(cad_has "$(hist history_info_line indisp)" "Started in a disposable AgentVM box from dev-agents, project read-only")"
 mk_session noimage '{"id":"noimage","box":{"name":"b","disposable":true}}' -
-check "  or without one"           "Messages: 0   ·   Started in a disposable box" "$(hist history_info_line noimage)"
+check "  or without one"           "Messages: 0   ·   Started in a disposable AgentVM box" "$(hist history_info_line noimage)"
 # Whole lines, not an absence of "box": a phrase that crashed on these would print nothing,
 # and nothing contains no "box" either.
 mk_session oddbox '{"id":"oddbox","box":"s3"}' -

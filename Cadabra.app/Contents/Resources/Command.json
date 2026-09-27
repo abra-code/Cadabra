@@ -605,7 +605,7 @@
         "INIT_SUBCOMMAND_ID" : "aichat.boxes.box.new.init",
         "IS_BLOCKING" : false,
         "JSON_NAME" : "aichat.boxes.box.new",
-        "WINDOW_TITLE" : "New Box"
+        "WINDOW_TITLE" : "AgentVM - New Box"
       },
       "COMMAND_ID" : "aichat.boxes.box.new",
       "EXECUTION_MODE" : "exe_shell_script",
@@ -649,7 +649,7 @@
         "INIT_SUBCOMMAND_ID" : "aichat.boxes.image.new.init",
         "IS_BLOCKING" : false,
         "JSON_NAME" : "aichat.boxes.image.new",
-        "WINDOW_TITLE" : "New Image"
+        "WINDOW_TITLE" : "AgentVM - New Image"
       },
       "COMMAND_ID" : "aichat.boxes.image.new",
       "EXECUTION_MODE" : "exe_shell_script",
@@ -672,7 +672,7 @@
     },
     {
       "CHOOSE_FILE_DIALOG" : {
-        "MESSAGE" : "Choose a macOS restore image (.ipsw)"
+        "MESSAGE" : "Choose a macOS restore file (.ipsw)"
       },
       "COMMAND_ID" : "aichat.boxes.image.new.ipsw.browse",
       "EXECUTION_MODE" : "exe_script_file",

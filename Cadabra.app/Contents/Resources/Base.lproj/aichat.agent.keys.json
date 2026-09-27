@@ -76,17 +76,17 @@
       "type": "Picker",
       "id": 705,
       "properties": {
-        "title": "In the box, the agent gets",
+        "title": "In the AgentVM box, the agent gets",
         "options": [{ "title": "No key", "tag": "none" }],
         "pickerStyle": "menu",
         "actionID": "aichat.agent.keys.use.changed",
-        "frame": { "maxWidth": 420, "alignment": "leading" }
+        "frame": { "maxWidth": 500, "alignment": "leading" }
       }
     },
     {
       "type": "Text",
       "properties": {
-        "text": "Programs in the box can read the key it gets, and can send it to any host the box may reach. Prefer a key you can revoke.",
+        "text": "Programs in the AgentVM box can read the key it gets, and can send it to any host the box may reach. Prefer a key you can revoke.",
         "font": "caption",
         "foregroundStyle": "secondary",
         "frame": { "maxWidth": "infinity", "alignment": "leading" }
@@ -94,7 +94,7 @@
     },
     {
       "type": "GroupBox",
-      "properties": { "title": "Log in inside the box", "frame": { "maxWidth": "infinity" } },
+      "properties": { "title": "Log in inside the AgentVM box", "frame": { "maxWidth": "infinity" } },
       "children": [
         {
           "type": "VStack",
@@ -114,7 +114,7 @@
               "type": "Button",
               "id": 711,
               "properties": {
-                "title": "Open a Shell in the Box",
+                "title": "Open a Shell in the AgentVM Box",
                 "disabled": true,
                 "actionID": "aichat.agent.keys.login"
               }

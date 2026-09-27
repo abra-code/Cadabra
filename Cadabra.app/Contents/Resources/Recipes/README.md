@@ -6,7 +6,7 @@ These are copies of the recipes in agent-vm's `Recipes` folder, from the same ag
 
 | Recipe | Installs | Build it from |
 |---|---|---|
-| `homebrew-node` | Homebrew and Node | an image installed from a restore image |
+| `homebrew-node` | Homebrew and Node | an image installed from a macOS restore file |
 | `acp-agents` | The ACP adapters Cadabra drives: Claude Agent ACP, Codex ACP and opencode | an image with Homebrew and Node |
-| `xcode` | Xcode, from a `.xip` downloaded from Apple | an image installed from a restore image (with a larger disk) |
+| `xcode` | Xcode, from a `.xip` downloaded from Apple | an image installed from a macOS restore file (with a larger disk) |
 | `xcode-platforms` | Simulator runtimes and Xcode components | an image with Xcode |

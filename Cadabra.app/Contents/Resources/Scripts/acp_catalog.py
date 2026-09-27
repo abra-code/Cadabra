@@ -200,7 +200,7 @@ def main():
         level = levels.get(argv[2]) if isinstance(levels, dict) else None
         reason = level.get("unavailable") if isinstance(level, dict) else None
         if reason is None and not isinstance(level, dict) and argv[2] in LEVEL_WORDS:
-            reason = ("Cadabra does not know how to make this agent %s. In a box it can work "
+            reason = ("Cadabra does not know how to make this agent %s. In an AgentVM box it can work "
                       "without asking." % LEVEL_WORDS[argv[2]])
         if isinstance(reason, str) and reason.strip():
             sys.stdout.write(" ".join(reason.split()) + "\n")

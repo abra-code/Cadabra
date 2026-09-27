@@ -41,4 +41,4 @@ if [ "$set_status" -ne 0 ]; then
     keys_status "$window_uuid" "Stored $label in the Keychain, but Cadabra's settings could not be written, so $agent_label does not get it yet."
     exit 0
 fi
-keys_status "$window_uuid" "Stored $label. $agent_label gets it in its box."
+keys_status "$window_uuid" "Stored $label. $agent_label gets it in its AgentVM box."

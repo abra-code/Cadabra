@@ -429,7 +429,7 @@
           "type": "GroupBox",
           "id": 500,
           "properties": {
-            "title": "In the Box",
+            "title": "In the AgentVM Box",
             "hidden": true,
             "frame": { "maxWidth": "infinity", "maxHeight": "infinity", "alignment": "topLeading" }
           },
@@ -454,7 +454,7 @@
                 {
                   "type": "Text",
                   "properties": {
-                    "text": "Only the project folder above is shared with the box, at the same path. Every file in it, .env files included, can be read there. Nothing else on this Mac is visible in the box.",
+                    "text": "Only the project folder above is shared with the AgentVM box, at the same path. Every file in it, .env files included, can be read there. Nothing else on this Mac is visible in the box.",
                     "foregroundStyle": "secondary",
                     "frame": { "maxWidth": "infinity", "alignment": "leading" }
                   }
@@ -478,7 +478,7 @@
                 {
                   "type": "Text",
                   "properties": {
-                    "text": "Cadabra's MCP servers do not run in a box yet. The agent uses its own tools, inside the box.",
+                    "text": "Cadabra's MCP servers do not run in an AgentVM box yet. The agent uses its own tools, inside the box.",
                     "font": "caption",
                     "foregroundStyle": "secondary",
                     "frame": { "maxWidth": "infinity", "alignment": "leading" }

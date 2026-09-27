@@ -87,7 +87,7 @@
             "mode": "plan"
           }
         },
-        "note": "Needs a subscription token, an API key, or a login made inside a kept box. Your Claude login on this Mac is not visible in the box."
+        "note": "Needs a subscription token, an API key, or a login made inside a kept AgentVM box. Your Claude login on this Mac is not visible in the box."
       }
     },
     {
@@ -126,7 +126,7 @@
             "unavailable": "Codex has no plan-only mode that holds. Share the project read-only instead."
           }
         },
-        "note": "Needs an API key or a ChatGPT login made inside a kept box."
+        "note": "Needs an API key or a ChatGPT login made inside a kept AgentVM box."
       }
     },
     {
@@ -244,7 +244,7 @@
             }
           }
         },
-        "note": "Works without an account on OpenCode Zen's free models. Other providers need their key, or opencode auth login inside a kept box; add their hosts to the box."
+        "note": "Works without an account on OpenCode Zen's free models. Other providers need their key, or opencode auth login inside a kept AgentVM box; add their hosts to the box."
       }
     },
     {

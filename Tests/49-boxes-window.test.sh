@@ -507,7 +507,7 @@ check "no hand-off: a restore image"  "1" "$(ui_value "$BOXES_NI_SOURCE_ID")"
 omc_control "$BOXES_NI_NAME_ID" "base"
 omc_control "$BOXES_NI_IPSW_ID" ""
 omc_run aichat.boxes.image.new.create
-check "no restore image chosen"       "Choose a macOS restore image (.ipsw)." "$(ui_value "$BOXES_NI_STATUS_ID")"
+check "no restore image chosen"       "Choose a macOS restore file (.ipsw)." "$(ui_value "$BOXES_NI_STATUS_ID")"
 check "  the window stays"            "0" "$(journal_count "$OMC_ACTIONUI_WINDOW_UUID" omc_window omc_terminate_ok)"
 printf 'ipsw' > "$OMCTEST_WORK/R.ipsw"
 omc_control "$BOXES_NI_IPSW_ID" "$OMCTEST_WORK/R.ipsw"

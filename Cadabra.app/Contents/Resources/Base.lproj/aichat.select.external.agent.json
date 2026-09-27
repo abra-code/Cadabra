@@ -5,7 +5,7 @@
     "columnVisibility": "all",
     "style": "balanced",
     "frame": {
-      "minWidth": 940,
+      "minWidth": 1010,
       "minHeight": 520,
       "idealWidth": 1120,
       "idealHeight": 660,
@@ -348,7 +348,7 @@
                 { "title": "This Mac", "tag": "mac" }
               ],
               "pickerStyle": "menu",
-              "help": "Where the agent runs. In a box it works on the project folder only, and can reach only the hosts the box allows.",
+              "help": "Where the agent runs. In an AgentVM box it works on the project folder only, and can reach only the hosts the box allows.",
               "actionID": "aichat.select.external.agent.runin.changed"
             }
           },
@@ -356,7 +356,7 @@
             "type": "Picker",
             "id": 34,
             "properties": {
-              "title": "In the box, it",
+              "title": "In the AgentVM box, it",
               "options": [
                 { "title": "works without asking", "tag": "free" },
                 { "title": "asks before changes", "tag": "ask" },
@@ -364,7 +364,7 @@
               ],
               "pickerStyle": "menu",
               "hidden": true,
-              "help": "Working without asking is the default in a box: the box keeps the agent away from the rest of this Mac."
+              "help": "Working without asking is the default in an AgentVM box: the box keeps the agent away from the rest of this Mac."
             }
           },
           {
@@ -373,7 +373,7 @@
             "properties": {
               "title": "Keys...",
               "hidden": true,
-              "help": "The API key or token the agent gets in its box, and logging in inside a kept box",
+              "help": "The API key or token the agent gets in its AgentVM box, and logging in inside a kept one",
               "actionID": "aichat.select.external.agent.keys"
             }
           },
