@@ -170,6 +170,26 @@ check "and no model path is"   ""  "$(hist history_meta_field ext modelPath)"
 # meta.json that never parses again, and every field would silently read empty from then on.
 check "the file still parses"  "ext" "$(hist history_meta_field ext id)"
 
+section "a boxed agent's session records its box, project and share mode"
+d="$HROOT/boxed"
+/bin/mkdir -p "$d"
+hist history_init_meta "$d" boxed "" opencode --box cadabra-opencode-1a2b3c --box-image dev-agents \
+    --box-disposable yes --project "/Users/me/src/my app" --read-only no
+HIST_PY="$OMC_APP_BUNDLE_PATH/Contents/Library/Python/bin/python3"
+meta_py() { "$HIST_PY" -c 'import json, sys; m = json.load(open(sys.argv[1])); print('"$2"')' "$HROOT/$1/meta.json" 2>&1; }
+check "the box, as an object with its share" "{'name': 'cadabra-opencode-1a2b3c', 'disposable': True, 'image': 'dev-agents', 'project': '/Users/me/src/my app', 'readOnly': False}" "$(meta_py boxed 'm["box"]')"
+check "  and nothing of it at the top level" "False|False" "$(meta_py boxed '"project" in m')|$(meta_py boxed '"readOnly" in m')"
+check "the agent still"            "opencode" "$(hist history_meta_field boxed agent)"
+d="$HROOT/kept"
+/bin/mkdir -p "$d"
+hist history_init_meta "$d" kept "" codex --box s3 --box-image "" --box-disposable no --project /p --read-only yes
+check "a kept box has no image, and a read-only share" "{'name': 's3', 'disposable': False, 'project': '/p', 'readOnly': True}" "$(meta_py kept 'm["box"]')"
+check "an unboxed agent has no box" "False" "$(meta_py ext '"box" in m')"
+"$HIST_PY" "$OMC_APP_BUNDLE_PATH/Contents/Resources/Scripts/history_store.py" meta-init x "" a --boxx b >/dev/null 2>&1
+check "an unknown option is refused" "2" "$?"
+"$HIST_PY" "$OMC_APP_BUNDLE_PATH/Contents/Resources/Scripts/history_store.py" meta-init x "" a --box b --read-only maybe >/dev/null 2>&1
+check "  and so is a flag that is not yes or no" "2" "$?"
+
 section "a missing field reads empty rather than failing"
 check "an absent key"       "" "$(hist history_meta_field fresh nosuchkey)"
 mk_session broken 'this is not json' -
@@ -187,6 +207,22 @@ check "and how many messages" "1" "$(cad_has "$line" "Messages: 1")"
 # one row is a question rather than an answer. Which model started the conversation is in the
 # transcript's opening session marker, where a switch since is also recorded.
 check "but not the model"    "0" "$(cad_has "$line" "Tiny-Q4_K_M")"
+
+section "the facts line says where a boxed agent's conversation started"
+# "Started": meta.json is written once, and a conversation resumed on this Mac or in another box
+# keeps the box it began in.
+mk_session inbox '{"id":"inbox","created":"2026-05-04T10:11:12Z","agent":"codex","box":{"name":"s3","disposable":false,"project":"/p","readOnly":false}}' "$(local_msg '"one"')"
+check "a kept box by name"         "1" "$(cad_has "$(hist history_info_line inbox)" "Messages: 1   ·   Started in box s3")"
+mk_session indisp '{"id":"indisp","agent":"opencode","box":{"name":"cadabra-opencode-1a2b3c","disposable":true,"image":"dev-agents","readOnly":true}}' -
+check "a disposable box by its image, with a read-only share" "1" "$(cad_has "$(hist history_info_line indisp)" "Started in a disposable box from dev-agents, project read-only")"
+mk_session noimage '{"id":"noimage","box":{"name":"b","disposable":true}}' -
+check "  or without one"           "Messages: 0   ·   Started in a disposable box" "$(hist history_info_line noimage)"
+# Whole lines, not an absence of "box": a phrase that crashed on these would print nothing,
+# and nothing contains no "box" either.
+mk_session oddbox '{"id":"oddbox","box":"s3"}' -
+check "a box that is not an object says nothing" "Messages: 0" "$(hist history_info_line oddbox)"
+line=$(hist history_info_line chat1)
+check "an unboxed conversation says nothing of boxes" "0|1" "$(cad_has "$line" "box")|$(cad_has "$line" "Messages: 1")"
 
 section "and it is stated for whatever the window is showing"
 ui_reset
@@ -275,6 +311,40 @@ hist history_envelope_mints '{"type":"message","data":{"message":{"role":"local"
 check "a message does"                                "0" "$?"
 hist history_envelope_mints 'not json at all'
 check "  and unparseable input mints nothing"         "1" "$?"
+
+section "the first message of a boxed agent's window records the box"
+BOXREG="$HOME/Library/Application Support/Cadabra/box-sessions.tsv"
+TAB=$(printf '\t')
+win="$OMC_ACTIONUI_WINDOW_UUID"
+entry_mint() { # <text>  ->  the entry handler run for a first message; prints the new session id
+    cad_pb_set "aichatv2_session_$win" ""
+    ( export OMC_ACTIONUI_TRIGGER_CONTEXT="{\"sequence\":1,\"type\":\"message\",\"id\":\"$1\",\"data\":{\"type\":\"message\",\"message\":{\"role\":\"local\",\"text\":\"$1\"}}}"
+      omc_run aichat.chat.entry ) >/dev/null 2>&1
+    cad_pb_get "aichatv2_session_$win"
+}
+cad_pb_set "aichatv2_modelpath_$win" ""
+cad_pb_set "aichatv2_agent_$win" "opencode"
+/bin/mkdir -p "$(/usr/bin/dirname "$BOXREG")"
+printf '%s\n' "other${TAB}b0${TAB}no${TAB}/q${TAB}no${TAB}1" "$win${TAB}cadabra-opencode-1a2b3c${TAB}yes${TAB}/Users/me/p${TAB}yes${TAB}1" > "$BOXREG"
+cad_pb_set "aichatv2_boximage_$win" "cadabra-opencode-1a2b3c${TAB}dev-agents"
+sid=$(entry_mint "hello")
+check "a session was minted"       "1" "$([ -n "$sid" ] && [ -f "$HROOT/$sid/meta.json" ] && echo 1)"
+check "  in this window's box, with its image, sharing its project read-only" "{'name': 'cadabra-opencode-1a2b3c', 'disposable': True, 'image': 'dev-agents', 'project': '/Users/me/p', 'readOnly': True}" "$(meta_py "$sid" 'm["box"]')"
+cad_pb_set "aichatv2_boximage_$win" "an-earlier-box${TAB}dev"
+sid=$(entry_mint "again")
+check "a stamp naming another box gives no image" "{'name': 'cadabra-opencode-1a2b3c', 'disposable': True, 'project': '/Users/me/p', 'readOnly': True}" "$(meta_py "$sid" 'm["box"]')"
+printf '%s\n' "other${TAB}b0${TAB}no${TAB}/q${TAB}no${TAB}1" > "$BOXREG"
+sid=$(entry_mint "unboxed")
+check "a window with no row records no box" "False" "$(meta_py "$sid" '"box" in m')"
+printf '%s\n' "$win${TAB}s3${TAB}no${TAB}/p${TAB}no${TAB}1" > "$BOXREG"
+cad_pb_set "aichatv2_agent_$win" ""
+cad_pb_set "aichatv2_modelpath_$win" "/models/Tiny-Q4_K_M.gguf"
+sid=$(entry_mint "local")
+check "  nor does a local model's, whatever the registry says" "False" "$(meta_py "$sid" '"box" in m')"
+/bin/rm -f "$BOXREG"
+cad_pb_set "aichatv2_modelpath_$win" ""
+cad_pb_set "aichatv2_boximage_$win" ""
+cad_pb_set "aichatv2_session_$win" ""
 
 section "ChatView's own sessionEvent entry is rewrapped so the transcript still decodes"
 # ChatStore.swift hands fireEntry the bare SessionEvent instead of ChatItem.sessionEvent(event), so

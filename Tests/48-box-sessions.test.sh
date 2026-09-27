@@ -325,6 +325,8 @@ check "the transport runs agent-vm exec in that box" "1" "$(cad_has "$json" '"ex
 check "  sharing the project"            "1" "$(cad_has "$json" '"--project", "'"$PROJECT"'"')"
 check "  starting in the free mode"      "1" "$(cad_has "$json" '"bypassPermissions"')"
 check "the window's box is registered"   "w1${TAB}$box${TAB}yes" "$(/usr/bin/cut -f1-3 "$REGISTRY")"
+check "  and the image it came from is stamped for the record" "$box${TAB}dev" "$(cad_pb_get aichatv2_boximage_w1)"
+check "  which the record reads with the row" "$box${TAB}dev${TAB}yes${TAB}$PROJECT${TAB}no" "$(with_fake boxsession_meta_fields w1)"
 check "no alert"                         "0" "$(alerts_count)"
 fake_reset
 out=$(engine chat_engine_box_transport w1 "my-agent --acp" custom new:dev false)

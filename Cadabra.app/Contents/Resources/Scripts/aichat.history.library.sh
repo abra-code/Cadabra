@@ -195,14 +195,23 @@ history_title() {
     "$history_py" "$history_store" title "$dir"
 }
 
-# history_init_meta <session_dir> <sid> <model_path> [agent_label] - write a fresh meta.json
-# (JSON-safe, atomic: a concurrent history_index scan never sees a torn/empty file).
+# history_init_meta <session_dir> <sid> <model_path> [agent_label [box options...]] - write a
+# fresh meta.json (JSON-safe, atomic: a concurrent history_index scan never sees a torn/empty
+# file).
 #
 # model_path and agent_label are mutually exclusive: a conversation runs either the bundled
-# model or an external ACP agent, and an external one has no model path to record.
+# model or an external ACP agent, and an external one has no model path to record. The box
+# options, for an agent in an agent-vm box, are history_store.py meta-init's (--box NAME, ...).
 history_init_meta() {
-    "$history_py" "$history_store" meta-init "$2" "$3" "${4:-}" > "$1/meta.json.tmp" &&
-        /bin/mv -f "$1/meta.json.tmp" "$1/meta.json"
+    local _dir="$1" _sid="$2" _model="$3" _agent="${4:-}"
+    # Guarded: a shift past the arguments ends a POSIX-mode shell.
+    if [ $# -ge 4 ]; then
+        shift 4
+    else
+        set --
+    fi
+    "$history_py" "$history_store" meta-init "$_sid" "$_model" "$_agent" "$@" > "$_dir/meta.json.tmp" &&
+        /bin/mv -f "$_dir/meta.json.tmp" "$_dir/meta.json"
 }
 
 # history_meta_field <sid> <key> — echo one string field from a session's meta.json ("" if

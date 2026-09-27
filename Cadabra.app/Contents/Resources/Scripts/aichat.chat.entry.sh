@@ -58,7 +58,25 @@ if [ -z "$sid" ]; then
     # true of neither). JSON-safe.
     session_model_path=$(pb_get "aichatv2_modelpath_${win}")
     session_agent=$(pb_get "aichatv2_agent_${win}")
-    history_init_meta "$history_root/$sid" "$sid" "$session_model_path" "$session_agent"
+    # Where an external agent ran, when it ran in an agent-vm box: the box, the image of a
+    # disposable one, the project shared with it and whether read-only. Read only when the
+    # registry exists, so a Mac that never used a box never loads the box-session library here.
+    session_box=""
+    if [ -n "$session_agent" ] && [ -f "$mcp_app_support/box-sessions.tsv" ]; then
+        source "$OMC_APP_BUNDLE_PATH/Contents/Resources/Scripts/aichat.boxsession.library.sh"
+        session_box=$(boxsession_meta_fields "$win")
+    fi
+    if [ -n "$session_box" ]; then
+        IFS='	' read -r box_name box_image box_disposable box_project box_read_only <<EOF
+$session_box
+EOF
+        [ "$box_image" = "-" ] && box_image=""
+        history_init_meta "$history_root/$sid" "$sid" "$session_model_path" "$session_agent" \
+            --box "$box_name" --box-image "$box_image" --box-disposable "$box_disposable" \
+            --project "$box_project" --read-only "$box_read_only"
+    else
+        history_init_meta "$history_root/$sid" "$sid" "$session_model_path" "$session_agent"
+    fi
     # Open the transcript with a record of what is answering it. Written BEFORE the first turn is
     # appended below, so it leads the conversation rather than interrupting it, and it is why a
     # conversation reopened months later can still say which model wrote its opening exchange -

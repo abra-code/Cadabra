@@ -149,6 +149,35 @@ boxsession_registry_row() {
     boxsession_registry_rows | boxsession_window="$1" /usr/bin/awk -F'\t' '$1 == ENVIRON["boxsession_window"] { print; exit }'
 }
 
+# boxsession_stamp_image <window> <box> <image>  ->  remembers the image a window's disposable box
+# was made from, for the conversation's record (boxsession_meta_fields). The registry does not
+# keep it, and asking agent-vm when the first message is saved would slow that handler.
+boxsession_stamp_image() {
+    pb_set "aichatv2_boximage_$1" "$2$boxsession_tab$3"
+}
+
+# boxsession_meta_fields <window>  ->  one line for the conversation's record, tab separated:
+# box, image, disposable (yes or no), project, readOnly (yes or no); nothing when the window has
+# no box. The image is the stamped one when the stamp names the same box (a disposable box),
+# else "-": a stamp left by an earlier launch of the window names another box. Never an empty
+# field, since a reader splitting on tabs (IFS whitespace) would merge it with the next one.
+boxsession_meta_fields() {
+    local _row="$(boxsession_registry_row "$1")"
+    if [ -z "$_row" ]; then
+        return 0
+    fi
+    local _box="$(printf '%s\n' "$_row" | /usr/bin/cut -f2)"
+    local _stamp="$(pb_get "aichatv2_boximage_$1")"
+    local _image="-"
+    if [ "${_stamp%%"$boxsession_tab"*}" = "$_box" ]; then
+        _image="${_stamp#*"$boxsession_tab"}"
+    fi
+    if [ -z "$_image" ]; then
+        _image="-"
+    fi
+    printf '%s\n' "$_row" | /usr/bin/awk -F'\t' -v image="$_image" 'BEGIN { OFS = "\t" } { print $2, image, $3, $4, $5 }'
+}
+
 # boxsession_box_users <box>  ->  how many rows name the box.
 boxsession_box_users() {
     boxsession_registry_rows | /usr/bin/awk -F'\t' -v box="$1" '$2 == box { n++ } END { print n + 0 }'

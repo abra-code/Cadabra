@@ -504,13 +504,19 @@ def _preview_line(item):
     return ""
 
 
-def cmd_meta_init(sid, model_path, agent=""):
+def cmd_meta_init(sid, model_path, agent="", box=None):
     """Emit a fresh meta.json for a new native session. Called once on first entry.
     Uses json.dumps so a model path with spaces/quotes is escaped correctly.
 
     Exactly one of model_path and agent is meaningful: a conversation runs either the bundled
     model or an external ACP agent. Recording the agent is what stops external conversations
-    showing a blank where every other row names its model."""
+    showing a blank where every other row names its model.
+
+    box, for an agent that ran in an agent-vm box, is a dict of the options parse_box_options
+    reads: it becomes "box": {"name", "disposable", "image", "project", "readOnly"}, where the
+    conversation STARTED (a resume elsewhere does not rewrite it). The image is recorded for a
+    disposable box only (the one the box was made from), and may be absent. project and readOnly
+    live inside "box" because they describe the share with the box, not a mode of the Mac."""
     meta = {
         "id": sid,
         "created": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
@@ -521,9 +527,55 @@ def cmd_meta_init(sid, model_path, agent=""):
         meta["model"] = _model_label(model_path)
     if agent:
         meta["agent"] = agent
+    if box and box.get("name"):
+        record = {"name": box["name"], "disposable": box.get("disposable") == "yes"}
+        if box.get("image"):
+            record["image"] = box["image"]
+        if box.get("project"):
+            record["project"] = box["project"]
+        record["readOnly"] = box.get("readOnly") == "yes"
+        meta["box"] = record
     json.dump(meta, sys.stdout, ensure_ascii=False)
     sys.stdout.write("\n")
     return 0
+
+
+# The options meta-init takes after its positional arguments, and the box keys they fill.
+BOX_OPTIONS = {"--box": "name", "--box-image": "image", "--box-disposable": "disposable",
+               "--project": "project", "--read-only": "readOnly"}
+
+
+def parse_box_options(args):
+    """The box options as a dict, or None when an option is unknown, has no value, or a yes/no
+    option has another value."""
+    box = {}
+    while args:
+        key = BOX_OPTIONS.get(args[0])
+        if key is None or len(args) < 2:
+            return None
+        if key in ("disposable", "readOnly") and args[1] not in ("yes", "no"):
+            return None
+        box[key] = args[1]
+        args = args[2:]
+    return box
+
+
+def _box_phrase(meta):
+    """Where the conversation's agent started, for the info line: "" when not in a box. "Started"
+    because meta.json is written once: a conversation resumed on this Mac or in another box
+    keeps the box it began in."""
+    box = meta.get("box") if isinstance(meta, dict) else None
+    if not isinstance(box, dict) or not isinstance(box.get("name"), str) or not box["name"]:
+        return ""
+    if box.get("disposable") is True:
+        image = box.get("image")
+        phrase = ("Started in a disposable box from %s" % image) if isinstance(image, str) and image \
+            else "Started in a disposable box"
+    else:
+        phrase = "Started in box %s" % box["name"]
+    if box.get("readOnly") is True:
+        phrase += ", project read-only"
+    return phrase
 
 
 def cmd_info(session_dir):
@@ -543,6 +595,9 @@ def cmd_info(session_dir):
         created = created.replace("T", " ")
         bits.append("Started: %s" % created)
     bits.append("Messages: %d" % stats.get("msgs", 0))
+    where = _box_phrase(_read_meta(session_dir))
+    if where:
+        bits.append(where)
     sys.stdout.write("   ·   ".join(bits))
     return 0
 
@@ -880,11 +935,14 @@ def main(argv):
         return 2
     cmd = argv[1]
     if cmd == "meta-init":
-        if len(argv) < 3:
-            sys.stderr.write("usage: history_store.py meta-init <sid> [model_path] [agent]\n")
+        box = parse_box_options(argv[5:])
+        if len(argv) < 3 or box is None:
+            sys.stderr.write("usage: history_store.py meta-init <sid> [model_path] [agent]"
+                             " [--box NAME [--box-image IMAGE] [--box-disposable yes|no]"
+                             " [--project PATH] [--read-only yes|no]]\n")
             return 2
         return cmd_meta_init(argv[2], argv[3] if len(argv) > 3 else "",
-                             argv[4] if len(argv) > 4 else "")
+                             argv[4] if len(argv) > 4 else "", box)
     # Takes a KIND where every other subcommand takes a session directory - it mints a marker for
     # a window that may not have a session yet - so it is dispatched here, above the path check.
     if cmd == "session-event-item":

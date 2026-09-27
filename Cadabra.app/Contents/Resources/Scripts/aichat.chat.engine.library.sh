@@ -222,6 +222,10 @@ $why"
 		return 1
 	fi
 	echo "box: agent in $box ($run_in, level $level, project $project)"
+	# The image a disposable box came from, for the conversation's record (meta.json).
+	case "$run_in" in
+		new:?*) boxsession_stamp_image "$win" "$box" "${run_in#new:}" ;;
+	esac
 	return 0
 }
 
