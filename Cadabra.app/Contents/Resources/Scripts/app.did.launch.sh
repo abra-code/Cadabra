@@ -28,6 +28,16 @@
 
 source "$OMC_APP_BUNDLE_PATH/Contents/Resources/Scripts/aichat.library.sh"
 
+# Agent-vm boxes of a Cadabra that is gone (a crash, a force quit): their VMs stopped through the
+# owner lease, and their registry rows would keep them counted as in use. Released in the
+# background, before the import flow below, which ends this script early on most launches.
+if [ -f "$mcp_app_support/box-sessions.tsv" ]; then
+    (
+        source "$OMC_APP_BUNDLE_PATH/Contents/Resources/Scripts/aichat.boxsession.library.sh"
+        boxsession_release_stale
+    ) >/dev/null 2>&1 &
+fi
+
 marker="$mcp_app_support/.webui_history_imported"
 consent="$mcp_app_support/.webui_import_consent"
 [ -f "$marker" ] && exit 0   # asked and answered once - never again

@@ -235,4 +235,141 @@ with_fake boxsession_release_stale
 check "the dead process's row goes"      "wb" "$(col 1 < "$REGISTRY")"
 check "  and its disposable box with it" "0" "$([ -f "$FAKE_AGENTVM_DIR/box-gone1.json" ] && echo 1 || echo 0)"
 
+# engine <function> [args...]  ->  the function's status, then CHAT_ENGINE_CONFIG, from the chat
+# engine library with agent-vm faked (the way test 93 calls it).
+engine() {
+    ( CADABRA_AGENT_VM="$FAKE"; export CADABRA_AGENT_VM
+      . "$OMC_APP_BUNDLE_PATH/Contents/Resources/Scripts/aichat.chat.engine.library.sh" >/dev/null 2>&1
+      prefs="$OMCTEST_WORK/no-such-registry.plist"
+      "$@" >/dev/null 2>&1
+      e_status=$?
+      printf '%s\n%s\n' "$e_status" "$CHAT_ENGINE_CONFIG" )
+}
+
+section "where an agent runs, and its level, are kept per agent"
+cad_reset
+check "an agent with no choice runs on this Mac" "mac"  "$(cad_call acp_agent_run_in claude-code-acp)"
+check "  and would work freely in a box"         "free" "$(cad_call acp_agent_level claude-code-acp)"
+cad_call acp_agent_set_run_in claude-code-acp new:dev
+check "a disposable box is stored"               "0|new:dev" "$?|$(cad_call acp_agent_run_in claude-code-acp)"
+cad_call acp_agent_set_run_in "custom:3" box:b1
+check "a saved agent's id is a key too"          "box:b1" "$(cad_call acp_agent_run_in "custom:3")"
+check "  and the other agent kept its own"       "new:dev" "$(cad_call acp_agent_run_in claude-code-acp)"
+cad_call acp_agent_set_level claude-code-acp plan
+check "a level is stored"                        "plan" "$(cad_call acp_agent_level claude-code-acp)"
+cad_call acp_agent_set_run_in claude-code-acp elsewhere
+check "a place of another form is refused"       "2|new:dev" "$?|$(cad_call acp_agent_run_in claude-code-acp)"
+cad_call acp_agent_set_level claude-code-acp yolo
+check "a level of another value is refused"      "2" "$?"
+cad_call acp_agent_set_run_in "a/b" mac
+check "an id that would be a path is refused"    "2" "$?"
+cad_call acp_agent_store claude-code-acp "claude-agent-acp"
+check "storing the agent leaves its place alone" "new:dev" "$(cad_call acp_agent_run_in claude-code-acp)"
+
+section "chat init starts the agent's box and hands the element a transport into it"
+fake_reset
+cad_pb_set aichatv2_open_w1 1
+cad_pb_set aichatv2_open_w2 1
+cad_reset
+cad_call mcp_prefs_write_defaults >/dev/null 2>&1; cad_call mcp_prefs_set_string servers/local/project "$PROJECT"
+alerts_reset
+out=$(engine chat_engine_box_transport w1 "claude-agent-acp" claude-code-acp new:dev false)
+check "it succeeds"                      "0" "$(printf '%s\n' "$out" | /usr/bin/head -1)"
+json=$(printf '%s\n' "$out" | /usr/bin/sed 1d)
+box=$(col 2 < "$REGISTRY")
+check "the transport runs agent-vm exec in that box" "1" "$(cad_has "$json" '"exec", "--box", "'"$box"'"')"
+check "  sharing the project"            "1" "$(cad_has "$json" '"--project", "'"$PROJECT"'"')"
+check "  starting in the free mode"      "1" "$(cad_has "$json" '"bypassPermissions"')"
+check "the window's box is registered"   "w1${TAB}$box${TAB}yes" "$(/usr/bin/cut -f1-3 "$REGISTRY")"
+check "no alert"                         "0" "$(alerts_count)"
+fake_reset
+out=$(engine chat_engine_box_transport w1 "my-agent --acp" custom new:dev false)
+json=$(printf '%s\n' "$out" | /usr/bin/sed 1d)
+check "an edited command runs as typed"  "1" "$(cad_has "$json" '"--", "my-agent", "--acp"')"
+check "  in a box that reaches no host"  "0" "$(cad_has "$(logged 'box create')" '--allow')"
+
+section "chat init refuses, says why, and leaves no box behind"
+fake_reset
+cad_reset
+alerts_reset
+out=$(engine chat_engine_box_transport w1 "claude-agent-acp" claude-code-acp new:dev false)
+check "no project folder refuses"        "1" "$(printf '%s\n' "$out" | /usr/bin/head -1)"
+check "  saying where to choose one"     "1" "$(alerts_mention 'Agentic Session Tools')"
+check "  before agent-vm made anything"  "" "$(logged 'box create')"
+cad_call mcp_prefs_write_defaults >/dev/null 2>&1; cad_call mcp_prefs_set_string servers/local/project "$PROJECT"
+fake_reset
+/bin/cp "$FIXTURES/doctor.json" "$FAKE_AGENTVM_DIR/doctor.json"
+alerts_reset
+out=$(engine chat_engine_box_transport w1 "claude-agent-acp" claude-code-acp new:dev false)
+check "a box that cannot start refuses"  "1" "$(printf '%s\n' "$out" | /usr/bin/head -1)"
+check "  with agent-vm's reason"         "1" "$(alerts_mention 'No virtual machine slot is free')"
+check "  and no config"                  "" "$(printf '%s\n' "$out" | /usr/bin/sed 1d)"
+check "  the made box is gone again"     "0" "$(/bin/ls "$FAKE_AGENTVM_DIR" | /usr/bin/grep -c '^box-cadabra-')"
+check "  and so is its row"              "" "$(/bin/cat "$REGISTRY")"
+fake_reset
+cad_call acp_agent_set_level codex-acp plan
+alerts_reset
+out=$(engine chat_engine_box_transport w1 "codex-acp" codex-acp box:b1 false)
+check "a level the agent cannot do refuses" "1" "$(printf '%s\n' "$out" | /usr/bin/head -1)"
+check "  with the catalog's reason"      "1" "$(alerts_mention 'Codex has no plan-only mode')"
+check "  and the window's row is released" "" "$(/bin/cat "$REGISTRY")"
+
+section "a window closed while its box started gets no transport and keeps no box"
+fake_reset
+cad_pb_set aichatv2_open_w1 ""
+alerts_reset
+out=$(engine chat_engine_box_transport w1 "claude-agent-acp" claude-code-acp new:dev false)
+check "it refuses"                       "1" "$(printf '%s\n' "$out" | /usr/bin/head -1)"
+check "  with no config"                 "" "$(printf '%s\n' "$out" | /usr/bin/sed 1d)"
+check "  and no alert for a window that is gone" "0" "$(alerts_count)"
+check "  the box it started is gone"     "0" "$(/bin/ls "$FAKE_AGENTVM_DIR" | /usr/bin/grep -c '^box-cadabra-')"
+check "  and so is its row"              "" "$(/bin/cat "$REGISTRY")"
+cad_pb_set aichatv2_open_w1 1
+
+section "chat init refuses what it cannot run"
+fake_reset
+printf '0.1.0\n' > "$FAKE_AGENTVM_DIR/version"
+alerts_reset
+out=$(engine chat_engine_box_transport w1 "claude-agent-acp" claude-code-acp new:dev false)
+check "an agent-vm too old refuses"      "1" "$(printf '%s\n' "$out" | /usr/bin/head -1)"
+check "  saying boxes cannot be used"    "1" "$(alerts_mention 'boxes cannot be used here')"
+check "  before any box is made"         "" "$(logged 'box create')"
+fake_reset
+# The parent must exist first: plister's set replaces a value of any type, but cannot create a
+# missing parent.
+cad_call acp_agent_set_run_in claude-code-acp mac
+"$cad_plister" set dict "$cad_settings" /agents/runIn/claude-code-acp >/dev/null 2>&1
+check "  (the fixture: a dictionary where text belongs)" "dict" "$("$cad_plister" get type "$cad_settings" /agents/runIn/claude-code-acp 2>&1)"
+check "a place stored as something else reads as damaged" "damaged" "$(cad_call acp_agent_run_in claude-code-acp)"
+cad_call acp_agent_store claude-code-acp "claude-agent-acp"
+alerts_reset
+out=$(engine chat_engine_transport_config w1 external "" false "claude-agent-acp")
+check "  and does not run the agent on this Mac" "1|0" "$(printf '%s\n' "$out" | /usr/bin/head -1)|$(cad_has "$out" '"command"')"
+check "  saying why"                     "1" "$(alerts_mention 'not a box choice')"
+cad_call acp_agent_set_run_in claude-code-acp mac
+
+section "the stored choice decides which path chat init takes"
+fake_reset
+cad_reset
+cad_call mcp_prefs_write_defaults >/dev/null 2>&1; cad_call mcp_prefs_set_string servers/local/project "$PROJECT"
+cad_call acp_agent_store claude-code-acp "claude-agent-acp"
+cad_call acp_agent_set_run_in claude-code-acp box:b1
+out=$(engine chat_engine_transport_config w1 external "" false "claude-agent-acp")
+check "an agent set to a box runs there" "1" "$(cad_has "$out" '"exec", "--box", "b1"')"
+cad_call acp_agent_set_run_in claude-code-acp mac
+fake_reset
+out=$(engine chat_engine_transport_config w2 external "" false "claude-agent-acp")
+check "one set to this Mac runs here"    "0|0" "$(printf '%s\n' "$out" | /usr/bin/head -1)|$(cad_has "$out" '"exec"')"
+check "  with agent-vm never run"        "0" "$([ -f "$FAKE_AGENTVM_DIR/log" ] && echo 1 || echo 0)"
+
+section "quitting releases this Cadabra's rows and no other's"
+fake_reset
+/bin/cp "$FIXTURES/box-status-stopped.json" "$FAKE_AGENTVM_DIR/box-mine1.json"
+/bin/cp "$FIXTURES/box-status-stopped.json" "$FAKE_AGENTVM_DIR/box-theirs1.json"
+/bin/mkdir -p "$(/usr/bin/dirname "$REGISTRY")"
+printf 'wa\tmine1\tyes\t%s\tno\t%s\nwb\ttheirs1\tyes\t%s\tno\t%s\n' "$PROJECT" "${OMC_APP_PROCESS_ID:-1}" "$PROJECT" "$$" > "$REGISTRY"
+with_fake boxsession_release_own
+check "this process's row goes"          "wb" "$(col 1 < "$REGISTRY")"
+check "  and its disposable box"         "0|1" "$([ -f "$FAKE_AGENTVM_DIR/box-mine1.json" ] && echo 1 || echo 0)|$([ -f "$FAKE_AGENTVM_DIR/box-theirs1.json" ] && echo 1 || echo 0)"
+
 omctest_end

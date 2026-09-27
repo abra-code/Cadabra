@@ -343,6 +343,23 @@ _boxsession_discard() {
     agentvm_box_stop_job "$1" >/dev/null
 }
 
+# boxsession_release_own  ->  0. At quit: releases every row of this Cadabra process, so its
+# disposable boxes go now rather than at the next launch. Their VMs would stop anyway through the
+# owner lease; the release also deletes the boxes (or leaves them to box gc, see RELEASE above).
+boxsession_release_own() {
+    local _me="$(_agentvm_owner_pid)"
+    if [ -z "$_me" ]; then
+        return 0
+    fi
+    local _window _box _disposable _project _read_only _pid
+    boxsession_registry_rows | while IFS="$boxsession_tab" read -r _window _box _disposable _project _read_only _pid; do
+        if [ "$_pid" = "$_me" ]; then
+            boxsession_release "$_window"
+        fi
+    done
+    return 0
+}
+
 # boxsession_release_stale  ->  0. Releases the rows of Cadabra processes that are gone (a crash
 # or force quit): their VMs already stopped through the owner lease, and the rows would
 # otherwise keep their boxes counted as in use. A row with no pid ("-") is released too.

@@ -608,6 +608,84 @@ acp_agent_store() {
     acp_prefs_set_string agents/external/command "$2"
 }
 
+# WHERE AN AGENT RUNS, and how much it asks there. One choice per agent id, so each agent keeps
+# its own when the user switches between them:
+#   /agents/runIn/<id> : string - "mac" (this Mac, the default), "box:<name>" (a kept agent-vm
+#                        box), or "new:<image>" (a disposable box made from the image for each
+#                        chat window, gone when the window closes)
+#   /agents/level/<id> : string - in a box: "free" (the default; works without asking - the box
+#                        and the snapshot are the protection), "ask" (asks before changes) or
+#                        "plan" (plans only). The catalog says how each agent is told.
+# <id> is the stored agent id: a catalog id, "custom:N" for a saved agent, or "custom" for a
+# command with no record. The readers return the stored text as it is, empty meaning the
+# default; it is validated where it is used (boxsession_start, acp_transport_json.py), so a
+# damaged value fails a launch with a reason instead of quietly running the agent on this Mac.
+
+# _acp_agent_per_agent <dict> <id> <default>  ->  the stored text, the default when nothing is
+# stored, or "damaged" when something that is not text is stored there (a hand-edited file): a
+# string read of it comes back empty, which would otherwise read as the default - for runIn, this
+# Mac. "damaged" is refused by every consumer, so the launch fails and says so.
+_acp_agent_per_agent() {
+    local kind="$("$plister" get type "$acp_prefs" "/agents/$1/$2" 2>/dev/null)"
+    case "$kind" in
+        '')     printf '%s\n' "$3" ;;
+        string) local val
+                val=$(acp_prefs_get_string "agents/$1/$2")
+                printf '%s\n' "${val:-$3}" ;;
+        *)      printf 'damaged\n' ;;
+    esac
+}
+
+# acp_agent_run_in <id>  ->  the stored place, "mac" when none is stored
+acp_agent_run_in() {
+    _acp_agent_per_agent runIn "$1" mac
+}
+
+# acp_agent_level <id>  ->  the stored level, "free" when none is stored
+acp_agent_level() {
+    _acp_agent_per_agent level "$1" free
+}
+
+# _acp_agent_set_per_agent <dict> <id> <value>  ->  /agents/<dict>/<id> set and read back;
+# 1 when the write did not land (plister exits 0 having written nothing on a read-only file).
+_acp_agent_set_per_agent() {
+    acp_agents_ensure_root || return 1
+    "$plister" get type "$acp_prefs" "/agents/$1" >/dev/null 2>&1 \
+        || "$plister" insert "$1" dict "$acp_prefs" /agents >/dev/null 2>&1
+    acp_prefs_set_string "agents/$1/$2" "$3"
+    local back="$(acp_prefs_get_string "agents/$1/$2")"
+    if [ "$back" != "$3" ]; then
+        return 1
+    fi
+    return 0
+}
+
+# acp_agent_set_run_in <id> <mac|box:NAME|new:IMAGE>  ->  0 once stored; 2 for a value of
+# another form or an id that cannot be a key; 1 when the write did not land.
+acp_agent_set_run_in() {
+    case "$1" in
+        ''|*/*) return 2 ;;
+    esac
+    case "$2" in
+        mac|box:?*|new:?*) ;;
+        *) return 2 ;;
+    esac
+    _acp_agent_set_per_agent runIn "$1" "$2"
+}
+
+# acp_agent_set_level <id> <free|ask|plan>  ->  0 once stored; 2 for another value or an id
+# that cannot be a key; 1 when the write did not land.
+acp_agent_set_level() {
+    case "$1" in
+        ''|*/*) return 2 ;;
+    esac
+    case "$2" in
+        free|ask|plan) ;;
+        *) return 2 ;;
+    esac
+    _acp_agent_set_per_agent level "$1" "$2"
+}
+
 # acp_agent_record_verified <command-line> <name> <version>
 #
 # Remembers what the agent CALLED ITSELF the last time Test actually spoke to it. This is the

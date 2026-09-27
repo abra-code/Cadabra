@@ -72,6 +72,14 @@ if [ -n "$mcp_app_support" ] && [ -d "$mcp_app_support/Sessions" ]; then
     /bin/rm -rf "$mcp_app_support/Sessions"
 fi
 
+# This process's agent-vm boxes (windows whose agent ran in one). A window closed by quitting may
+# never run its own close handler, so the rows are released here; see boxsession_release_own.
+if [ -f "$mcp_app_support/box-sessions.tsv" ]; then
+    echo "terminate: releasing this Cadabra's agent-vm boxes"
+    source "$OMC_APP_BUNDLE_PATH/Contents/Resources/Scripts/aichat.boxsession.library.sh"
+    boxsession_release_own
+fi
+
 # Safety net: after the registry teardown above, sweep any of this bundle's llama-server
 # / MCP server (bundled python, replay) / mlx-agent processes still orphaned on launchd —
 # children stranded by an agent that died without tearing them down, and any leftovers

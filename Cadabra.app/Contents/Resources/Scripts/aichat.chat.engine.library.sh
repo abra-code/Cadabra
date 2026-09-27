@@ -25,6 +25,7 @@ __AICHAT_CHAT_ENGINE_LIB=1
 source "$OMC_APP_BUNDLE_PATH/Contents/Resources/Scripts/aichat.server.library.sh"
 source "$OMC_APP_BUNDLE_PATH/Contents/Resources/Scripts/aichat.model.library.sh"
 source "$OMC_APP_BUNDLE_PATH/Contents/Resources/Scripts/aichat.acp.agents.library.sh"
+source "$OMC_APP_BUNDLE_PATH/Contents/Resources/Scripts/aichat.boxsession.library.sh"
 # For history_marker_lead: a window that can answer holds a line saying what is answering it,
 # ready for its first message. Both callers already source this; the guard inside makes that free.
 source "$OMC_APP_BUNDLE_PATH/Contents/Resources/Scripts/aichat.history.library.sh"
@@ -113,6 +114,102 @@ chat_engine_remember_recent() {
 	esac
 }
 
+# chat_engine_box_transport <win> <command> <agent id> <run-in> <use-tools>
+#   The external agent in an agent-vm box: 0 with CHAT_ENGINE_CONFIG set, or 1 after an alert.
+#   A plain command like chat_engine_transport_config, for the same reasons.
+#
+#   The box is started here, under the loading overlay, before the transport exists: the
+#   transport is `agent-vm exec` into a running box, and the element starts the agent the moment
+#   the config lands. The box is registered for this window first thing (boxsession_start), so a
+#   failure anywhere below is released here, and a window that closes later releases it through
+#   aichat.chat.cancel.sh.
+#
+#   The project is the one folder shared with the box, at the same path: the Project folder of
+#   Agentic Session Tools, which every boxed session is routed through. No MCP servers go into a
+#   box yet (Cadabra's servers live at paths on this Mac), so tools are dropped with a line in the
+#   log rather than refused: the agent brings its own tools, and they run in the box.
+#
+#   <agent id> is the stored id. Only a catalog id is handed on as the agent's recipe: "custom"
+#   (an edited command) and "custom:N" (a saved agent) run their command as typed, with no
+#   recipe, no secret and no network rules - a box made for them reaches no host until the user
+#   allows one.
+chat_engine_box_transport() {
+	local win="$1" command="$2" agent="$3" run_in="$4" use_tools="$5"
+	local unavailable
+	unavailable="$(agentvm_available)"
+	local available_status=$?
+	if [ "$available_status" -ne 0 ]; then
+		echo "box: agent-vm unavailable: $unavailable"
+		"$alert" --level "stop" --title "$APPLET_NAME" --ok "OK" \
+			"This agent is set to run in a box, and boxes cannot be used here.
+
+$unavailable"
+		return 1
+	fi
+	local project="$(mcp_prefs_get_string servers/local/project)"
+	case "$project" in
+		/*) ;;
+		*)  project="" ;;
+	esac
+	if [ -z "$project" ] || [ ! -d "$project" ]; then
+		echo "box: no usable project folder (${project:-none})"
+		"$alert" --level "stop" --title "$APPLET_NAME" --ok "OK" \
+			"This agent runs in a box, which works on one project folder shared with it.
+
+Choose the Project folder in Agentic Session Tools, then start the conversation again."
+		return 1
+	fi
+	case "$use_tools" in
+		true|readonly) echo "box: Cadabra's tools do not run in a box yet; the agent uses its own" ;;
+	esac
+	local recipe="$agent"
+	case "$agent" in
+		custom|custom:*) recipe="" ;;
+	esac
+	local level="$(acp_agent_level "$agent")"
+
+	chat_loading_overlay_note "$win" "Starting the agent's box..."
+	local box
+	box="$(boxsession_start "$win" "$run_in" "$agent" "$project" no)"
+	local box_status=$?
+	if [ "$box_status" -ne 0 ]; then
+		local why="$(agentvm_last_error "$box_status")"
+		echo "box: start failed ($run_in, status $box_status): $why"
+		boxsession_release "$win"
+		"$alert" --level "stop" --title "$APPLET_NAME" --ok "OK" \
+			"Could not start the agent's box.
+
+$why"
+		return 1
+	fi
+	CHAT_ENGINE_CONFIG="$(boxsession_transport "$command" "$win" "$recipe" "$box" "$project" no "$level")"
+	local transport_status=$?
+	if [ "$transport_status" -ne 0 ] || [ -z "$CHAT_ENGINE_CONFIG" ]; then
+		local why="$(agentvm_last_error "$transport_status")"
+		CHAT_ENGINE_CONFIG=""
+		echo "box: transport refused ($box, level $level): $why"
+		boxsession_release "$win"
+		"$alert" --level "stop" --title "$APPLET_NAME" --ok "OK" \
+			"Could not prepare the agent in its box.
+
+$why"
+		return 1
+	fi
+	# The window may have closed during the start, which takes 10-30 s. A close before the row
+	# existed released nothing, so the box would run for a window that is gone until Cadabra
+	# quits; a close after it left the release to its handler. Either way, nothing is injected.
+	chat_window_is_open "$win"
+	local still_open=$?
+	if [ "$still_open" -ne 0 ]; then
+		CHAT_ENGINE_CONFIG=""
+		echo "box: the window closed while $box started; releasing it"
+		boxsession_release "$win"
+		return 1
+	fi
+	echo "box: agent in $box ($run_in, level $level, project $project)"
+	return 0
+}
+
 # chat_engine_transport_config <win> <engine> <model-path> <use-tools> <external-command> [port]
 #                              [retiring-model-path] [retiring-window]
 #   Everything ONE engine needs to exist before the window can talk, ending in the ACP transport
@@ -180,6 +277,15 @@ chat_engine_transport_config() {
 
 Choose one under Tools > External ACP Agent, or pick a local model instead."
 		else
+			# Where the agent runs is the user's choice per agent (Select ACP Agent). A box has
+			# its own path below; this Mac keeps the one that was always here.
+			local stored_agent="$(acp_agent_stored_id)"
+			stored_agent="${stored_agent:-custom}"
+			local run_in="$(acp_agent_run_in "$stored_agent")"
+			if [ "$run_in" != "mac" ]; then
+				chat_engine_box_transport "$win" "$external_command" "$stored_agent" "$run_in" "$use_tools"
+				return $?
+			fi
 			CHAT_ENGINE_CONFIG=$(aichat_acp_transport_json "$agent_bin" external "$external_command" "$win" "$use_tools")
 			if [ -n "$CHAT_ENGINE_CONFIG" ]; then
 				engine_ready=0
