@@ -8,12 +8,48 @@
 # the settings apply to the next model load; running windows keep their server set.
 
 source "$OMC_APP_BUNDLE_PATH/Contents/Resources/Scripts/aichat.mcp.servers.library.sh"
+source "$OMC_APP_BUNDLE_PATH/Contents/Resources/Scripts/aichat.acp.agents.library.sh"
 
 echo "[$(/usr/bin/basename "$0")]"
 
 window_uuid="$OMC_ACTIONUI_WINDOW_UUID"
 
 mcp_prefs_init_if_missing
+
+# Box mode (see init): the read-only choice is stored for the agent first, and a choice that
+# does not land keeps the dialog open rather than starting the agent with the other share mode.
+#
+# The launch is checked again first. Chat init starts whatever agent is stored when it runs, so
+# if another agent was chosen, or this one moved to or from a box, while this window was open,
+# the choice made here would go to one agent and the chat would start another with its own.
+box_agent="$(pb_get "aichatv2_toolsbox_${window_uuid}")"
+box_agent_now="$(acp_agent_box_launch "$(pb_get "aichatv2_launch_${window_uuid}")")"
+if [ "$box_agent_now" != "$box_agent" ]; then
+    "$alert" --level "stop" --title "$APPLET_NAME" --ok "OK" \
+        "The agent, or where it runs, changed while this window was open. Close this window and choose the agent again."
+    exit 0
+fi
+if [ -n "$box_agent" ]; then
+    # A toggle with no value keeps the stored choice: falling back to "no" would turn a
+    # read-only share into a read-write one.
+    read_only=""
+    case "${OMC_ACTIONUI_VIEW_502_VALUE:-}" in
+        true)  read_only=yes ;;
+        false) read_only=no ;;
+    esac
+    status=0
+    if [ -n "$read_only" ]; then
+        acp_agent_set_read_only "$box_agent" "$read_only"
+        status=$?
+    fi
+    if [ "$status" -ne 0 ]; then
+        "$alert" --level "stop" --title "$APPLET_NAME" --ok "OK" \
+            "Could not save whether the project is shared read-only. Check that ~/Library/Application Support/Cadabra is writable."
+        exit 0
+    fi
+    echo "box mode: $box_agent read-only=$read_only"
+fi
+pb_set "aichatv2_toolsbox_${window_uuid}" ""
 
 mcp_prefs_set_bool   allow-network          "${OMC_ACTIONUI_VIEW_240_VALUE:-true}"
 mcp_prefs_set_bool   servers/time/enabled   "${OMC_ACTIONUI_VIEW_210_VALUE:-true}"

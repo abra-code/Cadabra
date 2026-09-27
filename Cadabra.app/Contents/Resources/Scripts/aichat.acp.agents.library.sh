@@ -686,6 +686,45 @@ acp_agent_set_level() {
     _acp_agent_set_per_agent level "$1" "$2"
 }
 
+# acp_agent_box_launch <queued launch>  ->  the stored agent's id when the launch runs the
+# external agent in a box, else nothing. The same test chat init makes: a launch with no model
+# path runs the external agent when one is enabled, and the agent's place decides the box path.
+# A place that cannot be read counts as a box too, since chat init refuses it on that path.
+acp_agent_box_launch() {
+    [ -n "$1" ] || return 0
+    [ -z "$(launch_queue_model "$1")" ] || return 0
+    [ "$(acp_agent_enabled)" = "true" ] || return 0
+    local id="$(acp_agent_stored_id)"
+    id="${id:-custom}"
+    if [ "$(acp_agent_run_in "$id")" != "mac" ]; then
+        printf '%s\n' "$id"
+    fi
+    return 0
+}
+
+# HOW THE PROJECT IS SHARED WITH AN AGENT'S BOX, chosen in Agentic Session Tools:
+#   /agents/readOnly/<id> : string - "no" (the default: the agent can change the project) or
+#                           "yes" (`exec --read-only`: it can read the project, never change it)
+# Read by chat init, which refuses "damaged" like every other per-agent value.
+
+# acp_agent_read_only <id>  ->  "yes", "no" (also when none is stored), or "damaged"
+acp_agent_read_only() {
+    _acp_agent_per_agent readOnly "$1" no
+}
+
+# acp_agent_set_read_only <id> <yes|no>  ->  0 once stored; 2 for another value or an id that
+# cannot be a key; 1 when the write did not land.
+acp_agent_set_read_only() {
+    case "$1" in
+        ''|*/*) return 2 ;;
+    esac
+    case "$2" in
+        yes|no) ;;
+        *) return 2 ;;
+    esac
+    _acp_agent_set_per_agent readOnly "$1" "$2"
+}
+
 # THE KEY AN AGENT GETS IN A BOX. One per agent id, chosen in the Keys window:
 #   /agents/secret/<id> : string - "none" (the default), or the variable name of an agent-vm
 #                         Keychain secret, which chat init hands to the agent with

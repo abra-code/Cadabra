@@ -125,7 +125,8 @@ chat_engine_remember_recent() {
 #   aichat.chat.cancel.sh.
 #
 #   The project is the one folder shared with the box, at the same path: the Project folder of
-#   Agentic Session Tools, which every boxed session is routed through. No MCP servers go into a
+#   Agentic Session Tools, which every boxed session is routed through, and where the user also
+#   chooses whether it is shared read-only (acp_agent_read_only). No MCP servers go into a
 #   box yet (Cadabra's servers live at paths on this Mac), so tools are dropped with a line in the
 #   log rather than refused: the agent brings its own tools, and they run in the box.
 #
@@ -167,6 +168,20 @@ Choose the Project folder in Agentic Session Tools, then start the conversation 
 		custom|custom:*) recipe="" ;;
 	esac
 	local level="$(acp_agent_level "$agent")"
+	# Whether the project is shared read-only (Agentic Session Tools). A value that cannot be
+	# read is refused rather than read as "no", which would let the agent change a project the
+	# user may have asked it only to read.
+	local read_only="$(acp_agent_read_only "$agent")"
+	case "$read_only" in
+		yes|no) ;;
+		*)
+			echo "box: read-only setting unreadable ($read_only)"
+			"$alert" --level "stop" --title "$APPLET_NAME" --ok "OK" \
+				"Could not start the agent in its box.
+
+Whether its project is shared read-only cannot be read from Cadabra's settings. Choose it again in Agentic Session Tools."
+			return 1 ;;
+	esac
 	# The key chosen for the agent is checked before a box is made, since a start takes 10-30 s:
 	# a key that is not in the Keychain would otherwise be found only after it, by the transport.
 	if [ -n "$recipe" ]; then
@@ -185,7 +200,7 @@ $why"
 
 	chat_loading_overlay_note "$win" "Starting the agent's box..."
 	local box
-	box="$(boxsession_start "$win" "$run_in" "$agent" "$project" no)"
+	box="$(boxsession_start "$win" "$run_in" "$agent" "$project" "$read_only")"
 	local box_status=$?
 	if [ "$box_status" -ne 0 ]; then
 		local why="$(agentvm_last_error "$box_status")"
@@ -197,7 +212,7 @@ $why"
 $why"
 		return 1
 	fi
-	CHAT_ENGINE_CONFIG="$(boxsession_transport "$command" "$win" "$recipe" "$box" "$project" no "$level")"
+	CHAT_ENGINE_CONFIG="$(boxsession_transport "$command" "$win" "$recipe" "$box" "$project" "$read_only" "$level")"
 	local transport_status=$?
 	if [ "$transport_status" -ne 0 ] || [ -z "$CHAT_ENGINE_CONFIG" ]; then
 		local why="$(agentvm_last_error "$transport_status")"
@@ -221,7 +236,7 @@ $why"
 		boxsession_release "$win"
 		return 1
 	fi
-	echo "box: agent in $box ($run_in, level $level, project $project)"
+	echo "box: agent in $box ($run_in, level $level, project $project, read-only $read_only)"
 	# The image a disposable box came from, for the conversation's record (meta.json).
 	case "$run_in" in
 		new:?*) boxsession_stamp_image "$win" "$box" "${run_in#new:}" ;;

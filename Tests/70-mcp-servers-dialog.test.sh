@@ -384,6 +384,140 @@ check "the window key is cleared" "" "$(cad_pb_get "aichatv2_launch_$OMC_ACTIONU
 check "nothing is queued globally" "" "$(cad_call launch_queue_consume)"
 check "and no chat window opens"   "0" "$(chain_asked aichat.chat)"
 
+section "a launch that runs the agent in a box shows the box panel instead of the servers"
+cad_reset
+cad_call acp_agent_store claude-code-acp "claude-agent-acp"
+cad_call acp_agent_set_run_in claude-code-acp new:dev-agents
+cad_call acp_agent_set_read_only claude-code-acp yes
+fresh_window
+arm_launch "" "false"
+omc_run aichat.mcp.servers.init
+check "the servers and paths give way"   "0|1" "$(ui_visible "$MCP_SERVERS_AREA_ID")|$(ui_visible "$MCP_BOX_PANEL_ID")"
+check "  and so does Reset to Defaults"  "0" "$(ui_visible "$MCP_RESET_BTN_ID")"
+check "it says where the agent runs"     "Runs in a new disposable box from dev-agents" "$(ui_value "$MCP_BOX_WHERE_TEXT_ID")"
+check "  with the agent's read-only choice" "true" "$(ui_value "$MCP_BOX_READ_ONLY_TOGGLE_ID")"
+check "the window keeps the agent for Start" "claude-code-acp" "$(cad_pb_get "aichatv2_toolsbox_$OMC_ACTIONUI_WINDOW_UUID")"
+omc_control "$MCP_BOX_READ_ONLY_TOGGLE_ID" false
+chains_reset
+omc_run aichat.mcp.servers.start
+check "Start stores the choice for the agent" "no" "$(cad_call acp_agent_read_only claude-code-acp)"
+check "  forgets the agent"              "" "$(cad_pb_get "aichatv2_toolsbox_$OMC_ACTIONUI_WINDOW_UUID")"
+check "  and opens the chat"             "1" "$(chain_asked aichat.chat)"
+queue_settle "|false|"
+cad_call launch_queue_clear
+
+section "a kept box is named, and an unreadable place is said to be one"
+cad_call acp_agent_set_run_in claude-code-acp box:s3
+fresh_window
+arm_launch "" "false"
+omc_run aichat.mcp.servers.init
+check "a kept box"                       "Runs in the kept box s3" "$(ui_value "$MCP_BOX_WHERE_TEXT_ID")"
+check "  shared read-write, as stored"   "false" "$(ui_value "$MCP_BOX_READ_ONLY_TOGGLE_ID")"
+# The other direction: the section above stores "no", which a Start that ignored the toggle
+# (or found it unset) would store too.
+omc_control "$MCP_BOX_READ_ONLY_TOGGLE_ID" true
+chains_reset
+omc_run aichat.mcp.servers.start
+check "Start stores a read-only choice"  "yes" "$(cad_call acp_agent_read_only claude-code-acp)"
+queue_settle "|false|"
+cad_call launch_queue_clear
+"$cad_plister" set dict "$cad_settings" /agents/runIn/claude-code-acp >/dev/null 2>&1
+fresh_window
+arm_launch "" "false"
+omc_run aichat.mcp.servers.init
+check "a place that cannot be read is still box mode" "1|1" "$(ui_visible "$MCP_BOX_PANEL_ID")|$(cad_has "$(ui_value "$MCP_BOX_WHERE_TEXT_ID")" 'cannot be read')"
+omc_run aichat.mcp.servers.cancel
+check "cancel forgets the agent"         "" "$(cad_pb_get "aichatv2_toolsbox_$OMC_ACTIONUI_WINDOW_UUID")"
+cad_call launch_queue_clear
+
+section "a read-only choice that cannot be saved keeps the dialog open"
+cad_reset
+cad_call acp_agent_store claude-code-acp "claude-agent-acp"
+cad_call acp_agent_set_run_in claude-code-acp new:dev-agents
+# A string where the per-agent dict belongs: the write under it cannot land.
+"$cad_plister" set string blocked "$cad_settings" /agents/readOnly >/dev/null 2>&1
+fresh_window
+arm_launch "" "false"
+omc_run aichat.mcp.servers.init
+omc_control "$MCP_BOX_READ_ONLY_TOGGLE_ID" true
+chains_reset
+alerts_reset
+omc_run aichat.mcp.servers.start
+check "it says so"                       "1" "$(alerts_mention 'Could not save whether the project is shared read-only')"
+check "  the window stays open"          "0" "$(ui_calls omc_terminate_ok)"
+check "  nothing is launched"            "0" "$(chain_asked aichat.chat)"
+check "  and the agent is kept for another try" "claude-code-acp" "$(cad_pb_get "aichatv2_toolsbox_$OMC_ACTIONUI_WINDOW_UUID")"
+omc_run aichat.mcp.servers.cancel
+cad_call launch_queue_clear
+
+section "Start refuses when the agent, or where it runs, changed while the window was open"
+# Chat init starts whatever agent is stored when it runs, so the choice made here must be for it.
+cad_reset
+cad_call acp_agent_store claude-code-acp "claude-agent-acp"
+cad_call acp_agent_set_run_in claude-code-acp new:dev-agents
+fresh_window
+arm_launch "" "false"
+omc_run aichat.mcp.servers.init
+check "the caption names the share"      "1" "$(cad_has "$(ui_value "$MCP_PROJECT_NOTE_ID")" 'shared with the box')"
+cad_call acp_agent_set_run_in codex-acp box:s3
+cad_call acp_agent_store codex-acp "codex-acp"
+cad_call acp_agent_set_read_only codex-acp no
+omc_control "$MCP_BOX_READ_ONLY_TOGGLE_ID" true
+chains_reset
+alerts_reset
+omc_run aichat.mcp.servers.start
+check "another agent chosen meanwhile is refused" "1" "$(alerts_mention 'changed while this window was open')"
+check "  storing nothing for either"     "no|no" "$(cad_call acp_agent_read_only claude-code-acp)|$(cad_call acp_agent_read_only codex-acp)"
+check "  and starting nothing"           "0|0" "$(chain_asked aichat.chat)|$(ui_calls omc_terminate_ok)"
+cad_call acp_agent_set_run_in codex-acp mac
+alerts_reset
+omc_run aichat.mcp.servers.start
+check "  so is the agent moved to this Mac" "1|0" "$(alerts_mention 'changed while this window was open')|$(chain_asked aichat.chat)"
+omc_run aichat.mcp.servers.cancel
+cad_call launch_queue_clear
+
+section "a toggle with no value keeps the stored share mode"
+cad_reset
+cad_call acp_agent_store claude-code-acp "claude-agent-acp"
+cad_call acp_agent_set_run_in claude-code-acp new:dev-agents
+cad_call acp_agent_set_read_only claude-code-acp yes
+fresh_window
+arm_launch "" "false"
+omc_run aichat.mcp.servers.init
+omc_control "$MCP_BOX_READ_ONLY_TOGGLE_ID" ""
+chains_reset
+omc_run aichat.mcp.servers.start
+check "read-only stays read-only"        "yes|1" "$(cad_call acp_agent_read_only claude-code-acp)|$(chain_asked aichat.chat)"
+queue_settle "|false|"
+cad_call launch_queue_clear
+
+section "the same agent on this Mac, a local model, and the Tools menu keep the servers"
+cad_reset
+cad_call acp_agent_store claude-code-acp "claude-agent-acp"
+fresh_window
+arm_launch "" "true"
+omc_run aichat.mcp.servers.init
+# Untouched reads empty, so assert what the user meets: the servers not hidden, the panel not shown.
+check "an agent on this Mac"             "servers|no panel" "$([ "$(ui_visible "$MCP_SERVERS_AREA_ID")" = 0 ] && echo hidden || echo servers)|$([ "$(ui_visible "$MCP_BOX_PANEL_ID")" = 1 ] && echo panel || echo 'no panel')"
+check "  keeps no agent for Start"       "" "$(cad_pb_get "aichatv2_toolsbox_$OMC_ACTIONUI_WINDOW_UUID")"
+omc_run aichat.mcp.servers.cancel
+cad_call acp_agent_set_run_in claude-code-acp new:dev-agents
+fresh_window
+arm_launch "/models/tiny.gguf" "true"
+omc_run aichat.mcp.servers.init
+check "a local model, with a boxed agent stored" "" "$(cad_pb_get "aichatv2_toolsbox_$OMC_ACTIONUI_WINDOW_UUID")"
+omc_run aichat.mcp.servers.cancel
+cad_call launch_queue_clear
+# "yes" stored first: a Save that stored the (unset) toggle would turn it into "no".
+cad_call acp_agent_set_read_only claude-code-acp yes
+fresh_window
+omc_run aichat.mcp.servers.init
+check "the Tools menu (nothing queued)"  "" "$(cad_pb_get "aichatv2_toolsbox_$OMC_ACTIONUI_WINDOW_UUID")"
+chains_reset
+omc_run aichat.mcp.servers.start
+check "  whose Save stores no share mode" "yes" "$(cad_call acp_agent_read_only claude-code-acp)"
+check "  and opens nothing"              "0" "$(chain_asked aichat.chat)"
+
 # Leave the shared key as this file found it, before the trap restores the snapshot. Anything
 # this file armed is finished with by here, and letting it survive is what makes a lost race
 # sticky across runs.

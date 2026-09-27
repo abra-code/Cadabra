@@ -329,6 +329,14 @@ check "  and the image it came from is stamped for the record" "$box${TAB}dev" "
 check "  which the record reads with the row" "$box${TAB}dev${TAB}yes${TAB}$PROJECT${TAB}no" "$(with_fake boxsession_meta_fields w1)"
 check "no alert"                         "0" "$(alerts_count)"
 fake_reset
+cad_call acp_agent_set_read_only claude-code-acp yes
+out=$(engine chat_engine_box_transport w1 "claude-agent-acp" claude-code-acp new:dev false)
+json=$(printf '%s\n' "$out" | /usr/bin/sed 1d)
+check "a read-only choice reaches the transport" "1" "$(cad_has "$json" '"--read-only"')"
+check "  the warm-up"                    "1" "$(cad_has "$(logged 'exec --box')" '--read-only')"
+check "  and the registry"               "yes" "$(col 5 < "$REGISTRY")"
+cad_call acp_agent_set_read_only claude-code-acp no
+fake_reset
 out=$(engine chat_engine_box_transport w1 "my-agent --acp" custom new:dev false)
 json=$(printf '%s\n' "$out" | /usr/bin/sed 1d)
 check "an edited command runs as typed"  "1" "$(cad_has "$json" '"--", "my-agent", "--acp"')"
@@ -359,6 +367,15 @@ out=$(engine chat_engine_box_transport w1 "codex-acp" codex-acp box:b1 false)
 check "a level the agent cannot do refuses" "1" "$(printf '%s\n' "$out" | /usr/bin/head -1)"
 check "  with the catalog's reason"      "1" "$(alerts_mention 'Codex has no plan-only mode')"
 check "  and the window's row is released" "" "$(/bin/cat "$REGISTRY")"
+fake_reset
+cad_call acp_agent_set_read_only claude-code-acp no
+"$cad_plister" set dict "$cad_settings" /agents/readOnly/claude-code-acp >/dev/null 2>&1
+alerts_reset
+out=$(engine chat_engine_box_transport w1 "claude-agent-acp" claude-code-acp new:dev false)
+check "a share mode that cannot be read refuses" "1" "$(printf '%s\n' "$out" | /usr/bin/head -1)"
+check "  saying where to choose it"      "1" "$(alerts_mention 'Choose it again in Agentic Session Tools')"
+check "  before agent-vm made anything"  "" "$(logged 'box create')"
+cad_call acp_agent_set_read_only claude-code-acp no
 fake_reset
 cad_call acp_agent_set_secret claude-code-acp ANTHROPIC_API_KEY
 alerts_reset

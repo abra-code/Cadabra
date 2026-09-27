@@ -53,6 +53,7 @@
             },
             {
               "type": "Text",
+              "id": 312,
               "properties": {
                 "text": "Primary read-write directory for this session. The assistant treats this as its working folder.",
                 "foregroundStyle": "secondary",
@@ -64,150 +65,59 @@
       ]
     },
     {
-      "type": "HStack",
+      "type": "ZStack",
       "properties": {
-        "spacing": 12,
-        "alignment": "top",
+        "alignment": "topLeading",
         "frame": { "maxWidth": "infinity", "maxHeight": "infinity" }
       },
       "children": [
         {
-          "type": "ScrollView",
+          "type": "HStack",
+          "id": 150,
           "properties": {
-            "frame": { "minWidth": 320, "maxWidth": "infinity", "maxHeight": "infinity" }
+            "spacing": 12,
+            "alignment": "top",
+            "frame": { "maxWidth": "infinity", "maxHeight": "infinity" }
           },
-          "content": {
-            "type": "VStack",
-            "properties": {
-              "spacing": 12,
-              "alignment": "leading",
-              "frame": { "maxWidth": "infinity", "alignment": "topLeading" }
-            },
-            "children": [
-              {
-                "type": "GroupBox",
-                "id": 200,
+          "children": [
+            {
+              "type": "ScrollView",
+              "properties": {
+                "frame": { "minWidth": 320, "maxWidth": "infinity", "maxHeight": "infinity" }
+              },
+              "content": {
+                "type": "VStack",
                 "properties": {
-                  "title": "Available MCP Servers",
-                  "frame": { "maxWidth": "infinity" }
+                  "spacing": 12,
+                  "alignment": "leading",
+                  "frame": { "maxWidth": "infinity", "alignment": "topLeading" }
                 },
                 "children": [
                   {
-                    "type": "VStack",
+                    "type": "GroupBox",
+                    "id": 200,
                     "properties": {
-                      "spacing": 10,
-                      "alignment": "leading",
-                      "frame": { "maxWidth": "infinity", "alignment": "topLeading" }
+                      "title": "Available MCP Servers",
+                      "frame": { "maxWidth": "infinity" }
                     },
                     "children": [
                       {
                         "type": "VStack",
-                        "properties": { "spacing": 2, "alignment": "leading" },
+                        "properties": {
+                          "spacing": 10,
+                          "alignment": "leading",
+                          "frame": { "maxWidth": "infinity", "alignment": "topLeading" }
+                        },
                         "children": [
-                          {
-                            "type": "Toggle",
-                            "id": 230,
-                            "properties": {
-                              "title": "Local - file operations & shell execution",
-                              "isOn": true,
-                              "style": "checkbox"
-                            }
-                          },
-                          {
-                            "type": "Text",
-                            "properties": {
-                              "text": "All file operations & executed tools or scripts are restricted to sandbox",
-                              "foregroundStyle": "secondary",
-                              "font": "caption",
-                              "padding": { "leading": 22 }
-                            }
-                          }
-                        ]
-                      },
-                      {
-                        "type": "VStack",
-                        "properties": { "spacing": 2, "alignment": "leading" },
-                        "children": [
-                          {
-                            "type": "Toggle",
-                            "id": 220,
-                            "properties": {
-                              "title": "Internet - search & fetch",
-                              "isOn": true,
-                              "style": "checkbox"
-                            }
-                          },
-                          {
-                            "type": "Text",
-                            "properties": {
-                              "text": "Search & full-page content fetch provided by DuckDuckGo server",
-                              "foregroundStyle": "secondary",
-                              "font": "caption",
-                              "padding": { "leading": 22 }
-                            }
-                          }
-                        ]
-                      },
-                      {
-                        "type": "VStack",
-                        "properties": { "spacing": 2, "alignment": "leading" },
-                        "children": [
-                          {
-                            "type": "Toggle",
-                            "id": 210,
-                            "properties": {
-                              "title": "Date & Time",
-                              "isOn": true,
-                              "style": "checkbox"
-                            }
-                          },
-                          {
-                            "type": "Text",
-                            "properties": {
-                              "text": "Current date & time - retrieved from Internet",
-                              "foregroundStyle": "secondary",
-                              "font": "caption",
-                              "padding": { "leading": 22 }
-                            }
-                          }
-                        ]
-                      },
-                      {
-                        "type": "VStack",
-                        "properties": { "spacing": 2, "alignment": "leading" },
-                        "children": [
-                          {
-                            "type": "Toggle",
-                            "id": 260,
-                            "properties": {
-                              "title": "PDF - document inspection & editing",
-                              "isOn": true,
-                              "style": "checkbox",
-                              "actionID": "aichat.mcp.servers.toggle.pdf"
-                            }
-                          },
-                          {
-                            "type": "Text",
-                            "properties": {
-                              "text": "Read PDF text, outline, forms, and render/OCR pages - confined to the sandbox paths below. Fully offline.",
-                              "foregroundStyle": "secondary",
-                              "font": "caption",
-                              "padding": { "leading": 22 }
-                            }
-                          },
                           {
                             "type": "VStack",
-                            "properties": {
-                              "spacing": 2,
-                              "alignment": "leading",
-                              "padding": { "leading": 22, "top": 6 }
-                            },
+                            "properties": { "spacing": 2, "alignment": "leading" },
                             "children": [
                               {
                                 "type": "Toggle",
-                                "id": 261,
+                                "id": 230,
                                 "properties": {
-                                  "title": "Allow PDF editing",
+                                  "title": "Local - file operations & shell execution",
                                   "isOn": true,
                                   "style": "checkbox"
                                 }
@@ -215,69 +125,313 @@
                               {
                                 "type": "Text",
                                 "properties": {
-                                  "text": "Merge, extract/delete/rotate pages, set metadata, fill forms, watermark, shrink. Every edit asks first and writes a NEW file in the sandbox paths - existing files are never overwritten or deleted.",
+                                  "text": "All file operations & executed tools or scripts are restricted to sandbox",
                                   "foregroundStyle": "secondary",
                                   "font": "caption",
                                   "padding": { "leading": 22 }
                                 }
                               }
                             ]
+                          },
+                          {
+                            "type": "VStack",
+                            "properties": { "spacing": 2, "alignment": "leading" },
+                            "children": [
+                              {
+                                "type": "Toggle",
+                                "id": 220,
+                                "properties": {
+                                  "title": "Internet - search & fetch",
+                                  "isOn": true,
+                                  "style": "checkbox"
+                                }
+                              },
+                              {
+                                "type": "Text",
+                                "properties": {
+                                  "text": "Search & full-page content fetch provided by DuckDuckGo server",
+                                  "foregroundStyle": "secondary",
+                                  "font": "caption",
+                                  "padding": { "leading": 22 }
+                                }
+                              }
+                            ]
+                          },
+                          {
+                            "type": "VStack",
+                            "properties": { "spacing": 2, "alignment": "leading" },
+                            "children": [
+                              {
+                                "type": "Toggle",
+                                "id": 210,
+                                "properties": {
+                                  "title": "Date & Time",
+                                  "isOn": true,
+                                  "style": "checkbox"
+                                }
+                              },
+                              {
+                                "type": "Text",
+                                "properties": {
+                                  "text": "Current date & time - retrieved from Internet",
+                                  "foregroundStyle": "secondary",
+                                  "font": "caption",
+                                  "padding": { "leading": 22 }
+                                }
+                              }
+                            ]
+                          },
+                          {
+                            "type": "VStack",
+                            "properties": { "spacing": 2, "alignment": "leading" },
+                            "children": [
+                              {
+                                "type": "Toggle",
+                                "id": 260,
+                                "properties": {
+                                  "title": "PDF - document inspection & editing",
+                                  "isOn": true,
+                                  "style": "checkbox",
+                                  "actionID": "aichat.mcp.servers.toggle.pdf"
+                                }
+                              },
+                              {
+                                "type": "Text",
+                                "properties": {
+                                  "text": "Read PDF text, outline, forms, and render/OCR pages - confined to the sandbox paths below. Fully offline.",
+                                  "foregroundStyle": "secondary",
+                                  "font": "caption",
+                                  "padding": { "leading": 22 }
+                                }
+                              },
+                              {
+                                "type": "VStack",
+                                "properties": {
+                                  "spacing": 2,
+                                  "alignment": "leading",
+                                  "padding": { "leading": 22, "top": 6 }
+                                },
+                                "children": [
+                                  {
+                                    "type": "Toggle",
+                                    "id": 261,
+                                    "properties": {
+                                      "title": "Allow PDF editing",
+                                      "isOn": true,
+                                      "style": "checkbox"
+                                    }
+                                  },
+                                  {
+                                    "type": "Text",
+                                    "properties": {
+                                      "text": "Merge, extract/delete/rotate pages, set metadata, fill forms, watermark, shrink. Every edit asks first and writes a NEW file in the sandbox paths - existing files are never overwritten or deleted.",
+                                      "foregroundStyle": "secondary",
+                                      "font": "caption",
+                                      "padding": { "leading": 22 }
+                                    }
+                                  }
+                                ]
+                              }
+                            ]
                           }
                         ]
                       }
                     ]
-                  }
-                ]
-              },
-              {
-                "type": "GroupBox",
-                "id": 250,
-                "properties": {
-                  "title": "Network",
-                  "frame": { "maxWidth": "infinity" }
-                },
-                "children": [
+                  },
                   {
-                    "type": "VStack",
+                    "type": "GroupBox",
+                    "id": 250,
                     "properties": {
-                      "spacing": 2,
-                      "alignment": "leading",
-                      "frame": { "maxWidth": "infinity", "alignment": "topLeading" }
+                      "title": "Network",
+                      "frame": { "maxWidth": "infinity" }
                     },
                     "children": [
                       {
-                        "type": "Toggle",
-                        "id": 240,
+                        "type": "VStack",
                         "properties": {
-                          "title": "Allow Network",
-                          "isOn": true,
-                          "style": "checkbox",
-                          "actionID": "aichat.mcp.servers.toggle.network"
-                        }
-                      },
-                      {
-                        "type": "Text",
-                        "properties": {
-                          "text": "Master switch. When off, Internet access is disabled and the sandbox denies network access to local tools & scripts.",
-                          "foregroundStyle": "secondary",
-                          "font": "caption",
-                          "padding": { "leading": 22 }
-                        }
+                          "spacing": 2,
+                          "alignment": "leading",
+                          "frame": { "maxWidth": "infinity", "alignment": "topLeading" }
+                        },
+                        "children": [
+                          {
+                            "type": "Toggle",
+                            "id": 240,
+                            "properties": {
+                              "title": "Allow Network",
+                              "isOn": true,
+                              "style": "checkbox",
+                              "actionID": "aichat.mcp.servers.toggle.network"
+                            }
+                          },
+                          {
+                            "type": "Text",
+                            "properties": {
+                              "text": "Master switch. When off, Internet access is disabled and the sandbox denies network access to local tools & scripts.",
+                              "foregroundStyle": "secondary",
+                              "font": "caption",
+                              "padding": { "leading": 22 }
+                            }
+                          }
+                        ]
                       }
                     ]
-                  }
+                  },
+                  { "type": "Spacer" }
                 ]
+              }
+            },
+            {
+              "type": "GroupBox",
+              "id": 400,
+              "properties": {
+                "title": "Additional Local Sandbox Paths",
+                "frame": { "minWidth": 380, "maxWidth": "infinity", "maxHeight": "infinity" }
               },
-              { "type": "Spacer" }
-            ]
-          }
+              "children": [
+                {
+                  "type": "VStack",
+                  "properties": {
+                    "spacing": 10,
+                    "alignment": "leading",
+                    "frame": { "maxWidth": "infinity", "maxHeight": "infinity", "alignment": "topLeading" }
+                  },
+                  "children": [
+                    {
+                      "type": "VStack",
+                      "properties": {
+                        "spacing": 4,
+                        "alignment": "leading",
+                        "frame": { "maxWidth": "infinity", "maxHeight": "infinity", "alignment": "topLeading" }
+                      },
+                      "children": [
+                        {
+                          "type": "Text",
+                          "properties": { "text": "Read-write", "font": "subheadline" }
+                        },
+                        {
+                          "type": "Table",
+                          "id": 320,
+                          "properties": {
+                            "columns": ["Path"],
+                            "actionID": "aichat.mcp.servers.rw.selection.changed",
+                            "frame": { "minHeight": 80, "maxWidth": "infinity", "maxHeight": "infinity" }
+                          }
+                        },
+                        {
+                          "type": "HStack",
+                          "properties": { "spacing": 4 },
+                          "children": [
+                            {
+                              "type": "Button",
+                              "id": 321,
+                              "properties": {
+                                "systemImage": "plus",
+                                "buttonStyle": "borderless",
+                                "actionID": "aichat.mcp.servers.rw.add",
+                                "help": "Add a folder the agent may read and write",
+                                "frame": { "width": 24, "height": 22 }
+                              }
+                            },
+                            {
+                              "type": "Button",
+                              "id": 322,
+                              "properties": {
+                                "systemImage": "minus",
+                                "buttonStyle": "borderless",
+                                "actionID": "aichat.mcp.servers.rw.remove",
+                                "help": "Remove the selected read-write folder",
+                                "disabled": true,
+                                "frame": { "width": 24, "height": 22 }
+                              }
+                            },
+                            { "type": "Spacer" }
+                          ]
+                        }
+                      ]
+                    },
+                    {
+                      "type": "VStack",
+                      "properties": {
+                        "spacing": 4,
+                        "alignment": "leading",
+                        "frame": { "maxWidth": "infinity", "maxHeight": "infinity", "alignment": "topLeading" }
+                      },
+                      "children": [
+                        {
+                          "type": "Text",
+                          "properties": { "text": "Read-only", "font": "subheadline" }
+                        },
+                        {
+                          "type": "Table",
+                          "id": 330,
+                          "properties": {
+                            "columns": ["Path"],
+                            "actionID": "aichat.mcp.servers.ro.selection.changed",
+                            "frame": { "minHeight": 80, "maxWidth": "infinity", "maxHeight": "infinity" }
+                          }
+                        },
+                        {
+                          "type": "HStack",
+                          "properties": { "spacing": 4 },
+                          "children": [
+                            {
+                              "type": "Button",
+                              "id": 331,
+                              "properties": {
+                                "systemImage": "plus",
+                                "buttonStyle": "borderless",
+                                "actionID": "aichat.mcp.servers.ro.add",
+                                "help": "Add a folder the agent may only read",
+                                "frame": { "width": 24, "height": 22 }
+                              }
+                            },
+                            {
+                              "type": "Button",
+                              "id": 332,
+                              "properties": {
+                                "systemImage": "minus",
+                                "buttonStyle": "borderless",
+                                "actionID": "aichat.mcp.servers.ro.remove",
+                                "help": "Remove the selected read-only folder",
+                                "disabled": true,
+                                "frame": { "width": 24, "height": 22 }
+                              }
+                            },
+                            { "type": "Spacer" }
+                          ]
+                        }
+                      ]
+                    },
+                    {
+                      "type": "Text",
+                      "properties": {
+                        "markdown": "The session temporary folder ($TMPDIR) is listed as read-write and recomputed each launch (its value changes per login session, so it is not saved). Remove it to deny temp access.",
+                        "foregroundStyle": "secondary",
+                        "font": "caption"
+                      }
+                    },
+                    {
+                      "type": "Text",
+                      "properties": {
+                        "markdown": "Always allowed (read-only): system executables in `/bin`, `/usr/bin`, `/sbin`, `/usr/sbin` and system libraries in `/usr/lib`, `/System/Library` are granted automatically by 'replay' server sandbox.",
+                        "foregroundStyle": "secondary",
+                        "font": "caption"
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
         },
         {
           "type": "GroupBox",
-          "id": 400,
+          "id": 500,
           "properties": {
-            "title": "Additional Local Sandbox Paths",
-            "frame": { "minWidth": 380, "maxWidth": "infinity", "maxHeight": "infinity" }
+            "title": "In the Box",
+            "hidden": true,
+            "frame": { "maxWidth": "infinity", "maxHeight": "infinity", "alignment": "topLeading" }
           },
           "children": [
             {
@@ -289,127 +443,48 @@
               },
               "children": [
                 {
-                  "type": "VStack",
-                  "properties": {
-                    "spacing": 4,
-                    "alignment": "leading",
-                    "frame": { "maxWidth": "infinity", "maxHeight": "infinity", "alignment": "topLeading" }
-                  },
-                  "children": [
-                    {
-                      "type": "Text",
-                      "properties": { "text": "Read-write", "font": "subheadline" }
-                    },
-                    {
-                      "type": "Table",
-                      "id": 320,
-                      "properties": {
-                        "columns": ["Path"],
-                        "actionID": "aichat.mcp.servers.rw.selection.changed",
-                        "frame": { "minHeight": 80, "maxWidth": "infinity", "maxHeight": "infinity" }
-                      }
-                    },
-                    {
-                      "type": "HStack",
-                      "properties": { "spacing": 4 },
-                      "children": [
-                        {
-                          "type": "Button",
-                          "id": 321,
-                          "properties": {
-                            "systemImage": "plus",
-                            "buttonStyle": "borderless",
-                            "actionID": "aichat.mcp.servers.rw.add",
-                            "help": "Add a folder the agent may read and write",
-                            "frame": { "width": 24, "height": 22 }
-                          }
-                        },
-                        {
-                          "type": "Button",
-                          "id": 322,
-                          "properties": {
-                            "systemImage": "minus",
-                            "buttonStyle": "borderless",
-                            "actionID": "aichat.mcp.servers.rw.remove",
-                            "help": "Remove the selected read-write folder",
-                            "disabled": true,
-                            "frame": { "width": 24, "height": 22 }
-                          }
-                        },
-                        { "type": "Spacer" }
-                      ]
-                    }
-                  ]
-                },
-                {
-                  "type": "VStack",
-                  "properties": {
-                    "spacing": 4,
-                    "alignment": "leading",
-                    "frame": { "maxWidth": "infinity", "maxHeight": "infinity", "alignment": "topLeading" }
-                  },
-                  "children": [
-                    {
-                      "type": "Text",
-                      "properties": { "text": "Read-only", "font": "subheadline" }
-                    },
-                    {
-                      "type": "Table",
-                      "id": 330,
-                      "properties": {
-                        "columns": ["Path"],
-                        "actionID": "aichat.mcp.servers.ro.selection.changed",
-                        "frame": { "minHeight": 80, "maxWidth": "infinity", "maxHeight": "infinity" }
-                      }
-                    },
-                    {
-                      "type": "HStack",
-                      "properties": { "spacing": 4 },
-                      "children": [
-                        {
-                          "type": "Button",
-                          "id": 331,
-                          "properties": {
-                            "systemImage": "plus",
-                            "buttonStyle": "borderless",
-                            "actionID": "aichat.mcp.servers.ro.add",
-                            "help": "Add a folder the agent may only read",
-                            "frame": { "width": 24, "height": 22 }
-                          }
-                        },
-                        {
-                          "type": "Button",
-                          "id": 332,
-                          "properties": {
-                            "systemImage": "minus",
-                            "buttonStyle": "borderless",
-                            "actionID": "aichat.mcp.servers.ro.remove",
-                            "help": "Remove the selected read-only folder",
-                            "disabled": true,
-                            "frame": { "width": 24, "height": 22 }
-                          }
-                        },
-                        { "type": "Spacer" }
-                      ]
-                    }
-                  ]
-                },
-                {
                   "type": "Text",
+                  "id": 501,
                   "properties": {
-                    "markdown": "The session temporary folder ($TMPDIR) is listed as read-write and recomputed each launch (its value changes per login session, so it is not saved). Remove it to deny temp access.",
-                    "foregroundStyle": "secondary",
-                    "font": "caption"
+                    "text": "",
+                    "font": "headline",
+                    "frame": { "maxWidth": "infinity", "alignment": "leading" }
                   }
                 },
                 {
                   "type": "Text",
                   "properties": {
-                    "markdown": "Always allowed (read-only): system executables in `/bin`, `/usr/bin`, `/sbin`, `/usr/sbin` and system libraries in `/usr/lib`, `/System/Library` are granted automatically by 'replay' server sandbox.",
+                    "text": "Only the project folder above is shared with the box, at the same path. Every file in it, .env files included, can be read there. Nothing else on this Mac is visible in the box.",
                     "foregroundStyle": "secondary",
-                    "font": "caption"
+                    "frame": { "maxWidth": "infinity", "alignment": "leading" }
                   }
-                }
+                },
+                {
+                  "type": "Toggle",
+                  "id": 502,
+                  "properties": {
+                    "title": "Read-only project"
+                  }
+                },
+                {
+                  "type": "Text",
+                  "properties": {
+                    "text": "The agent can read the project but cannot change, add or delete anything in it. Use it when the agent should only look.",
+                    "font": "caption",
+                    "foregroundStyle": "secondary",
+                    "frame": { "maxWidth": "infinity", "alignment": "leading" }
+                  }
+                },
+                {
+                  "type": "Text",
+                  "properties": {
+                    "text": "Cadabra's MCP servers do not run in a box yet. The agent uses its own tools, inside the box.",
+                    "font": "caption",
+                    "foregroundStyle": "secondary",
+                    "frame": { "maxWidth": "infinity", "alignment": "leading" }
+                  }
+                },
+                { "type": "Spacer" }
               ]
             }
           ]

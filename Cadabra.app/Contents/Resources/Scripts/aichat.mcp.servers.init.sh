@@ -3,6 +3,8 @@
 # Populates the MCP servers dialog from $mcp_prefs (creating defaults if missing).
 
 source "$OMC_APP_BUNDLE_PATH/Contents/Resources/Scripts/aichat.mcp.servers.library.sh"
+# For box mode: the agent a queued launch runs in a box, and its read-only choice.
+source "$OMC_APP_BUNDLE_PATH/Contents/Resources/Scripts/aichat.acp.agents.library.sh"
 
 echo "[$(/usr/bin/basename "$0")]"
 
@@ -87,4 +89,37 @@ if [ -n "$queued" ]; then
     "$dialog" "$window_uuid" $CONFIRM_BTN_ID omc_set_property "title" "Start"
 else
     "$dialog" "$window_uuid" $CONFIRM_BTN_ID omc_set_property "title" "Save"
+fi
+
+# BOX MODE, for a launch that runs the external agent in an agent-vm box. Cadabra's servers and
+# the sandbox paths do not apply there (the agent brings its own tools, and the box sees only the
+# project), so their area gives way to the box panel: where the agent runs, what is shared, and
+# whether the project is shared read-only. The two sit in one ZStack, since a hidden view keeps
+# its space. Reset to Defaults goes too: it writes the hidden settings at once. The agent is kept
+# for Start, which stores the read-only choice for it.
+SERVERS_AREA_ID=150
+BOX_PANEL_ID=500
+BOX_WHERE_TEXT_ID=501
+BOX_READ_ONLY_TOGGLE_ID=502
+RESET_BTN_ID=391
+PROJECT_NOTE_ID=312
+box_agent="$(acp_agent_box_launch "$queued")"
+pb_set "aichatv2_toolsbox_${window_uuid}" "$box_agent"
+if [ -n "$box_agent" ]; then
+    run_in="$(acp_agent_run_in "$box_agent")"
+    case "$run_in" in
+        box:?*) where="Runs in the kept box ${run_in#box:}" ;;
+        new:?*) where="Runs in a new disposable box from ${run_in#new:}" ;;
+        *)      where="Runs in a box whose setting cannot be read. Choose it again in Select ACP Agent." ;;
+    esac
+    case "$(acp_agent_read_only "$box_agent")" in
+        yes) read_only=true ;;
+        *)   read_only=false ;;
+    esac
+    "$dialog" "$window_uuid" $PROJECT_NOTE_ID "The folder shared with the box, at the same path. The agent works on it there."
+    "$dialog" "$window_uuid" $SERVERS_AREA_ID omc_hide
+    "$dialog" "$window_uuid" $RESET_BTN_ID omc_hide
+    "$dialog" "$window_uuid" $BOX_WHERE_TEXT_ID "$where"
+    "$dialog" "$window_uuid" $BOX_READ_ONLY_TOGGLE_ID "$read_only"
+    "$dialog" "$window_uuid" $BOX_PANEL_ID omc_show
 fi

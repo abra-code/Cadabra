@@ -10,3 +10,4 @@ echo "[$(/usr/bin/basename "$0")]"
 
 pb_set "aichatv2_launch_${OMC_ACTIONUI_WINDOW_UUID}" ""
 pb_set "aichatv2_loadtarget_${OMC_ACTIONUI_WINDOW_UUID}" ""
+pb_set "aichatv2_toolsbox_${OMC_ACTIONUI_WINDOW_UUID}" ""
