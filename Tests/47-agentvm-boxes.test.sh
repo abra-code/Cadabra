@@ -72,6 +72,14 @@ check "a base image has no \"based on\"" "-" "$(printf '%s\n' "$rows" | /usr/bin
 section "drift: every image field the library reads is in the fixture"
 check "no field is absent" "" "$(printf '%s\n' "$row" | absent name state _ macOS basedOn ownSize needs recipe created guestVersion cpus memoryGB diskGB path needKinds)"
 
+section "sizes: an image's or a box's space, from image info and box info (agent-vm 0.2.18)"
+row=$(convert sizes "$FIXTURES/image-info.json")
+check "own size, total, base and what it added" "280 MB${TAB}39 GB${TAB}dev-node${TAB}2.1 GB" "$row"
+row=$(convert sizes "$FIXTURES/box-info.json")
+check "a box has no base"  "1.4 GB${TAB}36 GB${TAB}-${TAB}-" "$row"
+row=$(printf '%s' '{"name":"x"}' | "$PY" "$CONVERT" sizes)
+check "no measurement: every field \"-\"" "-${TAB}-${TAB}-${TAB}-" "$row"
+
 section "boxes: one row per box"
 rows=$(convert boxes "$FIXTURES/box-list.json")
 row=$(printf '%s\n' "$rows" | /usr/bin/awk -F'\t' '$1 == "cadabra-spike"')

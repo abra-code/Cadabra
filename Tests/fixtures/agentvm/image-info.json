@@ -1,0 +1,58 @@
+{
+  "addedOverBase": {
+    "bytes": 2149040128,
+    "image": "dev-node"
+  },
+  "commandLineTools": "Command Line Tools for Xcode 27.0-27.0",
+  "cpuCount": 4,
+  "createdAt": "2026-09-23T23:53:50Z",
+  "createdBy": "0.0.1",
+  "derivedFrom": {
+    "image": "dev-node",
+    "recipeDigest": "edef427c53ca1f576a458db6504b52a1be6a3adbe179450fdef78870f95d5290"
+  },
+  "diskBytes": 68719476736,
+  "diskUsage": {
+    "bytes": 38690775040,
+    "unsharedBytes": 280211456
+  },
+  "formatVersion": 1,
+  "fullDiskAccess": {
+    "checkedAt": "2026-09-25T23:45:10Z",
+    "granted": true,
+    "guestDigest": "d5929c8dd5fad3726ae337b3e00436777e01cce4e46bbc4683ee07b58dd54097",
+    "guestRequirement": "cdhash H\"053c1cb6724b30af6a60f71d7515fd5e2af7bbb8\""
+  },
+  "guestDigest": "d5929c8dd5fad3726ae337b3e00436777e01cce4e46bbc4683ee07b58dd54097",
+  "guestFeatures": [
+    "terminal",
+    "prompt-notices",
+    "wallpaper",
+    "time-sync"
+  ],
+  "guestProtocol": 1,
+  "guestRequirement": "cdhash H\"053c1cb6724b30af6a60f71d7515fd5e2af7bbb8\"",
+  "guestVersion": "0.2.5",
+  "macAddress": "32:13:b8:d7:ab:81",
+  "macOSBuild": "26A428",
+  "macOSVersion": "27.0",
+  "memoryBytes": 8589934592,
+  "name": "dev-agents",
+  "needs": [
+    {
+      "kind": "guest-update",
+      "missing": [
+        "user-session",
+        "terminal-pixels"
+      ]
+    }
+  ],
+  "path": "/Users/you/Library/Application Support/agent-vm/Images/dev-agents",
+  "provisionSeconds": 54.779180792,
+  "recipe": {
+    "description": "Claude Code, Codex and opencode (needs Node: build from an image with recipes/homebrew-node)",
+    "digest": "b847b0b9403846a7cbd5b5054d2645e2bf5d735cac9a72f467c89f9cb29c7d4a"
+  },
+  "state": "ready",
+  "userName": "agent"
+}

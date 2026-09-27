@@ -102,9 +102,9 @@
               "type": "Table",
               "id": 200,
               "properties": {
-                "columns": ["Name", "State", "macOS", "Based on", "Own size", "Needs"],
-                "widths": [120, 65, 105, 85, 65, 80],
-                "minWidths": [90, 50, 80, 60, 50, 60],
+                "columns": ["Name", "State", "macOS", "Based on", "Needs"],
+                "widths": [130, 70, 110, 95, 100],
+                "minWidths": [90, 50, 80, 60, 60],
                 "actionID": "aichat.boxes.image.selection.changed",
                 "frame": { "maxWidth": "infinity", "maxHeight": "infinity" }
               }
@@ -113,9 +113,9 @@
               "type": "Table",
               "id": 300,
               "properties": {
-                "columns": ["Name", "State", "Image", "Network", "CPUs", "Memory", "Own size"],
-                "widths": [170, 70, 110, 120, 40, 60, 70],
-                "minWidths": [90, 50, 60, 70, 30, 40, 50],
+                "columns": ["Name", "State", "Image", "Network", "CPUs", "Memory"],
+                "widths": [180, 80, 120, 130, 40, 60],
+                "minWidths": [90, 50, 60, 70, 30, 40],
                 "hidden": true,
                 "actionID": "aichat.boxes.box.selection.changed",
                 "frame": { "maxWidth": "infinity", "maxHeight": "infinity" }

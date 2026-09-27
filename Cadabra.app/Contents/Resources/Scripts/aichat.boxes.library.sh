@@ -269,7 +269,8 @@ boxes_busy_table() {
 }
 
 # boxes_show_images <uuid>  ->  the images table from the cache.
-# Rows: Name, State, macOS, Based on, Own size, Needs.
+# Rows: Name, State, macOS, Based on, Needs. No size: agent-vm measures it only for one image at
+# a time (image info), so the detail pane shows it (boxes_size_lines).
 boxes_show_images() {
     local _uuid="$1"
     local _file="$(boxes_cache "$_uuid" images)"
@@ -287,13 +288,13 @@ boxes_show_images() {
             state = $2
             if ($3 != "-") state = state " (" $3 ")"
             if ($1 in kind) state = kind[$1] == "update-guest" ? "updating..." : (kind[$1] == "image-setup" ? "setting up..." : (kind[$1] == "image-create" ? "building..." : "busy..."))
-            printf "%s\t%s\t%s\t%s\t%s\t%s\n", $1, state, $4, $5, $6, $7
+            printf "%s\t%s\t%s\t%s\t%s\n", $1, state, $4, $5, $7
         }' "$_file" | "$dialog" "$_uuid" "$BOXES_IMAGES_ID" omc_table_set_rows_from_stdin
     boxes_show_updates "$_uuid"
 }
 
 # boxes_show_boxes <uuid>  ->  the boxes table from the cache.
-# Rows: Name, State, Image, Network, CPUs, Memory, Own size.
+# Rows: Name, State, Image, Network, CPUs, Memory. No size, as for images (box info).
 boxes_show_boxes() {
     local _uuid="$1"
     local _file="$(boxes_cache "$_uuid" boxes)"
@@ -307,11 +308,12 @@ boxes_show_boxes() {
             }
         }
         {
+            # "running" since agent-vm 0.2.18, "ready" before it.
             state = $2 == "ready" ? "running" : $2
             if ($12 == "true") state = state ", disposable"
             if ($1 in kind) state = kind[$1] == "box-start" ? "starting..." : (kind[$1] == "box-stop" ? "stopping..." : "busy...")
             memory = $6 == "-" ? "-" : $6 " GB"
-            printf "%s\t%s\t%s\t%s\t%s\t%s\t%s\n", $1, state, $3, $4, $5, memory, $7
+            printf "%s\t%s\t%s\t%s\t%s\t%s\n", $1, state, $3, $4, $5, memory
         }' "$_file" | "$dialog" "$_uuid" "$BOXES_BOXES_ID" omc_table_set_rows_from_stdin
 }
 
@@ -381,6 +383,42 @@ boxes_need_text() {
     esac
 }
 
+# boxes_size_lines <image|box> <name> <own size from the list>  ->  the detail pane's size lines.
+# agent-vm 0.2.18 measures an image's or a box's space only in `image info` / `box info` (about
+# 0.1-0.4 s, once per selection); an older one has no info command and still puts the own size in
+# its list, which is the fallback.
+boxes_size_lines() {
+    local _sizes
+    if [ "$1" = "image" ]; then
+        _sizes="$(agentvm_image_sizes "$2" 2>/dev/null)"
+    else
+        _sizes="$(agentvm_box_sizes "$2" 2>/dev/null)"
+    fi
+    local _status=$?
+    if [ "$_status" -ne 0 ] || [ -z "$_sizes" ]; then
+        /bin/rm -f "$agentvm_err_file"
+        printf 'Own size:      %s (what deleting it frees)\n' "${3:-unknown}"
+        return 0
+    fi
+    local _own="$(boxes_field "$_sizes" 1)"
+    local _total="$(boxes_field "$_sizes" 2)"
+    printf 'Own size:      %s (what deleting it frees)\n' "${_own:-unknown}"
+    printf 'Total size:    %s (most of it shared with other images and boxes)\n' "${_total:-unknown}"
+    local _base="$(boxes_field "$_sizes" 3)"
+    if [ -n "$_base" ]; then
+        printf 'Added:         %s over %s\n' "$(boxes_field "$_sizes" 4)" "$_base"
+    fi
+}
+
+# boxes_still_selected <uuid> <image:name|box:name>  ->  0 when the detail pane still belongs to
+# it. The detail text asks agent-vm (image info, box info, the logs), which takes a moment, and
+# handlers can overlap: a click on another row meanwhile makes this one stale, and it must not
+# paint over the newer selection.
+boxes_still_selected() {
+    local _selected="$("$pasteboard" "$(boxes_key cadabra_boxes_selected "$1")" get)"
+    [ "$_selected" = "$2" ]
+}
+
 # boxes_show_image <uuid> <name>  ->  the image's details and the buttons that apply to it.
 boxes_show_image() {
     local _uuid="$1" _name="$2"
@@ -411,13 +449,14 @@ boxes_show_image() {
         boxes_line 'CPUs:' "$(boxes_field "$_row" 11)"
         boxes_line 'Memory:' "$(boxes_field "$_row" 12)" GB
         boxes_line 'Disk:' "$(boxes_field "$_row" 13)" GB
-        printf 'Own size:      %s (what deleting it frees)\n' "$(boxes_field "$_row" 6)"
+        boxes_size_lines image "$_name" "$(boxes_field "$_row" 6)"
         printf 'Folder:        %s\n' "$_path"
         if [ -n "$_kinds" ]; then
             printf '\nNeeds:\n'
             boxes_need_text "$_kinds"
         fi
     )"
+    boxes_still_selected "$_uuid" "image:$_name" || return 0
     "$dialog" "$_uuid" "$BOXES_DETAIL_ID" "$_text"
     "$dialog" "$_uuid" "$BOXES_BOX_BUTTONS_ID" omc_hide
     "$dialog" "$_uuid" "$BOXES_IMAGE_BUTTONS_ID" omc_show
@@ -448,7 +487,9 @@ boxes_show_box() {
     local _path="$(boxes_field "$_row" 16)"
     local _busy="$(boxes_busy_kind "$_uuid" "box:$_name")"
     local _shown="$_state"
-    [ "$_state" = "ready" ] && _shown="running"
+    # A box that is up: "running" since agent-vm 0.2.18, "ready" before it.
+    [ "$_state" = "ready" ] && _state="running"
+    [ "$_state" = "running" ] && _shown="running"
     [ "$(boxes_field "$_row" 12)" = "true" ] && _shown="$_shown, disposable (deleted once it stops)"
     [ -n "$_busy" ] && _shown="$(boxes_busy_word "$_busy")"
     "$dialog" "$_uuid" "$BOXES_TITLE_ID" "Box $_name"
@@ -460,13 +501,13 @@ boxes_show_box() {
         printf 'Image:         %s\n' "$(boxes_field "$_row" 3)"
         boxes_line 'CPUs:' "$(boxes_field "$_row" 5)"
         boxes_line 'Memory:' "$(boxes_field "$_row" 6)" GB
-        printf 'Own size:      %s\n' "$(boxes_field "$_row" 7)"
+        boxes_size_lines box "$_name" "$(boxes_field "$_row" 7)"
         local _mode="$(boxes_field "$_row" 17)"
         printf 'Network:       %s\n' "$_mode"
         if [ "$_mode" = "allowlist" ]; then
             printf '%s\n' "$(boxes_field "$_row" 18)" | /usr/bin/tr ',' '\n' | /usr/bin/awk 'NF { print "  allowed:     " $0 }'
         fi
-        if [ "$_state" = "ready" ]; then
+        if [ "$_state" = "running" ]; then
             printf 'Project:       %s\n' "${_project:-none shared}"
             printf 'Programs:      %s running\n' "$(boxes_field "$_row" 11)"
             printf 'Started:       %s\n' "$(boxes_field "$_row" 14)"
@@ -483,6 +524,7 @@ boxes_show_box() {
         printf '\nRecently refused hosts:\n%s\n' "${_refused:-  none}"
     )"
     agentvm_last_error >/dev/null
+    boxes_still_selected "$_uuid" "box:$_name" || return 0
     "$dialog" "$_uuid" "$BOXES_DETAIL_ID" "$_text"
     "$dialog" "$_uuid" "$BOXES_IMAGE_BUTTONS_ID" omc_hide
     "$dialog" "$_uuid" "$BOXES_BOX_BUTTONS_ID" omc_show
@@ -490,7 +532,7 @@ boxes_show_box() {
     "$dialog" "$_uuid" "$BOXES_JOB_FORGET_ID" omc_disable
     local _free=0 _running=0 _stopped=0
     [ -z "$_busy" ] && _free=1
-    [ "$_state" = "ready" ] && _running=1
+    [ "$_state" = "running" ] && _running=1
     [ "$_state" = "stopped" ] && _stopped=1
     boxes_enable "$_uuid" "$BOXES_BOX_START_ID" "$((_stopped * _free))"
     boxes_enable "$_uuid" "$BOXES_BOX_STOP_ID" "$(( (1 - _stopped) * _free ))"

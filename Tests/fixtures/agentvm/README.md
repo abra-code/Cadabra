@@ -11,6 +11,7 @@ Real `--json` answers of agent-vm, which `Tests/helpers/fake_agent_vm.sh` serves
 - `execlog.json`, `netlog.json` - `box execlog <box> --last 5` and `box netlog <box> --last 5`.
 - `box-create.json` - `box create <box> --image dev --memory-gb 4 --allow pack:npm --allow example.com --disposable`.
 - `box-start.json`, `box-start.events`, `box-stop.events` - what `box start` prints on standard output, and the progress events of `box start` and `box stop` on standard error.
+- `image-info.json`, `box-info.json` - `agent-vm image info dev-agents --json` and `box info try1 --json` (agent-vm 0.2.18, 2026-09-26): the list entry or status plus `diskUsage`, and for a derived image `addedOverBase`. Since 0.2.18 the lists and `box status` carry no `diskUsage`; the older captures above still do.
 - `secret-list.json` - `agent-vm secret list --json` (agent-vm 0.2.12, 2026-09-26), with a second, readable entry added by hand so both states are present.
 - `update-guest.events` - made by hand, following the steps agent-vm's `Docs/progress-events.md` lists for `image update-guest` (a guest update boots a VM, which the capture avoided).
 - `image-create.events` - made by hand the same way, for `image create --from dev --recipe homebrew-node` (clone, boot, the recipe and its four steps with a line of their output, shutdown).

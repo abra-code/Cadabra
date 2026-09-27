@@ -21,6 +21,7 @@ Usage (the JSON on stdin):
     agentvm_json.py execlog   <- agent-vm box execlog <box> --json
     agentvm_json.py netlog    <- agent-vm box netlog <box> --json
     agentvm_json.py secrets   <- agent-vm secret list --json
+    agentvm_json.py sizes     <- agent-vm image info <image> --json, or box info <box> --json
     agentvm_json.py recipe <recipe.json>   an image recipe file, read directly
 The job-log readers at the end (log_progress, log_error) are for agentvm_job.py, which imports
 this file.
@@ -35,7 +36,8 @@ this file.
 "images" emits one row per image:
     name, state, failure, macOS, basedOn, ownSize, needs, recipe, created, guestVersion,
     cpus, memoryGB, diskGB, path, needKinds
-  macOS is "27.0 (26A428)"; ownSize is what deleting the image frees ("598 MB"); needs is
+  macOS is "27.0 (26A428)"; ownSize is what deleting the image frees ("598 MB"), "-" from
+  agent-vm 0.2.18 on (its lists measure nothing; "sizes" reads image info); needs is
   for people ("guest update, Full Disk Access"), needKinds for code ("guest-update,...").
 "boxes" emits one row per box:
     name, state, image, network, cpus, memoryGB, ownSize, pid, project, projectReadOnly,
@@ -53,6 +55,11 @@ this file.
   macOS privacy prompts the run waited on, joined with "; ".
 "netlog" emits one row per entry, oldest first:
     time, decision, host, port, method, reason
+"sizes" emits one row, the space an image or a box takes (agent-vm 0.2.18 measures it only in
+`image info` and `box info`; the lists leave it out to stay quick):
+    ownSize, totalSize, addedOverBase, addedSize
+  ownSize is what deleting it frees ("280 MB"), totalSize all it holds, shared or not; for an
+  image built from another, addedOverBase names that image and addedSize what the disk added.
 "secrets" emits one row per Keychain secret agent-vm keeps (names only; agent-vm never prints a
 value):
     name, readable
@@ -220,6 +227,13 @@ def execlog_rows(data):
                    entry.get("stoppedOnPrompt", False)])
 
 
+def size_rows(data):
+    data = need_object(data, "agent-vm image info / box info --json")
+    added = sub(data, "addedOverBase")
+    yield row([own_size(data), size_text(sub(data, "diskUsage").get("bytes")),
+               added.get("image"), size_text(added.get("bytes"))])
+
+
 def secret_rows(data):
     for entry in objects(need_list(data, "agent-vm secret list --json")):
         yield row([entry.get("name"), entry.get("readable")])
@@ -312,7 +326,8 @@ def recipe_rows(path):
 
 COMMANDS = {"version": version_rows, "status": status_rows, "doctor": doctor_rows,
             "images": image_rows, "boxes": box_rows, "packs": pack_rows,
-            "execlog": execlog_rows, "netlog": netlog_rows, "secrets": secret_rows}
+            "execlog": execlog_rows, "netlog": netlog_rows, "secrets": secret_rows,
+            "sizes": size_rows}
 
 
 def main(argv):

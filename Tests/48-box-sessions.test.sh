@@ -118,6 +118,10 @@ fake_reset
 /bin/cp "$FIXTURES/doctor.json" "$FAKE_AGENTVM_DIR/doctor.json"
 box=$(with_fake boxsession_start w1 box:b1 claude-code-acp "$PROJECT" no)
 check "a box that runs is not started again" "b1|" "$box|$(logged 'box start')"
+fake_reset
+/usr/bin/sed 's/"state" *: *"ready"/"state" : "running"/' "$FIXTURES/box-status-ready.json" > "$FAKE_AGENTVM_DIR/box-b1.json"
+box=$(with_fake boxsession_start w1 box:b1 claude-code-acp "$PROJECT" no)
+check "  nor one agent-vm 0.2.18 calls running" "b1|" "$box|$(logged 'box start')"
 check "  and the full VM slots do not refuse it: it is one of them" "0" "$(cad_has "$(/bin/cat "$FAKE_AGENTVM_DIR/log")" 'doctor')"
 
 fake_reset

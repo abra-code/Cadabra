@@ -17,7 +17,7 @@
 #   delay      seconds between the progress events of a long command (default 0).
 #   <key>.json the answer to one query, overriding the fixture of that name:
 #              version, doctor, image-list, box-list, packs, execlog, netlog, box-create,
-#              secret-list.
+#              secret-list, image-info, box-info.
 #   exec-error when present, `exec` prints "Error: " and the file's text and exits 1 (agent-vm's
 #              refusal of a share, say); otherwise exec runs nothing and exits 0.
 #   box-<name>.json  <- box status <name> --json. With no such file the box does not exist, and
@@ -28,6 +28,7 @@
 #   box packs --json, box status|execlog|netlog <name> ... --json,
 #   box create <name> --image <image> ... --json (creates box-<name>.json),
 #   box delete <name> --json (removes it), image delete <name> --json, box view <name> ... --json,
+#   image info <name> --json and box info <name> --json (the box must exist),
 #   box shell <name>, secret list --json, exec --box <name> ... -- <argv> (runs nothing),
 #   and the long ones, which print progress events on stderr like agent-vm
 #   and exit 130 (SIGINT) or 143 (SIGTERM) when stopped:
@@ -107,6 +108,11 @@ case "$1 $2" in
         answer packs ;;
     "secret list")
         answer secret-list ;;
+    "image info")
+        answer image-info ;;
+    "box info")
+        need_box "$3"
+        answer box-info ;;
     "exec --box")
         need_box "$3"
         if [ -f "$state/exec-error" ]; then

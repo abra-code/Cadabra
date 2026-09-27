@@ -80,9 +80,9 @@ open_window
 check_status "init ran"                      0
 check "the header names agent-vm and where it comes from" "agent-vm 0.1.8 (test double)" "$(ui_value "$BOXES_HEADER_ID")"
 check "five images"                          "5" "$(ui_row_count "$BOXES_IMAGES_ID")"
-check "  a row: name, state, macOS, base, own size, needs" "dev-agents${TAB}ready${TAB}27.0 (26A428)${TAB}dev-node${TAB}220 MB${TAB}guest update" "$(ui_rows "$BOXES_IMAGES_ID" | /usr/bin/grep '^dev-agents')"
+check "  a row: name, state, macOS, base, needs (no size: agent-vm measures it per image)" "dev-agents${TAB}ready${TAB}27.0 (26A428)${TAB}dev-node${TAB}guest update" "$(ui_rows "$BOXES_IMAGES_ID" | /usr/bin/grep '^dev-agents')"
 check "two boxes"                            "2" "$(ui_row_count "$BOXES_BOXES_ID")"
-check "  a row: name, state, image, network, CPUs, memory, own size" "cadabra-spike${TAB}stopped${TAB}dev-agents${TAB}allowlist, 1 rule${TAB}4${TAB}4 GB${TAB}545 MB" "$(ui_rows "$BOXES_BOXES_ID" | /usr/bin/grep '^cadabra-spike')"
+check "  a row: name, state, image, network, CPUs, memory" "cadabra-spike${TAB}stopped${TAB}dev-agents${TAB}allowlist, 1 rule${TAB}4${TAB}4 GB" "$(ui_rows "$BOXES_BOXES_ID" | /usr/bin/grep '^cadabra-spike')"
 check "no jobs"                              "0" "$(ui_row_count "$BOXES_JOBS_ID")"
 check "the images are shown"                 "1" "$(ui_visible "$BOXES_IMAGES_ID")"
 check "  and the boxes hidden"               "0" "$(ui_visible "$BOXES_BOXES_ID")"
@@ -130,11 +130,35 @@ check "its state"                    "ready" "$(ui_value "$BOXES_SUBTITLE_ID")"
 check "the recipe is in the details" "1" "$(cad_has "$(ui_value "$BOXES_DETAIL_ID")" "Claude Code, Codex and opencode")"
 check "  the folder"                 "1" "$(cad_has "$(ui_value "$BOXES_DETAIL_ID")" "/Users/you/Library/Application Support/agent-vm/Images/dev-agents")"
 check "  and what the need means"    "1" "$(cad_has "$(ui_value "$BOXES_DETAIL_ID")" "Guest update: the image's agent-vm-guest is older")"
+check "its own size, from image info" "1" "$(cad_has "$(ui_value "$BOXES_DETAIL_ID")" "Own size:      280 MB (what deleting it frees)")"
+check "  its total"                  "1" "$(cad_has "$(ui_value "$BOXES_DETAIL_ID")" "Total size:    39 GB")"
+check "  what it added over its base" "1" "$(cad_has "$(ui_value "$BOXES_DETAIL_ID")" "Added:         2.1 GB over dev-node")"
+check "  asked for this image only"  "1" "$(fake_asked "image info dev-agents --json")"
+printf 'no such subcommand' > "$FAKE_AGENTVM_DIR/fail-image-info"
+select_image dev-agents
+check "an agent-vm without image info: the list's own size" "1" "$(cad_has "$(ui_value "$BOXES_DETAIL_ID")" "Own size:      220 MB (what deleting it frees)")"
+check "  and no total"               "0" "$(cad_has "$(ui_value "$BOXES_DETAIL_ID")" "Total size")"
+/bin/rm -f "$FAKE_AGENTVM_DIR/fail-image-info"
 check "the image buttons are shown"  "1" "$(ui_visible "$BOXES_IMAGE_BUTTONS_ID")"
 check "  the box buttons hidden"     "0" "$(ui_visible "$BOXES_BOX_BUTTONS_ID")"
 check "New Box on"                   "1" "$(ui_enabled "$BOXES_IMAGE_NEW_BOX_ID")"
 check "Update Guest on"              "1" "$(ui_enabled "$BOXES_IMAGE_UPDATE_ID")"
 check "Delete on"                    "1" "$(ui_enabled "$BOXES_IMAGE_DELETE_ID")"
+# A click on a box while image info still runs: the image's handler finds itself stale.
+/bin/cat > "$OMCTEST_WORK/click_meanwhile.sh" <<'EOF'
+#!/bin/sh
+[ "$1 $2" = "image info" ] && "$OMC_OMC_SUPPORT_PATH/pasteboard" "cadabra_boxes_selected_$OMC_ACTIONUI_WINDOW_UUID" set "box:cadabra-spike"
+exec "$FAKE_AGENTVM_REAL" "$@"
+EOF
+/bin/chmod +x "$OMCTEST_WORK/click_meanwhile.sh"
+FAKE_AGENTVM_REAL="$CADABRA_AGENT_VM"
+CADABRA_AGENT_VM="$OMCTEST_WORK/click_meanwhile.sh"
+export FAKE_AGENTVM_REAL CADABRA_AGENT_VM
+select_image dev-node
+CADABRA_AGENT_VM="$FAKE_AGENTVM_REAL"
+check "a stale selection leaves the detail pane alone" "1" "$(cad_has "$(ui_value "$BOXES_DETAIL_ID")" "agent-vm/Images/dev-agents")"
+check "  not painted with dev-node"   "0" "$(cad_has "$(ui_value "$BOXES_DETAIL_ID")" "agent-vm/Images/dev-node")"
+check "  and it was asked"           "1" "$(fake_asked "image info dev-node --json")"
 select_image ""
 check "a deselection clears it"      "0" "$(ui_visible "$BOXES_IMAGE_BUTTONS_ID")"
 
@@ -160,6 +184,8 @@ select_box cadabra-spike
 check "titled"                      "Box cadabra-spike" "$(ui_value "$BOXES_TITLE_ID")"
 check "stopped"                     "stopped" "$(ui_value "$BOXES_SUBTITLE_ID")"
 check "its allowed hosts"           "1" "$(cad_has "$(ui_value "$BOXES_DETAIL_ID")" "allowed:     pack:npm")"
+check "its own size, from box info" "1" "$(cad_has "$(ui_value "$BOXES_DETAIL_ID")" "Own size:      1.4 GB (what deleting it frees)")"
+check "  and no base line for a box" "0" "$(cad_has "$(ui_value "$BOXES_DETAIL_ID")" "Added:")"
 check "its recent programs"         "1" "$(cad_has "$(ui_value "$BOXES_DETAIL_ID")" "/bin/echo ok  -> status 0")"
 check "its refused hosts"           "1" "$(cad_has "$(ui_value "$BOXES_DETAIL_ID")" "bag.itunes.apple.com:443  (not in the allowlist)")"
 check "  asked of agent-vm with a count" "1" "$(fake_asked "box netlog cadabra-spike --last 8 --denied")"
