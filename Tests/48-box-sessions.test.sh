@@ -444,4 +444,131 @@ with_fake boxsession_release_own
 check "this process's row goes"          "wb" "$(col 1 < "$REGISTRY")"
 check "  and its disposable box"         "0|1" "$([ -f "$FAKE_AGENTVM_DIR/box-mine1.json" ] && echo 1 || echo 0)|$([ -f "$FAKE_AGENTVM_DIR/box-theirs1.json" ] && echo 1 || echo 0)"
 
+section "the box line names the box and counts its connections since the agent started"
+# netlog_fixture - a network log with one entry before the agent started (09:00) and five after:
+# one host reached twice, another once, one refused and one whose connection failed.
+netlog_fixture() {
+    /bin/cat > "$FAKE_AGENTVM_DIR/netlog.json" <<'JSONEOF'
+[
+  {"decision": "denied", "host": "old.example", "method": "CONNECT", "port": 443, "reason": "not in the allowlist", "time": "2026-09-27T09:00:00Z"},
+  {"decision": "allowed", "host": "api.anthropic.com", "method": "CONNECT", "port": 443, "rule": "pack:anthropic", "time": "2026-09-27T10:01:00Z"},
+  {"decision": "allowed", "host": "api.anthropic.com", "method": "CONNECT", "port": 443, "rule": "pack:anthropic", "time": "2026-09-27T10:02:00Z"},
+  {"decision": "allowed", "host": "registry.npmjs.org", "method": "CONNECT", "port": 443, "rule": "registry.npmjs.org", "time": "2026-09-27T10:03:00Z"},
+  {"decision": "denied", "host": "bag.itunes.apple.com", "method": "CONNECT", "port": 443, "reason": "not in the allowlist", "time": "2026-09-27T10:04:00Z"},
+  {"decision": "failed", "host": "down.example", "method": "CONNECT", "port": 443, "reason": "connection refused", "time": "2026-09-27T10:05:00Z"}
+]
+JSONEOF
+}
+# line_title / line_help  ->  the last text or tooltip set on the line (the journal flattens
+# the tooltip's line breaks to spaces). The text is the Label's value (a bare-value call, which
+# the journal records as the value alone): a Label shows its value, which a later
+# omc_set_property title does not change.
+line_title() { cad_journal 544 | /usr/bin/grep -v '^omc_' | /usr/bin/tail -1; }
+line_help() { cad_journal 544 | /usr/bin/sed -n 's/^omc_set_property help //p' | /usr/bin/tail -1; }
+since="2026-09-27T10:00:00Z"
+fake_reset
+netlog_fixture
+check "the counts: hosts reached, refused and failed, each host once, none before the start" \
+    "2${TAB}1${TAB}1${TAB}api.anthropic.com,registry.npmjs.org${TAB}bag.itunes.apple.com${TAB}down.example${TAB}no" \
+    "$(with_fake boxsession_net_counts b1 "$since")"
+check "  read from the log's last entries only" "1" "$(cad_has "$(logged 'box netlog')" 'box netlog b1 --last 999')"
+# The fake answers with the whole fixture whatever --last says, so its six entries stand for
+# "the last six" here.
+check "a full read not reaching back to the start is marked partial" "yes" \
+    "$(with_fake eval 'boxsession_line_netlog_last=6; boxsession_net_counts b1 2026-09-27T08:00:00Z' | col 7)"
+check "  one reaching back past it is not" "no" \
+    "$(with_fake eval 'boxsession_line_netlog_last=6; boxsession_net_counts b1 2026-09-27T09:30:00Z' | col 7)"
+check "  nor is a log shorter than the read" "no" \
+    "$(with_fake eval 'boxsession_line_netlog_last=7; boxsession_net_counts b1 2026-09-27T08:00:00Z' | col 7)"
+printf '[]\n' > "$FAKE_AGENTVM_DIR/netlog.json"
+check "an empty log counts nothing" "0${TAB}0${TAB}0${TAB}-${TAB}-${TAB}-${TAB}no" "$(with_fake boxsession_net_counts b1 "$since")"
+
+cad_pb_set aichatv2_open_w1 1
+cad_reset
+cad_call mcp_prefs_write_defaults >/dev/null 2>&1; cad_call mcp_prefs_set_string servers/local/project "$PROJECT"
+fake_reset
+cad_journal_reset
+out=$(engine chat_engine_box_transport w1 "claude-agent-acp" claude-code-acp new:dev false)
+box=$(col 2 < "$REGISTRY")
+check "chat init puts the line into its slot" "1" "$(cad_has "$(cad_journal 543)" 'omc_insert_element {"type":"Label","id":544')"
+check "  naming the disposable box and its image" "Disposable box $box from dev - no connections yet" "$(line_title)"
+check "  as the Label's value, which is what it shows" "0" "$(cad_has "$(cad_journal 544)" 'omc_set_property title')"
+check "  and remembers the box and the line for the refreshes" "$box${TAB}Disposable box $box from dev" \
+    "$(cad_pb_get aichatv2_boxline_w1 | /usr/bin/cut -f1,3)"
+stamp_since=$(cad_pb_get aichatv2_boxline_w1 | /usr/bin/cut -f2)
+check "  with the moment it started, as agent-vm writes times" "1" \
+    "$(printf '%s\n' "$stamp_since" | /usr/bin/grep -c '^20[0-9][0-9]-[01][0-9]-[0-3][0-9]T[0-2][0-9]:[0-5][0-9]:[0-5][0-9]Z$')"
+fake_reset
+/bin/cp "$FIXTURES/doctor.json" "$FAKE_AGENTVM_DIR/doctor.json"
+cad_journal_reset
+out=$(engine chat_engine_box_transport w1 "claude-agent-acp" claude-code-acp new:dev false)
+check "a box that cannot start puts no line up" "0" "$(cad_writes 543)"
+
+fake_reset
+netlog_fixture
+printf 'w1\tb1\tno\t%s\tyes\t1\n' "$PROJECT" > "$REGISTRY"
+check "a kept box's line says so, and a read-only share" "Box b1, project read-only" "$(with_fake boxsession_line_head w1)"
+cad_pb_set aichatv2_boxline_w1 "b1${TAB}$since${TAB}Box b1, project read-only"
+cad_journal_reset
+with_fake boxsession_line_refresh w1
+check "a refresh restates the counts" "Box b1, project read-only - 2 hosts reached, 1 refused, 1 failed" "$(line_title)"
+check "  and names the hosts in the tooltip" \
+    "Reached: api.anthropic.com, registry.npmjs.org Refused: bag.itunes.apple.com Failed: down.example Counted for every program in box b1 since the agent started, as each connection ends (one still open, such as the agent's own to its model provider, is counted when it closes). Programs in the box reach only the hosts its rules allow; agent-vm box netlog b1 --denied lists the refused ones." \
+    "$(line_help)"
+/bin/cat > "$FAKE_AGENTVM_DIR/netlog.json" <<'JSONEOF'
+[
+  {"decision": "denied", "host": "h1.example", "method": "CONNECT", "port": 443, "time": "2026-09-27T10:01:00Z"},
+  {"decision": "denied", "host": "h2.example", "method": "CONNECT", "port": 443, "time": "2026-09-27T10:01:00Z"},
+  {"decision": "denied", "host": "h3.example", "method": "CONNECT", "port": 443, "time": "2026-09-27T10:01:00Z"},
+  {"decision": "denied", "host": "h4.example", "method": "CONNECT", "port": 443, "time": "2026-09-27T10:01:00Z"},
+  {"decision": "denied", "host": "h5.example", "method": "CONNECT", "port": 443, "time": "2026-09-27T10:01:00Z"},
+  {"decision": "denied", "host": "h6.example", "method": "CONNECT", "port": 443, "time": "2026-09-27T10:01:00Z"},
+  {"decision": "denied", "host": "h7.example", "method": "CONNECT", "port": 443, "time": "2026-09-27T10:01:00Z"},
+  {"decision": "denied", "host": "h8.example", "method": "CONNECT", "port": 443, "time": "2026-09-27T10:01:00Z"}
+]
+JSONEOF
+cad_journal_reset
+with_fake boxsession_line_refresh w1
+check "only refusals: no host reached" "Box b1, project read-only - no host reached, 8 refused" "$(line_title)"
+check "  and a long list is cut short" "1" "$(cad_has "$(line_help)" 'h6.example and 2 more Counted')"
+printf '1\n' > "$FAKE_AGENTVM_DIR/exit"
+printf 'Error: no box b1; `agent-vm box list` shows the existing ones\n' > "$FAKE_AGENTVM_DIR/stderr"
+cad_journal_reset
+with_fake boxsession_line_refresh w1
+/bin/rm -f "$FAKE_AGENTVM_DIR/exit" "$FAKE_AGENTVM_DIR/stderr"
+check "a log agent-vm cannot give says so" "Box b1, project read-only - network log unavailable" "$(line_title)"
+check "  with agent-vm's reason in the tooltip" "1" "$(cad_has "$(line_help)" 'no box b1')"
+cad_pb_set aichatv2_boxline_w2 ""
+cad_journal_reset
+with_fake boxsession_line_refresh w2
+check "a window without a line is left alone" "0" "$(cad_writes 544)"
+with_fake boxsession_release w1
+check "releasing the window forgets its line" "" "$(cad_pb_get aichatv2_boxline_w1)"
+
+section "the entry handler refreshes the line after a message, in the background"
+fake_reset
+netlog_fixture
+win="$OMC_ACTIONUI_WINDOW_UUID"
+printf '%s\tb1\tno\t%s\tno\t1\n' "$win" "$PROJECT" > "$REGISTRY"
+cad_pb_set "aichatv2_boxline_$win" "b1${TAB}$since${TAB}Box b1"
+cad_pb_set "aichatv2_session_$win" "entry-test"
+cad_journal_reset
+# entry <type>  ->  the entry handler run for one finalized entry of that type.
+entry() {
+    ( CADABRA_AGENT_VM="$FAKE"; export CADABRA_AGENT_VM
+      export OMC_ACTIONUI_TRIGGER_CONTEXT="{\"sequence\":2,\"type\":\"$1\",\"id\":\"e$1\",\"data\":{\"type\":\"$1\",\"message\":{\"role\":\"agent\",\"text\":\"done\"}}}"
+      omc_run aichat.chat.entry ) >/dev/null 2>&1
+}
+entry usage
+/bin/sleep 1
+check "an entry that is not a message does not read the log" "" "$(logged 'box netlog' 2>/dev/null)"
+entry message
+w_left=50
+# The tooltip is the refresh's last write: waiting for it leaves no child writing after this file ends.
+while [ -z "$(line_help)" ] && [ "$w_left" -gt 0 ]; do w_left=$((w_left - 1)); /bin/sleep 0.1; done
+check "a message does"                 "Box b1 - 2 hosts reached, 1 refused, 1 failed" "$(line_title)"
+/bin/rm -f "$REGISTRY"
+cad_pb_set "aichatv2_boxline_$win" ""
+cad_pb_set "aichatv2_session_$win" ""
+
 omctest_end

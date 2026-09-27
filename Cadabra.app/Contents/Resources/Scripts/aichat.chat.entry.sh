@@ -199,3 +199,17 @@ fi
 if [ -z "$info_stated" ] && [ -n "$envelope_is_message" ]; then
     chat_info_refresh "$win"
 fi
+
+# The box line (a window whose agent runs in an agent-vm box) restates what the box's programs
+# reached and were refused, after each message. In the background: reading agent-vm's network
+# log takes longer than this handler may. The registry test keeps a Mac that never used a box
+# from asking the pasteboard at all.
+if [ -n "$envelope_is_message" ] && [ -f "$mcp_app_support/box-sessions.tsv" ]; then
+    box_line=$(pb_get "aichatv2_boxline_${win}")
+    if [ -n "$box_line" ]; then
+        (
+            source "$OMC_APP_BUNDLE_PATH/Contents/Resources/Scripts/aichat.boxsession.library.sh"
+            boxsession_line_refresh "$win"
+        ) >/dev/null 2>&1 &
+    fi
+fi

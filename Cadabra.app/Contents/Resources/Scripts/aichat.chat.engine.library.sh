@@ -241,6 +241,8 @@ $why"
 	case "$run_in" in
 		new:?*) boxsession_stamp_image "$win" "$box" "${run_in#new:}" ;;
 	esac
+	# The box line under the model button; the entry handler keeps its counts current.
+	boxsession_line_show "$win" "$box"
 	return 0
 }
 

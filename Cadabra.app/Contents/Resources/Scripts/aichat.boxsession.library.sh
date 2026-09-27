@@ -178,6 +178,169 @@ boxsession_meta_fields() {
     printf '%s\n' "$_row" | /usr/bin/awk -F'\t' -v image="$_image" 'BEGIN { OFS = "\t" } { print $2, image, $3, $4, $5 }'
 }
 
+# THE BOX LINE, under the model button of a chat window whose agent runs in a box (a Label put
+# into the empty slot 543 of aichat.chat.json, so windows without a box keep their layout):
+#   Box s3, project read-only - 4 hosts reached, 2 refused
+# Its tooltip names the hosts. The counts cover the connections of every program in the box
+# since the agent started, from agent-vm's network log; the chat entry handler refreshes them
+# in the background after each message. The window's pasteboard key aichatv2_boxline_<window>
+# holds what the refreshes need: box TAB since TAB the line's first part.
+# The line's text is set as the Label's value, not with omc_set_property title: a Label shows its
+# value, which ActionUI seeds from the title once, at insertion, so a later title change is not
+# shown. The tooltip (help) has no such value and is set as a property.
+boxsession_line_slot_id=543
+boxsession_line_id=544
+# How many of the network log's last entries a refresh reads. The log of a kept box grows over
+# every session it served (up to 64 MB). agent-vm itself still reads the whole log, but the rows
+# converted and counted here stay few; the most _agentvm_need_count accepts.
+boxsession_line_netlog_last=999
+# How many host names the tooltip lists of each kind.
+boxsession_line_hosts_shown=6
+
+# boxsession_line_head <window>  ->  the line's first part, from the registry row and the image
+# stamp: "Box s3", "Disposable box cadabra-opencode-3f2a91 from dev-agents", with ", project
+# read-only" when so; nothing when the window has no row.
+boxsession_line_head() {
+    local _fields="$(boxsession_meta_fields "$1")"
+    if [ -z "$_fields" ]; then
+        return 0
+    fi
+    printf '%s\n' "$_fields" | /usr/bin/awk -F'\t' '{
+        if ($3 == "yes") {
+            head = "Disposable box " $1
+            if ($2 != "-") head = head " from " $2
+        } else {
+            head = "Box " $1
+        }
+        if ($5 == "yes") head = head ", project read-only"
+        print head
+    }'
+}
+
+# boxsession_line_show <window> <box>  ->  puts the line in the window, and remembers the box,
+# this moment and the line's first part for the refreshes. Called once the agent's box runs, so
+# the connections macOS makes while the box boots are not counted as the agent's.
+boxsession_line_show() {
+    local _since="$(/bin/date -u +%Y-%m-%dT%H:%M:%SZ)"
+    local _head="$(boxsession_line_head "$1")"
+    if [ -z "$_head" ]; then
+        _head="Box $2"
+    fi
+    pb_set "aichatv2_boxline_$1" "$2$boxsession_tab$_since$boxsession_tab$_head"
+    "$dialog" "$1" "$boxsession_line_id" omc_remove_element 2>/dev/null
+    "$dialog" "$1" "$boxsession_line_slot_id" omc_insert_element "{\"type\":\"Label\",\"id\":$boxsession_line_id,\"properties\":{\"title\":\"\",\"systemImage\":\"shippingbox\",\"font\":\"footnote\",\"foregroundStyle\":\"secondary\",\"padding\":{\"top\":0,\"leading\":14,\"bottom\":6,\"trailing\":14},\"frame\":{\"maxWidth\":\"infinity\",\"alignment\":\"leading\"}}}"
+    "$dialog" "$1" "$boxsession_line_id" "$_head - no connections yet"
+    "$dialog" "$1" "$boxsession_line_id" omc_set_property help "Programs in the box reach only the hosts its rules allow. The counts start when the agent does."
+}
+
+# boxsession_net_counts <box> <since>  ->  one row from the box's network log since <since> (an
+# ISO 8601 UTC time, as agent-vm writes them): hosts reached, refused, failed (allowed, but the
+# connection failed), then each kind's host names, comma-joined ("-" for none), then "yes" when
+# the log's last entries read did not reach back to <since>. Hosts are counted once each.
+# agent-vm's status on failure, with its reason left for agentvm_last_error.
+boxsession_net_counts() {
+    local _rows
+    _rows="$(agentvm_netlog "$1" "$boxsession_line_netlog_last")"
+    local _status=$?
+    if [ "$_status" -ne 0 ]; then
+        return "$_status"
+    fi
+    printf '%s\n' "$_rows" | /usr/bin/awk -F'\t' -v since="$2" -v limit="$boxsession_line_netlog_last" '
+        function add(kind, host) {
+            if ((kind SUBSEP host) in seen) return
+            seen[kind, host] = 1
+            count[kind]++
+            list[kind] = list[kind] (count[kind] > 1 ? "," : "") host
+        }
+        NF == 0 { next }
+        { rows++ }
+        rows == 1 { first = $1 }
+        $1 >= since {
+            if ($2 == "allowed") add("allowed", $3)
+            else if ($2 == "denied") add("denied", $3)
+            else if ($2 == "failed") add("failed", $3)
+        }
+        END {
+            partial = (rows >= limit && first >= since) ? "yes" : "no"
+            printf "%d\t%d\t%d\t%s\t%s\t%s\t%s\n", count["allowed"], count["denied"], count["failed"],
+                (list["allowed"] == "" ? "-" : list["allowed"]), (list["denied"] == "" ? "-" : list["denied"]),
+                (list["failed"] == "" ? "-" : list["failed"]), partial
+        }'
+}
+
+# _boxsession_hosts_text <label> <comma-joined hosts>  ->  "Refused: a, b, c and 4 more", or
+# nothing for "-".
+_boxsession_hosts_text() {
+    if [ "$2" = "-" ]; then
+        return 0
+    fi
+    printf '%s\n' "$2" | /usr/bin/awk -F',' -v label="$1" -v shown="$boxsession_line_hosts_shown" '{
+        text = label ": "
+        for (i = 1; i <= NF && i <= shown; i++) text = text (i > 1 ? ", " : "") $i
+        if (NF > shown) text = text " and " (NF - shown) " more"
+        print text
+    }'
+}
+
+# boxsession_line_refresh <window>  ->  0. Restates the line from the box's network log. Nothing
+# for a window without a line. A log that cannot be read says so on the line, with agent-vm's
+# reason in the tooltip.
+boxsession_line_refresh() {
+    local _stamp="$(pb_get "aichatv2_boxline_$1")"
+    if [ -z "$_stamp" ]; then
+        return 0
+    fi
+    local _box="${_stamp%%"$boxsession_tab"*}"
+    local _rest="${_stamp#*"$boxsession_tab"}"
+    local _since="${_rest%%"$boxsession_tab"*}"
+    local _head="${_rest#*"$boxsession_tab"}"
+    local _counts
+    _counts="$(boxsession_net_counts "$_box" "$_since")"
+    local _status=$?
+    if [ "$_status" -ne 0 ] || [ -z "$_counts" ]; then
+        local _why="$(agentvm_last_error "$_status")"
+        "$dialog" "$1" "$boxsession_line_id" "$_head - network log unavailable"
+        "$dialog" "$1" "$boxsession_line_id" omc_set_property help "$_why"
+        return 0
+    fi
+    local _reached _refused _failed _reached_hosts _refused_hosts _failed_hosts _partial
+    IFS="$boxsession_tab" read -r _reached _refused _failed _reached_hosts _refused_hosts _failed_hosts _partial <<EOF
+$_counts
+EOF
+    local _tail
+    if [ "$_reached" = "0" ] && [ "$_refused" = "0" ] && [ "$_failed" = "0" ]; then
+        _tail="no connections yet"
+    elif [ "$_reached" = "0" ]; then
+        _tail="no host reached"
+    elif [ "$_reached" = "1" ]; then
+        _tail="1 host reached"
+    else
+        _tail="$_reached hosts reached"
+    fi
+    if [ "$_refused" != "0" ]; then
+        _tail="$_tail, $_refused refused"
+    fi
+    if [ "$_failed" != "0" ]; then
+        _tail="$_tail, $_failed failed"
+    fi
+    local _help=""
+    local _part _line
+    for _part in "Reached|$_reached_hosts" "Refused|$_refused_hosts" "Failed|$_failed_hosts"; do
+        _line="$(_boxsession_hosts_text "${_part%%|*}" "${_part#*|}")"
+        if [ -n "$_line" ]; then
+            _help="$_help$_line$boxsession_newline"
+        fi
+    done
+    _help="${_help}Counted for every program in box $_box since the agent started, as each connection ends (one still open, such as the agent's own to its model provider, is counted when it closes)"
+    if [ "$_partial" = "yes" ]; then
+        _help="$_help, over its last $boxsession_line_netlog_last connections"
+    fi
+    _help="$_help. Programs in the box reach only the hosts its rules allow; agent-vm box netlog $_box --denied lists the refused ones."
+    "$dialog" "$1" "$boxsession_line_id" "$_head - $_tail"
+    "$dialog" "$1" "$boxsession_line_id" omc_set_property help "$_help"
+    return 0
+}
+
 # boxsession_box_users <box>  ->  how many rows name the box.
 boxsession_box_users() {
     boxsession_registry_rows | /usr/bin/awk -F'\t' -v box="$1" '$2 == box { n++ } END { print n + 0 }'
@@ -359,6 +522,9 @@ boxsession_release() {
         return 0
     fi
     _boxsession_rewrite '$1 != ENVIRON["boxsession_window"] { print }' "$1" || return $?
+    # The box line has nothing left to count for this window; a refresh started after this finds
+    # no stamp and does nothing.
+    pb_set "aichatv2_boxline_$1" ""
     local _box="$(printf '%s\n' "$_row" | /usr/bin/cut -f2)"
     local _disposable="$(printf '%s\n' "$_row" | /usr/bin/cut -f3)"
     if [ "$_disposable" != "yes" ]; then

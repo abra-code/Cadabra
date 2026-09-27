@@ -155,6 +155,12 @@
                   }
                 ]
               },
+              {
+                "type": "VStack",
+                "id": 543,
+                "properties": { "spacing": 0 },
+                "children": [ { "type": "EmptyView" } ]
+              },
               { "type": "Divider" }
             ]
           },
