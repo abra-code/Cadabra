@@ -686,6 +686,43 @@ acp_agent_set_level() {
     _acp_agent_set_per_agent level "$1" "$2"
 }
 
+# THE KEY AN AGENT GETS IN A BOX. One per agent id, chosen in the Keys window:
+#   /agents/secret/<id> : string - "none" (the default), or the variable name of an agent-vm
+#                         Keychain secret, which chat init hands to the agent with
+#                         `exec --secret NAME`
+# Chosen, never inferred from what the Keychain holds: secrets are named by variable, so an
+# Anthropic key stored for Claude is also "stored" for opencode, which works without one and
+# whose box cannot reach Anthropic. Only one key: an agent takes a token or a key, and giving it
+# both could bill the wrong account.
+
+# acp_agent_secret <id>  ->  the chosen variable name, "none" when none is chosen, or "damaged"
+acp_agent_secret() {
+    _acp_agent_per_agent secret "$1" none
+}
+
+# acp_agent_valid_secret_name <name>  ->  0 for a name agent-vm takes for a secret: letters,
+# digits and "_", not starting with a digit. The letters are spelled out: a range such as [a-z]
+# matches upper-case letters too in a UTF-8 locale.
+acp_agent_valid_secret_name() {
+    case "$1" in
+        ''|[0123456789]*|*[!ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_]*) return 1 ;;
+    esac
+    return 0
+}
+
+# acp_agent_set_secret <id> <none|NAME>  ->  0 once stored; 2 for a value that is not a secret
+# name or an id that cannot be a key; 1 when the write did not land. Whether the agent can use
+# NAME is the caller's to check (the catalog's box-keys).
+acp_agent_set_secret() {
+    case "$1" in
+        ''|*/*) return 2 ;;
+    esac
+    if [ "$2" != "none" ]; then
+        acp_agent_valid_secret_name "$2" || return 2
+    fi
+    _acp_agent_set_per_agent secret "$1" "$2"
+}
+
 # acp_agent_record_verified <command-line> <name> <version>
 #
 # Remembers what the agent CALLED ITSELF the last time Test actually spoke to it. This is the

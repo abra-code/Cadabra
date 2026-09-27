@@ -167,6 +167,21 @@ Choose the Project folder in Agentic Session Tools, then start the conversation 
 		custom|custom:*) recipe="" ;;
 	esac
 	local level="$(acp_agent_level "$agent")"
+	# The key chosen for the agent is checked before a box is made, since a start takes 10-30 s:
+	# a key that is not in the Keychain would otherwise be found only after it, by the transport.
+	if [ -n "$recipe" ]; then
+		boxsession_secret "$recipe" >/dev/null
+		local secret_status=$?
+		if [ "$secret_status" -ne 0 ]; then
+			local why="$(agentvm_last_error "$secret_status")"
+			echo "box: key refused: $why"
+			"$alert" --level "stop" --title "$APPLET_NAME" --ok "OK" \
+				"Could not start the agent in its box.
+
+$why"
+			return 1
+		fi
+	fi
 
 	chat_loading_overlay_note "$win" "Starting the agent's box..."
 	local box

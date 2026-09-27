@@ -23,6 +23,8 @@ Usage:
     acp_catalog.py custom [<catalog.json>]
     acp_catalog.py box <id> [<catalog.json>]
     acp_catalog.py box-list <id> allow|secrets [<catalog.json>]
+    acp_catalog.py box-keys <id> [<catalog.json>]
+    acp_catalog.py box-login <id> [<catalog.json>]
     acp_catalog.py box-unavailable <id> <level> [<catalog.json>]
 
 "rows" emits, tab separated, one row per agent:
@@ -46,6 +48,15 @@ nested, which TSV cannot carry, so it travels as JSON and is read in Python, nev
 the network rules ("pack:anthropic", a host), "secrets" the variable name of each secret the
 agent can use, in the catalog's order of preference. Values that are empty, or hold whitespace
 (no rule or variable name does), are left out. Nothing for an agent with no box object.
+
+"box-keys" emits, tab separated, one row per secret the agent can use, in the catalog's order:
+    variable name, label, hint
+for the Keys window: the label is a short name for a table cell, the hint how to get the key. A
+secret whose variable name box-list would leave out is left out here too, and a missing label or
+hint is "-".
+
+"box-login" emits, on one line, the catalog's hint for logging in inside a kept box (the "login"
+text), or nothing.
 
 "box-unavailable" emits, on one line, the reason the agent cannot work at that autonomy level
 (free, ask or plan) in a box, or nothing when it can. The reason is the level's "unavailable" text
@@ -145,18 +156,30 @@ def box_list(box, which):
             if isinstance(value, str) and value and not any(c.isspace() for c in value)]
 
 
+def box_keys(box):
+    """(variable name, label, hint) for each secret the agent can use, as box_list names them."""
+    names = set(box_list(box, "secrets"))
+    rows = []
+    for entry in box.get("secrets") or []:
+        if isinstance(entry, dict) and entry.get("env") in names:
+            rows.append((entry["env"], flatten(entry.get("label")), flatten(entry.get("hint"))))
+    return rows
+
+
 def main():
     argv = sys.argv[1:]
     known = (argv and (argv[0] in ("rows", "custom")
                        or (argv[0] == "box" and len(argv) >= 2)
+                       or (argv[0] in ("box-keys", "box-login") and len(argv) >= 2)
                        or (argv[0] == "box-list" and len(argv) >= 3 and argv[2] in ("allow", "secrets"))
                        or (argv[0] == "box-unavailable" and len(argv) >= 3)))
     if not known:
         sys.stderr.write("usage: acp_catalog.py rows|custom [<catalog.json>] | box <id> [<catalog.json>]"
                          " | box-list <id> allow|secrets [<catalog.json>]"
+                         " | box-keys|box-login <id> [<catalog.json>]"
                          " | box-unavailable <id> <level> [<catalog.json>]\n")
         return 2
-    rest = argv[2:] if argv[0] == "box" else argv[3:] if argv[0] in ("box-list", "box-unavailable") else argv[1:]
+    rest = argv[2:] if argv[0] in ("box", "box-keys", "box-login") else argv[3:] if argv[0] in ("box-list", "box-unavailable") else argv[1:]
     path = rest[0] if rest else default_catalog_path()
     try:
         data = load(path)
@@ -192,6 +215,23 @@ def main():
             return 1
         for value in values:
             sys.stdout.write(value + "\n")
+        return 0
+
+    if argv[0] in ("box-keys", "box-login"):
+        try:
+            box = box_of(data, argv[1])
+        except Exception as exc:
+            sys.stderr.write("acp_catalog: cannot read %s: %s\n" % (path, exc))
+            return 1
+        if box is None:
+            return 0
+        if argv[0] == "box-keys":
+            for row in box_keys(box):
+                sys.stdout.write("\t".join(row) + "\n")
+        else:
+            login = flatten(box.get("login"))
+            if login != ABSENT:
+                sys.stdout.write(login + "\n")
         return 0
 
     if argv[0] == "box":

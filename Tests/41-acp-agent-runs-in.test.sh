@@ -14,6 +14,7 @@ FAKE_AGENTVM_DIR="$OMCTEST_WORK/fakevm"
 CADABRA_AGENT_VM="$FAKE"
 export FAKE_AGENTVM_DIR CADABRA_AGENT_VM
 unset AGENT_VM_HOME
+TAB=$(printf '\t')
 
 fake_reset() {
     /bin/rm -rf "$FAKE_AGENTVM_DIR"
@@ -41,7 +42,7 @@ continue_with() {
 }
 
 section "the ids this file drives are the ones the window declares"
-check "the row and the two pickers" "31 32 34" "$BOX_ROW_ID $RUN_IN_PICKER_ID $LEVEL_PICKER_ID"
+check "the row, the two pickers and Keys..." "31 32 34 36" "$BOX_ROW_ID $RUN_IN_PICKER_ID $LEVEL_PICKER_ID $KEYS_BUTTON_ID"
 
 section "the window offers this Mac, the kept boxes and a disposable box from each ready image"
 cad_reset
@@ -54,6 +55,7 @@ check "the places, grouped" \
     "$(options)"
 check "an agent with no choice runs on this Mac" "mac" "$(ui_value "$RUN_IN_PICKER_ID")"
 check "  with no level picker"           "0" "$(ui_visible "$LEVEL_PICKER_ID")"
+check "  and no Keys..."                 "0" "$(ui_visible "$KEYS_BUTTON_ID")"
 check "  and tools on"                   "true|1" "$(ui_value "$USE_TOOLS_PICKER_ID")|$(ui_enabled "$USE_TOOLS_PICKER_ID")"
 
 section "an agent set to a box shows its box and level, with tools off"
@@ -66,6 +68,7 @@ omc_run aichat.select.external.agent.init
 check "the stored place"                 "new:dev-agents" "$(ui_value "$RUN_IN_PICKER_ID")"
 check "the stored level, shown"          "ask|1" "$(ui_value "$LEVEL_PICKER_ID")|$(ui_visible "$LEVEL_PICKER_ID")"
 check "tools off and not offered"        "false|0" "$(ui_value "$USE_TOOLS_PICKER_ID")|$(ui_enabled "$USE_TOOLS_PICKER_ID")"
+check "Keys... offered"                  "1" "$(ui_visible "$KEYS_BUTTON_ID")"
 
 section "a place that is gone stays shown, never replaced by this Mac"
 cad_call acp_agent_set_run_in claude-code-acp box:gone
@@ -85,14 +88,37 @@ fake_reset
 
 section "changing the place changes the rest of the window, and stores nothing"
 cad_call acp_agent_set_run_in claude-code-acp mac
+omc_control "$PANE_OWNER_ID" claude-code-acp
 omc_control "$RUN_IN_PICKER_ID" box:try1
 omc_run aichat.select.external.agent.runin.changed
 check "a box shows the level picker"     "1" "$(ui_visible "$LEVEL_PICKER_ID")"
 check "  and turns tools off"            "false|0" "$(ui_value "$USE_TOOLS_PICKER_ID")|$(ui_enabled "$USE_TOOLS_PICKER_ID")"
 check "  with nothing stored yet"        "mac" "$(cad_call acp_agent_run_in claude-code-acp)"
+check "  and Keys... for Claude"         "1" "$(ui_visible "$KEYS_BUTTON_ID")"
 omc_control "$RUN_IN_PICKER_ID" mac
 omc_run aichat.select.external.agent.runin.changed
 check "this Mac hides it again"          "0|1" "$(ui_visible "$LEVEL_PICKER_ID")|$(ui_enabled "$USE_TOOLS_PICKER_ID")"
+check "  and Keys..."                    "0" "$(ui_visible "$KEYS_BUTTON_ID")"
+omc_control "$PANE_OWNER_ID" "custom:1"
+omc_control "$RUN_IN_PICKER_ID" box:try1
+omc_run aichat.select.external.agent.runin.changed
+check "a saved agent in a box has no Keys..." "1|0" "$(ui_visible "$LEVEL_PICKER_ID")|$(ui_visible "$KEYS_BUTTON_ID")"
+
+section "Keys... opens the Keys window for the agent on screen and the place the picker names"
+chains_reset
+omc_control "$PANE_OWNER_ID" codex-acp
+omc_control "$RUN_IN_PICKER_ID" box:try1
+omc_run aichat.select.external.agent.keys
+check "the window is asked for"          "1" "$(chain_asked aichat.agent.keys)"
+check "  handed the agent and the place, stored or not" "codex-acp${TAB}box:try1" "$(cad_pb_get cadabra_agent_keys_request)"
+cad_pb_set cadabra_agent_keys_request ""
+chains_reset
+omc_control "$PANE_OWNER_ID" ""
+omc_run aichat.select.external.agent.keys
+check "with the pane mid-repaint, nothing opens" "0|" "$(chain_asked aichat.agent.keys)|$(cad_pb_get cadabra_agent_keys_request)"
+omc_control "$PANE_OWNER_ID" "custom:1"
+omc_run aichat.select.external.agent.keys
+check "  nor for a saved agent"          "0" "$(chain_asked aichat.agent.keys)"
 
 section "each agent's place follows the selection"
 cad_call acp_agent_set_run_in opencode box:try1

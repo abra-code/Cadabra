@@ -117,12 +117,70 @@
       "NAME" : "Cadabra"
     },
     {
+      "COMMAND_ID" : "aichat.select.external.agent.keys",
+      "EXECUTION_MODE" : "exe_script_file",
+      "NAME" : "Cadabra"
+    },
+    {
       "COMMAND_ID" : "aichat.select.external.agent.ok",
       "EXECUTION_MODE" : "exe_script_file",
       "NAME" : "Cadabra"
     },
     {
       "COMMAND_ID" : "aichat.select.external.agent.cancel",
+      "EXECUTION_MODE" : "exe_script_file",
+      "NAME" : "Cadabra"
+    },
+    {
+      "ACTIONUI_WINDOW" : {
+        "END_CANCEL_SUBCOMMAND_ID" : "aichat.agent.keys.close",
+        "END_OK_SUBCOMMAND_ID" : "aichat.agent.keys.close",
+        "INIT_SUBCOMMAND_ID" : "aichat.agent.keys.init",
+        "IS_BLOCKING" : false,
+        "JSON_NAME" : "aichat.agent.keys",
+        "WINDOW_TITLE" : "Agent Keys"
+      },
+      "COMMAND_ID" : "aichat.agent.keys",
+      "EXECUTION_MODE" : "exe_shell_script",
+      "NAME" : "Cadabra"
+    },
+    {
+      "COMMAND_ID" : "aichat.agent.keys.init",
+      "EXECUTION_MODE" : "exe_script_file",
+      "NAME" : "Cadabra"
+    },
+    {
+      "COMMAND_ID" : "aichat.agent.keys.selection.changed",
+      "EXECUTION_MODE" : "exe_script_file",
+      "NAME" : "Cadabra"
+    },
+    {
+      "COMMAND_ID" : "aichat.agent.keys.store",
+      "EXECUTION_MODE" : "exe_script_file",
+      "NAME" : "Cadabra"
+    },
+    {
+      "COMMAND_ID" : "aichat.agent.keys.remove",
+      "EXECUTION_MODE" : "exe_script_file",
+      "NAME" : "Cadabra"
+    },
+    {
+      "COMMAND_ID" : "aichat.agent.keys.use.changed",
+      "EXECUTION_MODE" : "exe_script_file",
+      "NAME" : "Cadabra"
+    },
+    {
+      "COMMAND_ID" : "aichat.agent.keys.login",
+      "EXECUTION_MODE" : "exe_script_file",
+      "NAME" : "Cadabra"
+    },
+    {
+      "COMMAND_ID" : "aichat.agent.keys.done",
+      "EXECUTION_MODE" : "exe_script_file",
+      "NAME" : "Cadabra"
+    },
+    {
+      "COMMAND_ID" : "aichat.agent.keys.close",
       "EXECUTION_MODE" : "exe_script_file",
       "NAME" : "Cadabra"
     },

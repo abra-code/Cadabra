@@ -22,6 +22,10 @@
 #              refusal of a share, say); otherwise exec runs nothing and exits 0.
 #   box-<name>.json  <- box status <name> --json. With no such file the box does not exist, and
 #              the commands that name a box answer the way agent-vm does for a missing box.
+#   secrets    the Keychain, once `secret set` or `secret delete` has run: one "<name><TAB>
+#              <readable>" line per secret, which `secret list --json` then answers from (before
+#              that, from secret-list.json). `secret set` stores as readable.
+#   secret-<name>  the value `secret set <name>` read from stdin, as it arrived.
 #
 # -- What it implements ---------------------------------------------------------
 #   --version, version --json, doctor --json, image list --json, box list --json,
@@ -29,7 +33,8 @@
 #   box create <name> --image <image> ... --json (creates box-<name>.json),
 #   box delete <name> --json (removes it), image delete <name> --json, box view <name> ... --json,
 #   image info <name> --json and box info <name> --json (the box must exist),
-#   box shell <name>, secret list --json, exec --box <name> ... -- <argv> (runs nothing),
+#   box shell <name>, secret list --json, secret set <name> (value on stdin),
+#   secret delete <name>, exec --box <name> ... -- <argv> (runs nothing),
 #   and the long ones, which print progress events on stderr like agent-vm
 #   and exit 130 (SIGINT) or 143 (SIGTERM) when stopped:
 #   box start <name> [--owner-pid N] --json, box stop <name> --json,
@@ -63,6 +68,20 @@ answer() {
     else
         /bin/cat "$fixtures/$1.json"
     fi
+}
+
+# secrets_tsv  ->  the fake Keychain, one "<name><TAB><true|false>" line per secret.
+secrets_tsv() {
+    if [ -f "$state/secrets" ]; then
+        /bin/cat "$state/secrets"
+        return 0
+    fi
+    answer secret-list | /usr/bin/awk -F'"' '/"name"/ { name = $4 } /"readable"/ { print name "\t" ($0 ~ /true/ ? "true" : "false") }'
+}
+
+# secrets_json  ->  the fake Keychain as `secret list --json` prints it.
+secrets_json() {
+    secrets_tsv | /usr/bin/awk -F'\t' 'BEGIN { printf "[" } { printf "%s\n  {\n    \"name\" : \"%s\",\n    \"readable\" : %s\n  }", (NR > 1 ? "," : ""), $1, $2 } END { print "\n]" }'
 }
 
 # need_box <name> - agent-vm's answer for a box that does not exist.
@@ -107,7 +126,23 @@ case "$1 $2" in
     "box packs")
         answer packs ;;
     "secret list")
-        answer secret-list ;;
+        secrets_json ;;
+    "secret set")
+        /bin/cat > "$state/secret-$3"
+        secrets_tsv | /usr/bin/awk -F'\t' -v name="$3" '$1 != name' > "$state/secrets.new"
+        printf '%s\ttrue\n' "$3" >> "$state/secrets.new"
+        /bin/mv -f "$state/secrets.new" "$state/secrets"
+        printf 'Stored secret %s in the Keychain\n' "$3" ;;
+    "secret delete")
+        found="$(secrets_tsv | /usr/bin/awk -F'\t' -v name="$3" '$1 == name { print "yes" }')"
+        if [ -z "$found" ]; then
+            printf 'Error: no secret named %s in the Keychain\n' "$3" >&2
+            exit 1
+        fi
+        secrets_tsv | /usr/bin/awk -F'\t' -v name="$3" '$1 != name' > "$state/secrets.new"
+        /bin/mv -f "$state/secrets.new" "$state/secrets"
+        /bin/rm -f "$state/secret-$3"
+        printf 'Deleted secret %s\n' "$3" ;;
     "image info")
         answer image-info ;;
     "box info")

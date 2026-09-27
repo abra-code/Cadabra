@@ -30,6 +30,8 @@ USE_TOOLS_PICKER_ID=30
 BOX_ROW_ID=31
 RUN_IN_PICKER_ID=32
 LEVEL_PICKER_ID=34
+# Keys...: the Keys window for the agent, shown in a box when the catalog names keys or a login.
+KEYS_BUTTON_ID=36
 # The ZStack and its two children. Exactly one child is ever visible: they overlap, so showing
 # both draws the editor on top of the About text.
 ABOUT_PANE_ID=51
@@ -400,26 +402,53 @@ IMAGES
     printf '%s]\n' "$json"
 }
 
-# agent_apply_run_in <run-in>  ->  the rest of the window follows where the agent runs. In a box,
-# the level picker shows and Use Tools is off and disabled: Cadabra's tools run on this Mac and
-# are not handed to an agent in a box yet.
+# agent_apply_run_in <run-in> [yes|no keys]  ->  the rest of the window follows where the agent
+# runs. In a box, the level picker shows and Use Tools is off and disabled: Cadabra's tools run
+# on this Mac and are not handed to an agent in a box yet. Keys... shows in a box when the agent
+# has keys or a login to offer (agent_has_keys), and never on this Mac.
 agent_apply_run_in() {
     case "$1" in
         ''|mac)
             "$dialog_tool" "$window_uuid" $LEVEL_PICKER_ID omc_hide
+            "$dialog_tool" "$window_uuid" $KEYS_BUTTON_ID omc_hide
             "$dialog_tool" "$window_uuid" $USE_TOOLS_PICKER_ID omc_enable
             ;;
         *)
             "$dialog_tool" "$window_uuid" $LEVEL_PICKER_ID omc_show
+            if [ "${2:-no}" = "yes" ]; then
+                "$dialog_tool" "$window_uuid" $KEYS_BUTTON_ID omc_show
+            else
+                "$dialog_tool" "$window_uuid" $KEYS_BUTTON_ID omc_hide
+            fi
             "$dialog_tool" "$window_uuid" $USE_TOOLS_PICKER_ID false
             "$dialog_tool" "$window_uuid" $USE_TOOLS_PICKER_ID omc_disable
             ;;
     esac
 }
 
+# agent_has_keys <agent id>  ->  "yes" when the Keys window has something for the agent in a box
+# (a key the catalog says it can use, or a way to log in inside one), else "no". A saved or
+# edited command has no catalog entry, so "no".
+agent_has_keys() {
+    case "$1" in
+        ''|custom|custom:*) printf 'no\n'; return 0 ;;
+    esac
+    local _keys="$("$acp_python" "$acp_catalog_py" box-keys "$1" 2>/dev/null)"
+    if [ -n "$_keys" ]; then
+        printf 'yes\n'
+        return 0
+    fi
+    local _login="$("$acp_python" "$acp_catalog_py" box-login "$1" 2>/dev/null)"
+    if [ -n "$_login" ]; then
+        printf 'yes\n'
+        return 0
+    fi
+    printf 'no\n'
+}
+
 # agent_prepare_run_in <agent id> [refresh|cached]  ->  what the Runs in row shows for this agent: its stored
 # choice and level, among the boxes and images agent-vm has now, left in runin_options,
-# runin_value and runin_level for agent_paint_run_in. Where boxes cannot be used (agentvm_available
+# runin_value, runin_level and runin_keys for agent_paint_run_in. Where boxes cannot be used (agentvm_available
 # says why) runin_options is empty: the row stays hidden and the picker holds no value, which
 # Continue reads as "leave the stored choice alone": an agent set to a box then fails at chat
 # start with the reason, rather than quietly running on this Mac.
@@ -434,6 +463,7 @@ agent_apply_run_in() {
 runin_options=""
 runin_value=""
 runin_level="free"
+runin_keys="no"
 runin_boxes=""
 runin_images=""
 
@@ -485,6 +515,7 @@ agent_prepare_run_in() {
     runin_options=""
     runin_value=""
     runin_level="free"
+    runin_keys="no"
     agent_load_places "${2:-cached}"
     local status=$?
     if [ "$status" -ne 0 ]; then
@@ -503,6 +534,7 @@ agent_prepare_run_in() {
         *) runin_level="" ;;
     esac
     runin_options="$(agent_run_in_options "$runin_value")"
+    runin_keys="$(agent_has_keys "$1")"
 }
 
 # agent_paint_run_in  ->  the Runs in row as agent_prepare_run_in left it. Writes only.
@@ -517,7 +549,7 @@ agent_paint_run_in() {
     "$dialog_tool" "$window_uuid" $RUN_IN_PICKER_ID "$runin_value"
     "$dialog_tool" "$window_uuid" $LEVEL_PICKER_ID "$runin_level"
     "$dialog_tool" "$window_uuid" $BOX_ROW_ID omc_show
-    agent_apply_run_in "$runin_value"
+    agent_apply_run_in "$runin_value" "$runin_keys"
 }
 
 # agent_carry_run_in <from id> <to id>  ->  <to> takes <from>'s place to run and, in a box, its

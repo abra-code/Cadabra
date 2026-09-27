@@ -42,7 +42,8 @@
     "",
     "\"box\" (optional) is how the agent runs in an agent-vm box: argv in the guest (its normal",
     "command may name a Mac path), allow (network rules), secrets (agent-vm Keychain secrets the",
-    "agent reads from its environment; any one is enough), login (how to log in inside a kept box",
+    "agent reads from its environment, each an env name, a short label for a table cell and an optional",
+    "hint shown when it is selected; any one is enough), login (how to log in inside a kept box",
     "instead), env (always set in the box), levels (how each autonomy level - free, ask, plan - is",
     "applied: an ACP session mode, extra env, a limit the UI states, or unavailable with the reason)",
     "and note. Read with acp_catalog.py box <id>; the rows subcommand never emits it."
@@ -63,14 +64,15 @@
         "secrets": [
           {
             "env": "CLAUDE_CODE_OAUTH_TOKEN",
-            "label": "Claude subscription token (run claude setup-token on this Mac)"
+            "label": "Claude subscription token",
+            "hint": "Make one with claude setup-token in Terminal on this Mac, and paste the token it prints."
           },
           {
             "env": "ANTHROPIC_API_KEY",
             "label": "Anthropic API key"
           }
         ],
-        "login": "Or log in inside a kept box: agent-vm box shell <box>, then claude-agent-acp --cli and /login. Open the address it prints in this Mac's browser.",
+        "login": "Run claude-agent-acp --cli, then type /login and open the address it prints in this Mac's browser.",
         "env": {
           "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1"
         },
@@ -110,7 +112,7 @@
             "label": "OpenAI API key"
           }
         ],
-        "login": "Or log in inside a kept box: agent-vm box shell <box>, then codex-acp cli login --device-auth, and enter the code in this Mac's browser. Works with a ChatGPT account.",
+        "login": "Run codex-acp cli login --device-auth, then enter the code it prints in this Mac's browser. Works with a ChatGPT account.",
         "env": {},
         "levels": {
           "free": {
@@ -219,7 +221,7 @@
             "label": "OpenAI API key"
           }
         ],
-        "login": "Or log in inside a kept box: agent-vm box shell <box>, then opencode auth login.",
+        "login": "Run opencode auth login and choose the provider.",
         "env": {
           "OPENCODE_DISABLE_AUTOUPDATE": "1"
         },

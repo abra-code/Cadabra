@@ -39,6 +39,12 @@ check "  and an unknown id nothing either"         "" "$(catalog box no-such-age
 check "box-list gives an agent's rules"  "pack:anthropic" "$(catalog box-list claude-code-acp allow)"
 check "  and its secrets, in order"      "CLAUDE_CODE_OAUTH_TOKEN ANTHROPIC_API_KEY" "$(catalog box-list claude-code-acp secrets | /usr/bin/tr '\n' ' ' | /usr/bin/sed 's/ $//')"
 check "  nothing for an agent with no box object" "" "$(catalog box-list cursor allow)"
+check "box-keys gives each key's variable, label and hint" "CODEX_API_KEY|Codex API key|-" "$(catalog box-keys codex-acp | /usr/bin/head -1 | /usr/bin/tr '\t' '|')"
+check "  a hint where the catalog has one" "1" "$(cad_has "$(catalog box-keys claude-code-acp | /usr/bin/head -1 | /usr/bin/cut -f3)" 'claude setup-token')"
+check "  one line per key, in order"     "CODEX_API_KEY OPENAI_API_KEY" "$(catalog box-keys codex-acp | /usr/bin/cut -f1 | /usr/bin/tr '\n' ' ' | /usr/bin/sed 's/ $//')"
+check "  nothing for an agent with no box object" "" "$(catalog box-keys cursor)"
+check "box-login gives the login hint"   "Run opencode auth login and choose the provider." "$(catalog box-login opencode)"
+check "  nothing for an agent with no box object" "" "$(catalog box-login cursor)"
 check "the rows never carry box details" "0" "$(cad_has "$(catalog rows)" 'OPENCODE_CONFIG_CONTENT')"
 check "  while the rows are still there" "1" "$(cad_has "$(catalog rows)" 'claude-code-acp')"
 

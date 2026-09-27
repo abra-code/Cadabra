@@ -1,0 +1,153 @@
+{
+  "type": "VStack",
+  "properties": {
+    "spacing": 12,
+    "alignment": "leading",
+    "padding": "default",
+    "frame": { "minWidth": 740, "idealWidth": 760, "minHeight": 490, "idealHeight": 520 }
+  },
+  "children": [
+    {
+      "type": "Text",
+      "id": 700,
+      "properties": {
+        "text": "",
+        "frame": { "maxWidth": "infinity", "alignment": "leading" }
+      }
+    },
+    {
+      "type": "Table",
+      "id": 701,
+      "properties": {
+        "columns": ["Key", "Variable", "In the Keychain"],
+        "widths": [210, 250, 210],
+        "minWidths": [200, 245, 205],
+        "actionID": "aichat.agent.keys.selection.changed",
+        "frame": { "maxWidth": "infinity", "minHeight": 90, "maxHeight": 130 }
+      }
+    },
+    {
+      "type": "HStack",
+      "properties": { "spacing": 8, "frame": { "maxWidth": "infinity" } },
+      "children": [
+        {
+          "type": "SecureField",
+          "id": 702,
+          "properties": {
+            "prompt": "Paste the value of the selected key",
+            "disabled": true,
+            "frame": { "maxWidth": "infinity" }
+          }
+        },
+        {
+          "type": "Button",
+          "id": 703,
+          "properties": {
+            "title": "Store",
+            "disabled": true,
+            "help": "Store the value in your login Keychain, and give this key to the agent",
+            "actionID": "aichat.agent.keys.store"
+          }
+        },
+        {
+          "type": "Button",
+          "id": 704,
+          "properties": {
+            "title": "Remove...",
+            "disabled": true,
+            "help": "Remove the selected key from your login Keychain",
+            "actionID": "aichat.agent.keys.remove"
+          }
+        }
+      ]
+    },
+    {
+      "type": "Text",
+      "id": 706,
+      "properties": {
+        "text": "",
+        "font": "caption",
+        "foregroundStyle": "secondary",
+        "textSelection": "enabled",
+        "frame": { "maxWidth": "infinity", "alignment": "leading" }
+      }
+    },
+    {
+      "type": "Picker",
+      "id": 705,
+      "properties": {
+        "title": "In the box, the agent gets",
+        "options": [{ "title": "No key", "tag": "none" }],
+        "pickerStyle": "menu",
+        "actionID": "aichat.agent.keys.use.changed",
+        "frame": { "maxWidth": 420, "alignment": "leading" }
+      }
+    },
+    {
+      "type": "Text",
+      "properties": {
+        "text": "Programs in the box can read the key it gets, and can send it to any host the box may reach. Prefer a key you can revoke.",
+        "font": "caption",
+        "foregroundStyle": "secondary",
+        "frame": { "maxWidth": "infinity", "alignment": "leading" }
+      }
+    },
+    {
+      "type": "GroupBox",
+      "properties": { "title": "Log in inside the box", "frame": { "maxWidth": "infinity" } },
+      "children": [
+        {
+          "type": "VStack",
+          "properties": { "spacing": 8, "alignment": "leading", "frame": { "maxWidth": "infinity", "alignment": "leading" } },
+          "children": [
+            {
+              "type": "Text",
+              "id": 710,
+              "properties": {
+                "text": "",
+                "textSelection": "enabled",
+                "foregroundStyle": "secondary",
+                "frame": { "maxWidth": "infinity", "alignment": "leading" }
+              }
+            },
+            {
+              "type": "Button",
+              "id": 711,
+              "properties": {
+                "title": "Open a Shell in the Box",
+                "disabled": true,
+                "actionID": "aichat.agent.keys.login"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    { "type": "Spacer" },
+    {
+      "type": "HStack",
+      "properties": { "spacing": 8, "frame": { "maxWidth": "infinity" } },
+      "children": [
+        {
+          "type": "Text",
+          "id": 720,
+          "properties": {
+            "text": "",
+            "font": "caption",
+            "frame": { "maxWidth": "infinity", "alignment": "leading" }
+          }
+        },
+        {
+          "type": "Button",
+          "id": 721,
+          "properties": {
+            "title": "Done",
+            "buttonStyle": "borderedProminent",
+            "keyboardShortcut": { "key": "escape" },
+            "actionID": "aichat.agent.keys.done"
+          }
+        }
+      ]
+    }
+  ]
+}

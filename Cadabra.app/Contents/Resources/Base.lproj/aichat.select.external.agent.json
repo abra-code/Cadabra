@@ -368,6 +368,16 @@
             }
           },
           {
+            "type": "Button",
+            "id": 36,
+            "properties": {
+              "title": "Keys...",
+              "hidden": true,
+              "help": "The API key or token the agent gets in its box, and logging in inside a kept box",
+              "actionID": "aichat.select.external.agent.keys"
+            }
+          },
+          {
             "type": "Spacer"
           }
         ]

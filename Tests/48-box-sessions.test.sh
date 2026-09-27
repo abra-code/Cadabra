@@ -185,18 +185,52 @@ check "a project spelling \\n and \\t is kept as typed" '/a\nb\tc' "$(col 4 < "$
 check "  on one line"                    "1" "$(/usr/bin/wc -l < "$REGISTRY" | /usr/bin/tr -d ' ')"
 check "  and found by its window"        '/a\nb\tc' "$(with_fake boxsession_registry_row w1 | col 4)"
 
-section "the transport runs the agent in the box, with one secret"
+section "the transport runs the agent in the box, with the key chosen for it"
 fake_reset
+cad_reset
 /bin/cp "$FIXTURES/secret-list.json" "$FAKE_AGENTVM_DIR/secret-list.json"
 json=$(with_fake boxsession_transport "claude-agent-acp" w1 claude-code-acp b1 "$PROJECT" no free)
 check "the command is agent-vm exec in the box" "['$FAKE', 'exec', '--box', 'b1', '--project', '$PROJECT']" "$(field "$json" 't["command"][:6]')"
-check "  with the token agent-vm keeps"  "1" "$(cad_has "$json" '"--secret", "CLAUDE_CODE_OAUTH_TOKEN"')"
-check "  and not the key it does not"    "0" "$(cad_has "$json" 'ANTHROPIC_API_KEY')"
+check "  with no key when none is chosen, though the Keychain holds one" "0" "$(cad_has "$json" '--secret')"
 check "  starting in the free mode"      "{'mode': 'bypassPermissions'}" "$(field "$json" 't["sessionConfig"]')"
 check "  with no store setting"          "False" "$(field "$json" '"env" in t')"
+cad_call acp_agent_set_secret claude-code-acp CLAUDE_CODE_OAUTH_TOKEN
+json=$(with_fake boxsession_transport "claude-agent-acp" w1 claude-code-acp b1 "$PROJECT" no free)
+check "the chosen key is passed by name" "1" "$(cad_has "$json" '"--secret", "CLAUDE_CODE_OAUTH_TOKEN"')"
+check "  and only that one"              "0" "$(cad_has "$json" 'ANTHROPIC_API_KEY')"
+cad_call acp_agent_set_secret codex-acp OPENAI_API_KEY
 json=$(with_fake boxsession_transport "codex-acp" w1 codex-acp b1 "$PROJECT" yes ask)
-check "Codex gets the first secret agent-vm keeps" "1" "$(cad_has "$json" '"--secret", "OPENAI_API_KEY"')"
+check "Codex gets the key chosen for it" "1" "$(cad_has "$json" '"--secret", "OPENAI_API_KEY"')"
 check "  and the read-only share"        "1" "$(cad_has "$json" '"--read-only"')"
+check "opencode gets no key chosen for another agent" "none" "$(cad_call acp_agent_secret opencode)"
+
+section "a key chosen for the agent that cannot be honored is refused, never dropped"
+cad_call acp_agent_set_secret claude-code-acp ANTHROPIC_API_KEY
+json=$(with_fake boxsession_transport "claude-agent-acp" w1 claude-code-acp b1 "$PROJECT" no free)
+status=$?
+check "a key the Keychain does not hold refuses" "1|" "$status|$json"
+check "  naming the key and where to store it" "1" "$(cad_has "$(message "$status")" 'Anthropic API key (ANTHROPIC_API_KEY), is not in the Keychain. Store it with Keys...')"
+cad_call acp_agent_set_secret claude-code-acp OPENAI_API_KEY
+json=$(with_fake boxsession_transport "claude-agent-acp" w1 claude-code-acp b1 "$PROJECT" no free)
+status=$?
+check "a key the agent does not use refuses" "1|" "$status|$json"
+check "  saying so"                      "1" "$(cad_has "$(message "$status")" 'does not use the key OPENAI_API_KEY')"
+"$cad_plister" set dict "$cad_settings" /agents/secret/claude-code-acp >/dev/null 2>&1
+check "  (the fixture: a dictionary where text belongs)" "damaged" "$(cad_call acp_agent_secret claude-code-acp)"
+json=$(with_fake boxsession_transport "claude-agent-acp" w1 claude-code-acp b1 "$PROJECT" no free)
+status=$?
+check "a choice that cannot be read refuses" "1|" "$status|$json"
+check "  saying so"                      "1" "$(cad_has "$(message "$status")" 'cannot be read')"
+cad_call acp_agent_set_secret claude-code-acp CLAUDE_CODE_OAUTH_TOKEN
+printf 'Keychain is locked\n' > "$FAKE_AGENTVM_DIR/fail-secret-list"
+json=$(with_fake boxsession_transport "claude-agent-acp" w1 claude-code-acp b1 "$PROJECT" no free)
+status=$?
+check "a Keychain that cannot be listed refuses" "1|" "$status|$json"
+check "  with agent-vm's reason"         "1" "$(cad_has "$(message "$status")" 'Keychain is locked')"
+/bin/rm -f "$FAKE_AGENTVM_DIR/fail-secret-list"
+check "the setter refuses a name agent-vm would" "2|2|2" "$(cad_call acp_agent_set_secret claude-code-acp 1ABC; printf '%s' $?)|$(cad_call acp_agent_set_secret claude-code-acp 'A-B'; printf '%s' $?)|$(cad_call acp_agent_set_secret claude-code-acp ''; printf '%s' $?)"
+check "  and keeps the choice it had"    "CLAUDE_CODE_OAUTH_TOKEN" "$(cad_call acp_agent_secret claude-code-acp)"
+cad_call acp_agent_set_secret claude-code-acp none
 json=$(with_fake boxsession_transport "my-claude --verbose" w1 "" b1 "$PROJECT" no free)
 check "an edited command runs as typed"  "['--', 'my-claude', '--verbose']" "$(field "$json" 't["command"][-3:]')"
 check "  with no secret"                 "0" "$(cad_has "$json" '--secret')"
@@ -323,6 +357,15 @@ out=$(engine chat_engine_box_transport w1 "codex-acp" codex-acp box:b1 false)
 check "a level the agent cannot do refuses" "1" "$(printf '%s\n' "$out" | /usr/bin/head -1)"
 check "  with the catalog's reason"      "1" "$(alerts_mention 'Codex has no plan-only mode')"
 check "  and the window's row is released" "" "$(/bin/cat "$REGISTRY")"
+fake_reset
+cad_call acp_agent_set_secret claude-code-acp ANTHROPIC_API_KEY
+alerts_reset
+out=$(engine chat_engine_box_transport w1 "claude-agent-acp" claude-code-acp new:dev false)
+check "a chosen key the Keychain does not hold refuses" "1" "$(printf '%s\n' "$out" | /usr/bin/head -1)"
+check "  saying where to store it"       "1" "$(alerts_mention 'Store it with Keys...')"
+check "  before agent-vm made anything"  "" "$(logged 'box create')"
+check "  and with no row"                "" "$(/bin/cat "$REGISTRY")"
+cad_call acp_agent_set_secret claude-code-acp none
 
 section "a window closed while its box started gets no transport and keeps no box"
 fake_reset

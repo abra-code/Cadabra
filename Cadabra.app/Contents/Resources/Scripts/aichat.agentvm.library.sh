@@ -163,6 +163,16 @@ agentvm_valid_name() {
     [ "${#1}" -le 63 ]
 }
 
+# agentvm_valid_secret_name <name>  ->  0 when agent-vm accepts it as a secret name (SecretStore.isValidName):
+# letters, digits and "_", not starting with a digit. The same rule as acp_agent_valid_secret_name,
+# which the settings side checks without this library.
+agentvm_valid_secret_name() {
+    case "$1" in
+        ''|[0123456789]*|*[!ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_]*) return 1 ;;
+    esac
+    return 0
+}
+
 # agentvm_version_at_least <have> <want>  ->  0 when have >= want, compared as dotted numbers.
 # Anything that is not digits and dots is not at least anything.
 agentvm_version_at_least() {
@@ -677,6 +687,34 @@ agentvm_box_sizes() {
 # agent-vm never prints a value).
 agentvm_secrets() {
     agentvm_rows secrets secret list
+}
+
+# agentvm_secret_set <name>  ->  0 once agent-vm stored its stdin as the secret <name> in the
+# login Keychain. The value comes only from stdin, never from an argument, so it is not in any
+# process's argv; callers pipe it from the shell's builtin printf. agent-vm drops one final line
+# end. Replacing a secret another agent-vm stored may make macOS ask first, and this waits for
+# the answer.
+agentvm_secret_set() {
+    agentvm_valid_secret_name "$1" || { _agentvm_refuse 2 "\"$1\" is not a secret name."; return 2; }
+    /bin/rm -f "$agentvm_err_file"
+    agentvm_run secret set "$1" >/dev/null 2>"$agentvm_err_file"
+    local _status=$?
+    if [ "$_status" -eq 0 ]; then
+        /bin/rm -f "$agentvm_err_file"
+    fi
+    return "$_status"
+}
+
+# agentvm_secret_delete <name>  ->  0 once the secret is gone from the Keychain.
+agentvm_secret_delete() {
+    agentvm_valid_secret_name "$1" || { _agentvm_refuse 2 "\"$1\" is not a secret name."; return 2; }
+    /bin/rm -f "$agentvm_err_file"
+    agentvm_run secret delete "$1" </dev/null >/dev/null 2>"$agentvm_err_file"
+    local _status=$?
+    if [ "$_status" -eq 0 ]; then
+        /bin/rm -f "$agentvm_err_file"
+    fi
+    return "$_status"
 }
 
 # agentvm_image_update_guest_job <image>...  ->  the job id. Boots each image in turn to install

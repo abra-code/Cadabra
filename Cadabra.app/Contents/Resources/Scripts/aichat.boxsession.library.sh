@@ -25,6 +25,8 @@ __AICHAT_BOXSESSION_LIB=1
 
 source "$OMC_APP_BUNDLE_PATH/Contents/Resources/Scripts/aichat.agentvm.library.sh"
 source "$OMC_APP_BUNDLE_PATH/Contents/Resources/Scripts/aichat.mcp.servers.library.sh"
+# The per-agent key choice (acp_agent_secret), read by boxsession_secret.
+source "$OMC_APP_BUNDLE_PATH/Contents/Resources/Scripts/aichat.acp.agents.library.sh"
 
 boxsession_catalog_py="$OMC_APP_BUNDLE_PATH/Contents/Resources/Scripts/acp_catalog.py"
 boxsession_transport_py="$OMC_APP_BUNDLE_PATH/Contents/Resources/Scripts/acp_transport_json.py"
@@ -230,34 +232,45 @@ EOF
     printf '%s\n' "$_box"
 }
 
-# boxsession_secret <agent id>  ->  the name of the first of the catalog's secrets for the agent
-# that agent-vm keeps, or nothing. One is enough (an agent takes a token or a key, and giving it
-# both could bill the wrong account), and the catalog lists them in order of preference. A
-# secret agent-vm cannot read without macOS asking is still passed: the dialog is the user's to
+# boxsession_secret <agent id>  ->  the variable name of the key chosen for the agent in the Keys
+# window (acp_agent_secret), or nothing when none is chosen; status 1, with the reason left for
+# agentvm_last_error, when the choice cannot be honored: it cannot be read, the agent does not use
+# that key (the catalog's box-keys), or the Keychain does not hold it. Refused rather than
+# dropped: the agent would start without its key and fail in its own words, or not at all.
+# A key agent-vm cannot read without macOS asking is still passed: the dialog is the user's to
 # answer.
 boxsession_secret() {
-    local _wanted
-    _wanted="$("$agentvm_python" "$boxsession_catalog_py" box-list "$1" secrets 2>/dev/null)"
-    if [ -z "$_wanted" ]; then
+    local _chosen="$(acp_agent_secret "$1")"
+    if [ "$_chosen" = "none" ]; then
         return 0
+    fi
+    if [ "$_chosen" = "damaged" ] || ! acp_agent_valid_secret_name "$_chosen"; then
+        _agentvm_refuse 1 "The key chosen for this agent cannot be read from Cadabra's settings. Choose it again with Keys... in Select ACP Agent."
+        return 1
+    fi
+    local _label
+    _label="$("$agentvm_python" "$boxsession_catalog_py" box-keys "$1" 2>/dev/null \
+        | /usr/bin/awk -F'\t' -v name="$_chosen" '$1 == name { print $2; exit }')"
+    if [ -z "$_label" ]; then
+        _agentvm_refuse 1 "This agent does not use the key $_chosen. Choose another with Keys... in Select ACP Agent."
+        return 1
+    fi
+    if [ "$_label" = "-" ]; then
+        _label="$_chosen"
     fi
     local _kept
     _kept="$(agentvm_secrets)"
     local _status=$?
     if [ "$_status" -ne 0 ]; then
-        /bin/rm -f "$agentvm_err_file"
-        return 0
+        _agentvm_refuse 1 "Could not read which keys AgentVM keeps: $(agentvm_last_error "$_status")"
+        return 1
     fi
-    local _name _found
-    while IFS= read -r _name; do
-        _found="$(printf '%s\n' "$_kept" | /usr/bin/awk -F'\t' -v name="$_name" '$1 == name { print "yes"; exit }')"
-        if [ -n "$_name" ] && [ -n "$_found" ]; then
-            printf '%s\n' "$_name"
-            return 0
-        fi
-    done <<EOF
-$_wanted
-EOF
+    local _found="$(printf '%s\n' "$_kept" | /usr/bin/awk -F'\t' -v name="$_chosen" '$1 == name { print "yes"; exit }')"
+    if [ -z "$_found" ]; then
+        _agentvm_refuse 1 "The key chosen for this agent, $_label ($_chosen), is not in the Keychain. Store it with Keys... in Select ACP Agent."
+        return 1
+    fi
+    printf '%s\n' "$_chosen"
     return 0
 }
 
@@ -287,7 +300,12 @@ boxsession_transport() {
     fi
     if [ -n "$_agent" ]; then
         set -- "$@" --agent-id "$_agent"
-        local _secret="$(boxsession_secret "$_agent")"
+        local _secret
+        _secret="$(boxsession_secret "$_agent")"
+        local _secret_status=$?
+        if [ "$_secret_status" -ne 0 ]; then
+            return 1
+        fi
         if [ -n "$_secret" ]; then
             set -- "$@" --secret "$_secret"
         fi
