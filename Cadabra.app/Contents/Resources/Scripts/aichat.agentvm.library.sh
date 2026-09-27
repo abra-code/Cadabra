@@ -600,9 +600,10 @@ agentvm_box_stop_job() {
 
 # agentvm_box_start <box>  ->  0 once the box is ready, after waiting for it (10-16 s from
 # stopped). For a chat window's start, which shows its own progress and cannot go on without the
-# box; the Box Manager starts boxes as jobs. A box that already runs is left as it is, and one
-# that is starting (a Box Manager job, say) is waited for: neither is slot-checked, since each
-# already holds its virtual machine slot and would count against itself.
+# box; the Box Manager starts boxes as jobs. A box that already runs is left as it is; one that
+# is starting (a Box Manager job, say) is waited for, and one that is stopping is waited for and
+# then started (agent-vm 0.2.15). None of them is slot-checked: each still holds its virtual
+# machine slot and would count against itself.
 agentvm_box_start() {
     _agentvm_need_name box "$1" || return $?
     local _row
@@ -614,7 +615,7 @@ agentvm_box_start() {
     local _state="$(printf '%s\n' "$_row" | /usr/bin/cut -f1)"
     case "$_state" in
         ready)    return 0 ;;
-        starting) ;;
+        starting|stopping) ;;
         *)        agentvm_vm_slot_free || return $? ;;
     esac
     local _owner="$(_agentvm_owner_pid)"

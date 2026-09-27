@@ -39,12 +39,16 @@ if [ -z "$selected_id" ]; then
 fi
 
 agent_sync_remove_button "$selected_id"
+# Each agent keeps its own place to run and level, so they follow the selection. Only gathered
+# here: the Runs in picker is a pane field, painted inside the claimed span below.
+agent_prepare_run_in "$selected_id"
 
 # A saved agent is edited in place. Its name and command both come out of the record, so this
 # pane says the same thing however it was reached - a click here, the + button, or a rename.
 case "$selected_id" in
     custom:*)
         agent_paint_custom_pane "$selected_id"
+        agent_paint_run_in
         agent_show_custom_pane
         "$dialog_tool" "$window_uuid" $RESULT_TEXT_ID "Press Test to launch the agent and check that it answers."
         "$dialog_tool" "$window_uuid" $OK_BUTTON_ID omc_enable
@@ -116,6 +120,7 @@ agent_pane_begin
 # agent's command into the next one's signed pane.
 [ "$selected_command" = "-" ] || "$dialog_tool" "$window_uuid" $COMMAND_FIELD_ID "$selected_command"
 "$dialog_tool" "$window_uuid" $INFO_TEXT_ID markdown "$info"
+agent_paint_run_in
 agent_show_about_pane
 "$dialog_tool" "$window_uuid" $RESULT_TEXT_ID "Press Test to launch the agent and check that it answers."
 

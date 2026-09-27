@@ -23,6 +23,7 @@ Usage:
     acp_catalog.py custom [<catalog.json>]
     acp_catalog.py box <id> [<catalog.json>]
     acp_catalog.py box-list <id> allow|secrets [<catalog.json>]
+    acp_catalog.py box-unavailable <id> <level> [<catalog.json>]
 
 "rows" emits, tab separated, one row per agent:
     id, label, command, args, url, summary, note
@@ -45,6 +46,13 @@ nested, which TSV cannot carry, so it travels as JSON and is read in Python, nev
 the network rules ("pack:anthropic", a host), "secrets" the variable name of each secret the
 agent can use, in the catalog's order of preference. Values that are empty, or hold whitespace
 (no rule or variable name does), are left out. Nothing for an agent with no box object.
+
+"box-unavailable" emits, on one line, the reason the agent cannot work at that autonomy level
+(free, ask or plan) in a box, or nothing when it can. The reason is the level's "unavailable" text
+(such as Codex's plan level), or, for "ask" and "plan", that the catalog does not say how to tell
+this agent (no box object, or no such level): the level would not be applied, and the agent would
+work more freely than chosen. "free" needs nothing applied, so it is always available. The dialog
+refuses the choice with the reason.
 
 A missing or unreadable catalog is reported on stderr and exits non-zero with NO rows on
 stdout, so the dialog shows an empty list rather than a plausible-looking partial one.
@@ -120,6 +128,11 @@ def box_of(data, agent_id):
     return None
 
 
+# The levels that restrict an agent, as the refusal names them. "free" is not here: it asks
+# nothing of the agent, so it needs no recipe.
+LEVEL_WORDS = {"ask": "ask before changes", "plan": "only plan"}
+
+
 def box_list(box, which):
     """The box object's allow rules or secret variable names, as clean strings."""
     if which == "allow":
@@ -136,12 +149,14 @@ def main():
     argv = sys.argv[1:]
     known = (argv and (argv[0] in ("rows", "custom")
                        or (argv[0] == "box" and len(argv) >= 2)
-                       or (argv[0] == "box-list" and len(argv) >= 3 and argv[2] in ("allow", "secrets"))))
+                       or (argv[0] == "box-list" and len(argv) >= 3 and argv[2] in ("allow", "secrets"))
+                       or (argv[0] == "box-unavailable" and len(argv) >= 3)))
     if not known:
         sys.stderr.write("usage: acp_catalog.py rows|custom [<catalog.json>] | box <id> [<catalog.json>]"
-                         " | box-list <id> allow|secrets [<catalog.json>]\n")
+                         " | box-list <id> allow|secrets [<catalog.json>]"
+                         " | box-unavailable <id> <level> [<catalog.json>]\n")
         return 2
-    rest = argv[2:] if argv[0] == "box" else argv[3:] if argv[0] == "box-list" else argv[1:]
+    rest = argv[2:] if argv[0] == "box" else argv[3:] if argv[0] in ("box-list", "box-unavailable") else argv[1:]
     path = rest[0] if rest else default_catalog_path()
     try:
         data = load(path)
@@ -151,6 +166,22 @@ def main():
 
     if argv[0] == "custom":
         return emit_custom(data)
+
+    if argv[0] == "box-unavailable":
+        try:
+            box = box_of(data, argv[1])
+        except Exception as exc:
+            sys.stderr.write("acp_catalog: cannot read %s: %s\n" % (path, exc))
+            return 1
+        levels = box.get("levels") if isinstance(box, dict) else None
+        level = levels.get(argv[2]) if isinstance(levels, dict) else None
+        reason = level.get("unavailable") if isinstance(level, dict) else None
+        if reason is None and not isinstance(level, dict) and argv[2] in LEVEL_WORDS:
+            reason = ("Cadabra does not know how to make this agent %s. In a box it can work "
+                      "without asking." % LEVEL_WORDS[argv[2]])
+        if isinstance(reason, str) and reason.strip():
+            sys.stdout.write(" ".join(reason.split()) + "\n")
+        return 0
 
     if argv[0] == "box-list":
         try:

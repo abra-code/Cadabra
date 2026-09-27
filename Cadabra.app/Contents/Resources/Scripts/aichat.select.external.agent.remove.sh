@@ -33,8 +33,19 @@ if acp_custom_remove "$selected_id"; then
     # it to the bare "custom" id, which means precisely this: a command with no record behind
     # it. The command itself is untouched, so a setup already running this way keeps working -
     # deleting a row from a list should not quietly switch the user back to the bundled agent.
+    #
+    # Where it runs is stored per id, so the bare "custom" id is given the removed agent's place
+    # first: without it the command would take over whatever "custom" had, which may be this Mac
+    # for an agent that was set to a box. If that cannot be done (an unreadable place, or a write
+    # that did not land), the removed id stays stored, and its place with it.
     if [ "$(acp_agent_stored_id)" = "$selected_id" ]; then
-        acp_agent_store custom "$(acp_agent_stored_command)"
+        agent_carry_run_in "$selected_id" custom
+        carry_status=$?
+        if [ "$carry_status" -eq 0 ]; then
+            acp_agent_store custom "$(acp_agent_stored_command)"
+        else
+            echo "could not carry where $selected_id runs over to custom (status $carry_status); keeping its id" >&2
+        fi
     fi
 fi
 
@@ -43,4 +54,9 @@ fi
 # that handler's work for a row the user never chose - and getting it subtly wrong is how a pane
 # ends up describing one agent while the field holds another's command. Going back to what is
 # configured is a state this dialog already knows how to paint exactly.
+# The Runs in row follows the configured agent too, or it keeps the removed row's place, which
+# Continue would store for the configured agent. Gathered before the repaint, painted after it.
+stored_agent="$(acp_agent_stored_id)"
+agent_prepare_run_in "${stored_agent:-custom}"
 agent_restore_configured_view $TABLE_ID
+agent_paint_run_in

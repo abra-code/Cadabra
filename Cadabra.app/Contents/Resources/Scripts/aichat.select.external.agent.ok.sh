@@ -25,6 +25,9 @@ command_line=$(acp_clean_one_line "${OMC_ACTIONUI_VIEW_20_VALUE:-}")
 # field, under the bare "custom" id, which is exactly what that id means.
 selected_id="$(agent_pane_owner)"
 selected_id="${selected_id:-custom}"
+# The agent the Runs in row was painted for, kept for the case where the id below is demoted to
+# "custom" while that row holds no value (boxes cannot be used here): see the store further down.
+painted_id="$selected_id"
 # The Tools picker's tag: "true" (all servers), "readonly" (only servers with no gated
 # tools), "false" (none). Validated rather than trusted - this value decides whether the MCP
 # servers are handed to a third-party agent at all, so an unrecognized one falls back to the
@@ -88,6 +91,66 @@ case $? in
         ;;
 esac
 
+# Where it runs, and in a box how much it asks. Checked before anything is stored, so a refused
+# choice changes nothing. An empty picker means boxes cannot be used here (agent_paint_run_in):
+# the stored choice is then left alone, and an agent set to a box fails at chat start with the
+# reason instead of quietly running on this Mac.
+run_in="${OMC_ACTIONUI_VIEW_32_VALUE:-}"
+level="${OMC_ACTIONUI_VIEW_34_VALUE:-}"
+case "$run_in" in
+    ''|mac|box:?*|new:?*) ;;
+    *)  "$dialog_tool" "$window_uuid" $RESULT_TEXT_ID "Choose where this agent runs: its stored setting could not be read."
+        exit 0 ;;
+esac
+in_box=no
+case "$run_in" in
+    box:*|new:*) in_box=yes ;;
+esac
+# No level selected: its stored value could not be read (agent_prepare_run_in). Refused for a box,
+# where it decides how freely the agent works; on this Mac it is not used, and the default is kept.
+if [ -z "$level" ] && [ "$in_box" = "no" ]; then
+    level="free"
+fi
+case "$level" in
+    free|ask|plan) ;;
+    *)  "$dialog_tool" "$window_uuid" $RESULT_TEXT_ID "Choose how much this agent asks in the box."
+        exit 0 ;;
+esac
+if [ "$in_box" = "yes" ]; then
+    # A level the agent cannot be held to (Codex's plan level, or asking for an agent the catalog
+    # has no recipe for) is refused here, where the user can pick another, not at chat start.
+    level_problem="$("$acp_python" "$acp_catalog_py" box-unavailable "$selected_id" "$level" 2>/dev/null)"
+    if [ -n "$level_problem" ]; then
+        "$dialog_tool" "$window_uuid" $RESULT_TEXT_ID "$level_problem"
+        exit 0
+    fi
+fi
+
+# Where it runs is stored BEFORE the agent is switched to, so a write that fails leaves the
+# previous agent configured rather than this one in a place the user did not choose. An agent
+# committed under another id than it was shown as (demoted to "custom" above) with no value in
+# the row keeps the place it was shown with: "custom"'s own may be this Mac.
+run_in_status=0
+if [ -n "$run_in" ]; then
+    acp_agent_set_run_in "$selected_id" "$run_in"
+    run_in_status=$?
+    if [ "$run_in_status" -eq 0 ]; then
+        acp_agent_set_level "$selected_id" "$level"
+        run_in_status=$?
+    fi
+elif [ "$selected_id" != "$painted_id" ]; then
+    agent_carry_run_in "$painted_id" "$selected_id"
+    run_in_status=$?
+fi
+if [ "$run_in_status" -eq 2 ] && [ -z "$run_in" ]; then
+    "$dialog_tool" "$window_uuid" $RESULT_TEXT_ID "Where this agent runs could not be read from the settings, so it cannot be saved as an edited command."
+    exit 0
+fi
+if [ "$run_in_status" -ne 0 ]; then
+    "$dialog_tool" "$window_uuid" $RESULT_TEXT_ID "Could not save where this agent runs. Check that ~/Library/Application Support/Cadabra is writable."
+    exit 0
+fi
+
 acp_agent_store "$selected_id" "$command_line"
 
 # Read back before committing to it. Every plister write in this path can fail SILENTLY - it
@@ -98,7 +161,11 @@ if [ "$(acp_agent_stored_command)" != "$command_line" ]; then
     "$dialog_tool" "$window_uuid" $RESULT_TEXT_ID "Could not save this agent. Check that ~/Library/Application Support/Cadabra is writable."
     exit 0
 fi
-echo "external agent selected: $command_line (id=$selected_id, tools=$use_tools)"
+# Cadabra's tools run on this Mac and are not handed to an agent in a box yet.
+if [ "$in_box" = "yes" ]; then
+    use_tools="false"
+fi
+echo "external agent selected: $command_line (id=$selected_id, tools=$use_tools, runs in ${run_in:-its stored place}, level $level)"
 
 # Same handoff the model picker uses. The launch queue carries the tools decision, which the
 # transport needs at build time and cannot re-decide afterwards: it selects whether the MCP
@@ -107,11 +174,18 @@ echo "external agent selected: $command_line (id=$selected_id, tools=$use_tools)
 # the external agent is enabled.
 launch_queue_arm "" "$use_tools"
 
+agent_forget_places
 "$dialog_tool" "$window_uuid" omc_window omc_terminate_ok
 
 # Both tool settings go through the MCP servers step: "readonly" still needs the servers
 # configured and probed, because the probe is what produces the gatedTools lists that decide
 # which of them qualify as read-only.
+# A boxed agent goes through the MCP servers step too, with tools off: that window is where the
+# project folder is chosen, and the project is the one folder shared with the box.
+if [ "$in_box" = "yes" ]; then
+    "$next_command" "$OMC_CURRENT_COMMAND_GUID" "aichat.mcp.servers"
+    exit 0
+fi
 case "$use_tools" in
     true|readonly) "$next_command" "$OMC_CURRENT_COMMAND_GUID" "aichat.mcp.servers" ;;
     *)             "$next_command" "$OMC_CURRENT_COMMAND_GUID" "aichat.chat" ;;

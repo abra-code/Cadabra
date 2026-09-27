@@ -112,6 +112,11 @@
       "NAME" : "Cadabra"
     },
     {
+      "COMMAND_ID" : "aichat.select.external.agent.runin.changed",
+      "EXECUTION_MODE" : "exe_script_file",
+      "NAME" : "Cadabra"
+    },
+    {
       "COMMAND_ID" : "aichat.select.external.agent.ok",
       "EXECUTION_MODE" : "exe_script_file",
       "NAME" : "Cadabra"

@@ -333,6 +333,47 @@
       },
       {
         "type": "HStack",
+        "id": 31,
+        "properties": {
+          "spacing": 12,
+          "hidden": true
+        },
+        "children": [
+          {
+            "type": "Picker",
+            "id": 32,
+            "properties": {
+              "title": "Runs in",
+              "options": [
+                { "title": "This Mac", "tag": "mac" }
+              ],
+              "pickerStyle": "menu",
+              "help": "Where the agent runs. In a box it works on the project folder only, and can reach only the hosts the box allows.",
+              "actionID": "aichat.select.external.agent.runin.changed"
+            }
+          },
+          {
+            "type": "Picker",
+            "id": 34,
+            "properties": {
+              "title": "In the box, it",
+              "options": [
+                { "title": "works without asking", "tag": "free" },
+                { "title": "asks before changes", "tag": "ask" },
+                { "title": "only plans", "tag": "plan" }
+              ],
+              "pickerStyle": "menu",
+              "hidden": true,
+              "help": "Working without asking is the default in a box: the box keeps the agent away from the rest of this Mac."
+            }
+          },
+          {
+            "type": "Spacer"
+          }
+        ]
+      },
+      {
+        "type": "HStack",
         "properties": {
           "spacing": 8
         },

@@ -126,6 +126,12 @@ fake_reset
 box=$(with_fake boxsession_start w1 box:b1 claude-code-acp "$PROJECT" no)
 check "a box that is starting is waited for" "b1|box start b1$owner_args --json" "$box|$(logged 'box start')"
 check "  without the slot check"         "0" "$(cad_has "$(/bin/cat "$FAKE_AGENTVM_DIR/log")" 'doctor')"
+fake_reset
+/usr/bin/sed 's/"stopped"/"stopping"/' "$FIXTURES/box-status-stopped.json" > "$FAKE_AGENTVM_DIR/box-b1.json"
+/bin/cp "$FIXTURES/doctor.json" "$FAKE_AGENTVM_DIR/doctor.json"
+box=$(with_fake boxsession_start w1 box:b1 claude-code-acp "$PROJECT" no)
+check "a box that is stopping is started again by agent-vm" "b1|box start b1$owner_args --json" "$box|$(logged 'box start')"
+check "  also without the slot check"    "0" "$(cad_has "$(/bin/cat "$FAKE_AGENTVM_DIR/log")" 'doctor')"
 
 section "a window that starts again gives up its earlier box"
 fake_reset

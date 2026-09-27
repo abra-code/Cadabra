@@ -58,7 +58,9 @@ project shared at the same path:
 - The level (--level, required with --box) is how much the agent asks before acting, applied the way
   the catalog's box.levels says: an ACP session mode goes out as "sessionConfig": {"mode": ...}
   for ChatView to set after session/new; extra env joins the environment; a level the agent
-  cannot do ("unavailable") is refused with nothing on stdout, like an empty command.
+  cannot do ("unavailable") is refused with nothing on stdout, like an empty command, and so is
+  "ask" or "plan" for an agent whose recipe does not say how to apply it (none, for a command
+  the user typed): it would run with no restriction.
 - --agent-vm-home is agent-vm's store root when Cadabra uses another one (its developer
   setting): it goes into the transport's env as AGENT_VM_HOME, for agent-vm itself on this Mac,
   so the exec finds the box Cadabra started in that store.
@@ -230,6 +232,12 @@ def box_transport(options, user_argv):
     session_config = {}
     levels = recipe.get("levels") if isinstance(recipe.get("levels"), dict) else {}
     level = levels.get(options.level)
+    if options.level != "free" and not isinstance(level, dict):
+        # Nothing says how to tell this agent to ask or to plan, so it would start with no
+        # restriction at all - more freely than the user chose. Refused like an unavailable level.
+        sys.stderr.write("acp_transport_json: Cadabra does not know how to make this agent %s\n"
+                         % ("ask before changes" if options.level == "ask" else "only plan"))
+        return None
     if isinstance(level, dict):
         if level.get("unavailable"):
             sys.stderr.write("acp_transport_json: %s\n" % level["unavailable"])

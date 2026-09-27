@@ -8,6 +8,11 @@
 # row has to exist before it can be selected, and there is no form here to abandon. So Cancel
 # means "do not switch to this", not "undo everything I did in this window".
 source "$OMC_APP_BUNDLE_PATH/Contents/Resources/Scripts/aichat.library.sh"
+source "$OMC_APP_BUNDLE_PATH/Contents/Resources/Scripts/aichat.mcp.servers.library.sh"
+source "$OMC_APP_BUNDLE_PATH/Contents/Resources/Scripts/aichat.select.external.agent.library.sh"
+
+# The places agent-vm offered this window (see agent_load_places).
+agent_forget_places
 
 pb_set "aichatv2_extagent_cmd_${OMC_ACTIONUI_WINDOW_UUID}" ""
 "$dialog" "$OMC_ACTIONUI_WINDOW_UUID" omc_window omc_terminate_cancel

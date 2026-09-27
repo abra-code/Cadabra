@@ -32,8 +32,12 @@ fi
 # scan, and the claimed span should hold pane writes only. agent_paint_custom_pane takes the
 # claim itself, once its own slow work is done.
 agent_refresh_list $TABLE_ID "$new_id"
+# The Runs in row as well, or it keeps showing the previous row's place for the new agent, and
+# Continue would store it. Gathered before the claim, painted inside it.
+agent_prepare_run_in "$new_id"
 
 agent_paint_custom_pane "$new_id"
+agent_paint_run_in
 agent_show_custom_pane
 agent_sync_remove_button "$new_id"
 "$dialog_tool" "$window_uuid" $RESULT_TEXT_ID "Name it, then type the command that starts it."

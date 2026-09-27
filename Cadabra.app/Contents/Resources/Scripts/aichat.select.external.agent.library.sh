@@ -15,6 +15,7 @@
 __AICHAT_EXT_AGENT_LIB=1
 
 source "$OMC_APP_BUNDLE_PATH/Contents/Resources/Scripts/aichat.acp.agents.library.sh"
+source "$OMC_APP_BUNDLE_PATH/Contents/Resources/Scripts/aichat.agentvm.library.sh"
 
 OK_BUTTON_ID=3
 TABLE_ID=10
@@ -24,6 +25,11 @@ REMOVE_BUTTON_ID=15
 COMMAND_FIELD_ID=20
 RESULT_TEXT_ID=24
 USE_TOOLS_PICKER_ID=30
+# Where the agent runs (this Mac or an agent-vm box) and, in a box, how much it asks. The row is
+# shown only where boxes can be used.
+BOX_ROW_ID=31
+RUN_IN_PICKER_ID=32
+LEVEL_PICKER_ID=34
 # The ZStack and its two children. Exactly one child is ever visible: they overlap, so showing
 # both draws the editor on top of the About text.
 ABOUT_PANE_ID=51
@@ -325,4 +331,207 @@ agent_restore_configured_view() {
     # Last, and only once everything beside it is painted.
     agent_pane_commit "$selected_id"
     return 0
+}
+
+# -- Where the agent runs ------------------------------------------------------------------
+# The choice and the level are stored per agent (acp_agent_run_in, acp_agent_level) and read by
+# chat init, which starts the box. The picker's tags are the stored values: "mac", "box:<name>"
+# (a kept box) and "new:<image>" (a disposable box made from the image for each window).
+
+# agent_run_in_options <stored run-in>  ->  the Runs in picker's options as JSON: This Mac, the
+# kept boxes, then a disposable box from each ready image. A stored choice that is no longer on
+# the list (its box or image was deleted) stays, marked "not found": showing This Mac instead
+# would let Continue quietly move an agent that was set to a box onto this Mac. A stored value
+# that is not a choice at all is offered as "Setting not readable" (tag "damaged"), which
+# Continue refuses. Box and image names are embedded as they are: agent-vm's names are letters,
+# digits, ".", "_" and "-", and a name that is not one is never embedded. A kept box is any box
+# not marked disposable: agent-vm writes "disposable" only for disposable boxes, so a kept one
+# reads "-" in that column, not "false".
+agent_run_in_options() {
+    local stored="$1"
+    local boxes="$runin_boxes"
+    local images="$runin_images"
+    local name
+    local json='[{"title":"This Mac","tag":"mac"}'
+    local found=no
+    if [ "$stored" = "mac" ]; then
+        found=yes
+    fi
+    if [ -n "$boxes" ]; then
+        json="$json"',{"section":"Kept boxes"}'
+        while IFS= read -r name; do
+            agentvm_valid_name "$name" || continue
+            json="$json"',{"title":"'"$name"'","tag":"box:'"$name"'"}'
+            if [ "box:$name" = "$stored" ]; then
+                found=yes
+            fi
+        done <<BOXES
+$boxes
+BOXES
+    fi
+    if [ -n "$images" ]; then
+        json="$json"',{"section":"New disposable box from"}'
+        while IFS= read -r name; do
+            agentvm_valid_name "$name" || continue
+            json="$json"',{"title":"'"$name"'","tag":"new:'"$name"'"}'
+            if [ "new:$name" = "$stored" ]; then
+                found=yes
+            fi
+        done <<IMAGES
+$images
+IMAGES
+    fi
+    if [ "$found" = "no" ]; then
+        name="${stored#*:}"
+        local named=no
+        case "$stored" in
+            box:?*|new:?*)
+                agentvm_valid_name "$name"
+                if [ $? -eq 0 ]; then
+                    named=yes
+                fi ;;
+        esac
+        if [ "$named" = "yes" ]; then
+            json="$json"',{"divider":true},{"title":"'"$name"' (not found)","tag":"'"$stored"'"}'
+        else
+            json="$json"',{"divider":true},{"title":"Setting not readable","tag":"damaged"}'
+        fi
+    fi
+    printf '%s]\n' "$json"
+}
+
+# agent_apply_run_in <run-in>  ->  the rest of the window follows where the agent runs. In a box,
+# the level picker shows and Use Tools is off and disabled: Cadabra's tools run on this Mac and
+# are not handed to an agent in a box yet.
+agent_apply_run_in() {
+    case "$1" in
+        ''|mac)
+            "$dialog_tool" "$window_uuid" $LEVEL_PICKER_ID omc_hide
+            "$dialog_tool" "$window_uuid" $USE_TOOLS_PICKER_ID omc_enable
+            ;;
+        *)
+            "$dialog_tool" "$window_uuid" $LEVEL_PICKER_ID omc_show
+            "$dialog_tool" "$window_uuid" $USE_TOOLS_PICKER_ID false
+            "$dialog_tool" "$window_uuid" $USE_TOOLS_PICKER_ID omc_disable
+            ;;
+    esac
+}
+
+# agent_prepare_run_in <agent id> [refresh|cached]  ->  what the Runs in row shows for this agent: its stored
+# choice and level, among the boxes and images agent-vm has now, left in runin_options,
+# runin_value and runin_level for agent_paint_run_in. Where boxes cannot be used (agentvm_available
+# says why) runin_options is empty: the row stays hidden and the picker holds no value, which
+# Continue reads as "leave the stored choice alone": an agent set to a box then fails at chat
+# start with the reason, rather than quietly running on this Mac.
+#
+# SPLIT FROM THE PAINT FOR THE PANE-OWNER PROTOCOL. This is the slow half - agent-vm's version,
+# box list and image list, about 2.5 s together on a Mac with a few images - and the picker is a
+# pane field: Continue stores its value for the pane owner. So the handlers that paint the pane
+# call this BEFORE claiming it and agent_paint_run_in inside the claimed span, like every other
+# pane field. Painted outside the span, a slow paint for the row clicked first could land after
+# the pane was signed for the row clicked next, and Continue would store the first agent's place
+# for the second - This Mac, say, for an agent set to a box.
+runin_options=""
+runin_value=""
+runin_level="free"
+runin_boxes=""
+runin_images=""
+
+# THE PLACES ARE READ ONCE PER WINDOW. agentvm_available, box list and image list take about
+# 2.5 s together (image list alone 1.9 s), and every click on a row would otherwise pay it again
+# before the pane can update. So init reads them ("refresh") into a file named after the window,
+# and every later handler reuses it ("cached"), reading it again only when it is missing. A box
+# made or deleted in the Box Manager meanwhile shows the next time this window opens.
+#   line 1: "available" or "unavailable"; then "box<TAB>name" and "image<TAB>name" lines.
+agent_places_file() {
+    printf '%s\n' "${TMPDIR:-/tmp}/cadabra-runin-places.${window_uuid}"
+}
+
+# agent_load_places <refresh|cached>  ->  0 with runin_boxes (kept boxes) and runin_images (ready
+# images) set, one name per line; 1 when boxes cannot be used here.
+agent_load_places() {
+    local file="$(agent_places_file)"
+    if [ "$1" != "cached" ] || [ ! -f "$file" ]; then
+        local tmp="$file.$$"
+        agentvm_available >/dev/null
+        local status=$?
+        if [ "$status" -ne 0 ]; then
+            printf 'unavailable\n' > "$tmp"
+        else
+            {
+                printf 'available\n'
+                agentvm_boxes 2>/dev/null | /usr/bin/awk -F'\t' '$12 != "true" { print "box\t" $1 }'
+                agentvm_images 2>/dev/null | /usr/bin/awk -F'\t' '$2 == "ready" { print "image\t" $1 }'
+            } > "$tmp"
+            /bin/rm -f "$agentvm_err_file"
+        fi
+        /bin/mv -f "$tmp" "$file"
+    fi
+    local first="$(/usr/bin/head -n 1 "$file" 2>/dev/null)"
+    if [ "$first" != "available" ]; then
+        return 1
+    fi
+    runin_boxes="$(/usr/bin/awk -F'\t' '$1 == "box" { print $2 }' "$file")"
+    runin_images="$(/usr/bin/awk -F'\t' '$1 == "image" { print $2 }' "$file")"
+    return 0
+}
+
+# agent_forget_places  ->  the window's file removed, when the window closes.
+agent_forget_places() {
+    /bin/rm -f "$(agent_places_file)"
+}
+
+agent_prepare_run_in() {
+    runin_options=""
+    runin_value=""
+    runin_level="free"
+    agent_load_places "${2:-cached}"
+    local status=$?
+    if [ "$status" -ne 0 ]; then
+        return 0
+    fi
+    runin_value="$(acp_agent_run_in "$1")"
+    case "$runin_value" in
+        mac|box:?*|new:?*) ;;
+        *) runin_value="damaged" ;;
+    esac
+    # An unreadable level selects nothing, and Continue refuses a box with no level, rather than
+    # showing it as "works without asking" and storing the freest level for it.
+    runin_level="$(acp_agent_level "$1")"
+    case "$runin_level" in
+        free|ask|plan) ;;
+        *) runin_level="" ;;
+    esac
+    runin_options="$(agent_run_in_options "$runin_value")"
+}
+
+# agent_paint_run_in  ->  the Runs in row as agent_prepare_run_in left it. Writes only.
+agent_paint_run_in() {
+    if [ -z "$runin_options" ]; then
+        "$dialog_tool" "$window_uuid" $BOX_ROW_ID omc_hide
+        "$dialog_tool" "$window_uuid" $RUN_IN_PICKER_ID ""
+        agent_apply_run_in mac
+        return 0
+    fi
+    "$dialog_tool" "$window_uuid" $RUN_IN_PICKER_ID omc_set_property options "$runin_options"
+    "$dialog_tool" "$window_uuid" $RUN_IN_PICKER_ID "$runin_value"
+    "$dialog_tool" "$window_uuid" $LEVEL_PICKER_ID "$runin_level"
+    "$dialog_tool" "$window_uuid" $BOX_ROW_ID omc_show
+    agent_apply_run_in "$runin_value"
+}
+
+# agent_carry_run_in <from id> <to id>  ->  <to> takes <from>'s place to run and, in a box, its
+# level; 0 once stored, 2 when <from>'s cannot be read (a damaged value, which no setter takes),
+# 1 when a write did not land. For an agent that goes on under another id with no Runs in value
+# to store for it - a saved agent removed while configured, or an agent committed as the bare
+# "custom" where boxes cannot be used - so that it keeps the place it had instead of taking over
+# whatever "custom" had, which may be this Mac.
+agent_carry_run_in() {
+    local run_in="$(acp_agent_run_in "$1")"
+    acp_agent_set_run_in "$2" "$run_in"
+    local run_in_status=$?
+    if [ "$run_in_status" -ne 0 ] || [ "$run_in" = "mac" ]; then
+        return "$run_in_status"
+    fi
+    acp_agent_set_level "$2" "$(acp_agent_level "$1")"
 }

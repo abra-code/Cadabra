@@ -81,6 +81,13 @@ json="$(transport free opencode "opencode acp" --read-only)"
 check "a read-only share is passed on"   "1" "$(cad_has "$json" '"--project", "'"$PROJECT"'", "--read-only"')"
 
 section "refusals print no transport"
+json="$(transport ask "" "my-agent --acp")"
+check "asking, for an agent with no recipe, is refused" "1" "$(cad_has "$json" 'does not know how to make this agent ask')"
+check "  with no transport"              "0" "$(cad_has "$json" '"protocol"')"
+check "  while working freely is fine"   "1" "$(cad_has "$(transport free "" "my-agent --acp")" '"protocol"')"
+check "box-unavailable names Codex's plan level" "1" "$(cad_has "$(catalog box-unavailable codex-acp plan)" 'no plan-only mode')"
+check "  and an agent with no recipe asking" "1" "$(cad_has "$(catalog box-unavailable custom:2 ask)" 'does not know how')"
+check "  and nothing for a level that holds" "" "$(catalog box-unavailable claude-code-acp plan)"
 json="$("$cad_py" "$SCRIPTS/acp_transport_json.py" /bin/echo external "opencode acp" "$OMCTEST_WORK/x.json" "$OMCTEST_WORK" false \
     --box b --agent-vm "$AGENTVM" --project relative/path --level free 2>&1)"
 check "a relative project is refused"    "1" "$(cad_has "$json" 'must be an absolute path')"

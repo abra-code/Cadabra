@@ -26,6 +26,11 @@ source "$OMC_APP_BUNDLE_PATH/Contents/Resources/Scripts/aichat.select.external.a
 # and the id, which must stay hidden. Adding a name here reveals one of them.
 "$dialog_tool" "$window_uuid" $TABLE_ID omc_table_set_columns "Agent" "Status"
 
+# Where the configured agent runs, gathered before the pane is painted and signed (agent-vm's
+# lists are the slow part; see agent_prepare_run_in) and painted below.
+stored_agent="$(acp_agent_stored_id)"
+agent_prepare_run_in "${stored_agent:-custom}" refresh
+
 agent_restore_configured_view $TABLE_ID
 
 "$dialog_tool" "$window_uuid" $RESULT_TEXT_ID "Press Test to launch the agent and check that it answers."
@@ -40,3 +45,7 @@ agent_restore_configured_view $TABLE_ID
 # list - is an mlx-agent extension that an external agent cannot honor, so the only leverage
 # left is what we hand over rather than what we ask it to gate.
 "$dialog_tool" "$window_uuid" $USE_TOOLS_PICKER_ID true
+
+# Where the configured agent runs. After the tools default on purpose: in a box, tools are off
+# and the picker disabled, and that has to be the last word.
+agent_paint_run_in
