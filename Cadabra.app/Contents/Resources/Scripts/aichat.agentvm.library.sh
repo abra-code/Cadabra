@@ -296,7 +296,8 @@ agentvm_version_info() {
 }
 
 # agentvm_box_status <box>  ->  TSV: state, pid, supervisorVersion, supervisorPath, startedAt,
-# project, projectReadOnly, activeExecs, guestVersion, guestFeatures, image, statusError.
+# project, projectReadOnly, activeExecs, guestVersion, guestFeatures, image, statusError,
+# ownerPid, memoryGB.
 #
 # Never starts or stops anything (agent-vm 0.1.6's `box status`), so it is safe to poll, but a
 # supervisor that does not answer can hold it up for about 7 seconds (agent-vm's BoxStatus.of:

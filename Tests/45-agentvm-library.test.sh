@@ -86,6 +86,8 @@ check "read-only"        "true"                                         "$(print
 check "one program runs" "1"                                            "$(printf '%s\n' "$row" | col 8)"
 check "the image, from the nested box record" "dev-agents"              "$(printf '%s\n' "$row" | col 11)"
 check "no status error"  "-"                                            "$(printf '%s\n' "$row" | col 12)"
+check "no owner in this capture" "-"                                    "$(printf '%s\n' "$row" | col 13)"
+check "its memory, from the nested box record" "4"                     "$(printf '%s\n' "$row" | col 14)"
 
 section "drift: every status field the library reads is in the running box's fixture"
 # The check the fixture refresh exists for. A field agent-vm renamed or dropped comes out as "-",
@@ -123,7 +125,7 @@ printf '%s' '{"state":"ready","pid":7,"supervisorVersion":"","supervisorPath":"/
     > "$OMCTEST_WORK/hostile.json"
 row=$(convert status "$OMCTEST_WORK/hostile.json")
 check "one line"                         "1"     "$(printf '%s\n' "$row" | /usr/bin/awk 'END { print NR }')"
-check "twelve fields"                    "12"    "$(printf '%s\n' "$row" | /usr/bin/awk -F'\t' '{ print NF }')"
+check "fourteen fields"                  "14"    "$(printf '%s\n' "$row" | /usr/bin/awk -F'\t' '{ print NF }')"
 check "an empty string is \"-\""         "-"     "$(printf '%s\n' "$row" | col 3)"
 check "a tab inside a value is \"?\""    "/a?b"  "$(printf '%s\n' "$row" | col 4)"
 check "a newline inside a value is \"?\"" "/p?q" "$(printf '%s\n' "$row" | col 6)"

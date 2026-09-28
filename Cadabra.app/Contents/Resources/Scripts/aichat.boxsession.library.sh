@@ -20,6 +20,12 @@
 # starts it again and its `box gc` (run by box list, box start and doctor) deletes it. A kept box
 # is left running here. A box Cadabra started also stops by itself when Cadabra exits, however
 # it exits, through its owner lease (agentvm_box_start passes --owner-pid).
+#
+# THE STOP QUESTION. A running kept box holds one of the two virtual machine slots and its
+# memory, so when the last window using it closes, boxsession_close asks whether to stop it,
+# and while windows use it the box line says it stays running. Asked only at a window close:
+# never at quit (the owner lease stops what Cadabra started), at launch, or when a window gives
+# up its box to start again.
 [ -n "${__AICHAT_BOXSESSION_LIB:-}" ] && return 0
 __AICHAT_BOXSESSION_LIB=1
 
@@ -207,8 +213,8 @@ boxsession_line_execlog_last=200
 boxsession_line_hosts_shown=6
 
 # boxsession_line_head <window>  ->  the line's first part, from the registry row and the image
-# stamp: "Box s3", "Disposable box cadabra-opencode-3f2a91 from dev-agents", with ", project
-# read-only" when so; nothing when the window has no row.
+# stamp: "Kept AgentVM box s3 (stays running)", "Disposable AgentVM box cadabra-opencode-3f2a91
+# from dev-agents", with ", project read-only" when so; nothing when the window has no row.
 boxsession_line_head() {
     local _fields="$(boxsession_meta_fields "$1")"
     if [ -z "$_fields" ]; then
@@ -219,11 +225,20 @@ boxsession_line_head() {
             head = "Disposable AgentVM box " $1
             if ($2 != "-") head = head " from " $2
         } else {
-            head = "AgentVM box " $1
+            head = "Kept AgentVM box " $1 " (stays running)"
         }
         if ($5 == "yes") head = head ", project read-only"
         print head
     }'
+}
+
+# _boxsession_kept_note <window>  ->  the tooltip's sentence on a kept box, or nothing for a disposable
+# box or a window with no row.
+_boxsession_kept_note() {
+    local _disposable="$(boxsession_registry_row "$1" | /usr/bin/cut -f3)"
+    if [ "$_disposable" = "no" ]; then
+        printf '%s\n' "A kept box keeps running when its chat windows close, holding one of the two virtual machine slots on this Mac, unless you stop it: closing the last window that uses it asks."
+    fi
 }
 
 # boxsession_line_show <window> <box>  ->  puts the line in the window, and remembers the box,
@@ -240,7 +255,12 @@ boxsession_line_show() {
     "$dialog" "$1" "$boxsession_line_row_id" omc_remove_element 2>/dev/null
     "$dialog" "$1" "$boxsession_line_slot_id" omc_insert_element "{\"type\":\"HStack\",\"id\":$boxsession_line_row_id,\"properties\":{\"spacing\":8,\"padding\":{\"top\":0,\"leading\":14,\"bottom\":6,\"trailing\":14},\"frame\":{\"maxWidth\":\"infinity\",\"alignment\":\"leading\"}},\"children\":[{\"type\":\"Label\",\"id\":$boxsession_line_id,\"properties\":{\"title\":\"\",\"systemImage\":\"shippingbox\",\"font\":\"footnote\",\"foregroundStyle\":\"secondary\",\"frame\":{\"maxWidth\":\"infinity\",\"alignment\":\"leading\"}}},{\"type\":\"Button\",\"id\":$boxsession_line_network_id,\"properties\":{\"title\":\"Network...\",\"buttonStyle\":\"bordered\",\"controlSize\":\"small\",\"help\":\"The hosts programs in the AgentVM box reached and were refused, and allowing a refused one\",\"actionID\":\"aichat.chat.box.network\"}}]}"
     "$dialog" "$1" "$boxsession_line_id" "$_head - no connections yet"
-    "$dialog" "$1" "$boxsession_line_id" omc_set_property help "Programs in the AgentVM box reach only the hosts its rules allow. The counts start when the agent does."
+    local _help="Programs in the AgentVM box reach only the hosts its rules allow. The counts start when the agent does."
+    local _kept="$(_boxsession_kept_note "$1")"
+    if [ -n "$_kept" ]; then
+        _help="$_help$boxsession_newline$_kept"
+    fi
+    "$dialog" "$1" "$boxsession_line_id" omc_set_property help "$_help"
 }
 
 # boxsession_net_counts <box> <since>  ->  one row from the box's network log since <since> (an
@@ -414,6 +434,10 @@ boxsession_line_refresh() {
     fi
     if [ "$_prompt_count" != "0" ]; then
         _help="Permission prompts nobody in the AgentVM box could answer: $(printf '%s\n' "$_prompts" | /usr/bin/awk -F'\t' 'NF > 0 { text = text (text == "" ? "" : ", ") $1 } END { print text }')$boxsession_newline$_help"
+    fi
+    local _kept="$(_boxsession_kept_note "$1")"
+    if [ -n "$_kept" ]; then
+        _help="$_help$boxsession_newline$_kept"
     fi
     "$dialog" "$1" "$boxsession_line_id" "$_head - $_tail"
     "$dialog" "$1" "$boxsession_line_id" omc_set_property help "$_help"
@@ -674,6 +698,178 @@ _boxsession_discard() {
         return $?
     fi
     agentvm_box_stop_job "$1" >/dev/null
+}
+
+# boxsession_close <window>  ->  0, or 1 when the registry could not be rewritten (the reason left
+# for agentvm_last_error). A chat window's close: releases its row (boxsession_release), then,
+# for a kept box no window uses any more, asks whether to stop it (_boxsession_offer_stop).
+boxsession_close() {
+    local _row="$(boxsession_registry_row "$1")"
+    boxsession_release "$1" || return $?
+    if [ -z "$_row" ]; then
+        return 0
+    fi
+    local _box="$(printf '%s\n' "$_row" | /usr/bin/cut -f2)"
+    local _disposable="$(printf '%s\n' "$_row" | /usr/bin/cut -f3)"
+    if [ "$_disposable" = "yes" ]; then
+        return 0
+    fi
+    local _users="$(boxsession_box_users "$_box")"
+    if [ "$_users" != "0" ]; then
+        return 0
+    fi
+    # Windows closing together (Close All) would each find no user left and each ask.
+    _boxsession_question_claim "$_box" || return 0
+    _boxsession_offer_stop "$_box"
+    _boxsession_question_unclaim "$_box"
+    return 0
+}
+
+# _boxsession_question_claim <box>  ->  0 when this handler may ask about <box>: it made the
+# claim, a folder holding its pid, or took over one whose handler is gone. 1 while another
+# handler asks. A claim still being written (no pid yet) counts as held.
+_boxsession_question_claim() {
+    local _dir="$mcp_app_support/box-stop-question-$1"
+    /bin/mkdir "$_dir" 2>/dev/null
+    if [ $? -ne 0 ]; then
+        local _pid="$(/bin/cat "$_dir/pid" 2>/dev/null)"
+        case "$_pid" in
+            ''|*[!0123456789]*) return 1 ;;
+        esac
+        kill -0 "$_pid" 2>/dev/null
+        if [ $? -eq 0 ]; then
+            return 1
+        fi
+    fi
+    printf '%s\n' "$$" > "$_dir/pid"
+    return 0
+}
+
+# _boxsession_question_unclaim <box>  ->  removes this handler's claim, and only its own.
+_boxsession_question_unclaim() {
+    local _dir="$mcp_app_support/box-stop-question-$1"
+    local _pid="$(/bin/cat "$_dir/pid" 2>/dev/null)"
+    if [ "$_pid" = "$$" ]; then
+        /bin/rm -rf "$_dir"
+    fi
+}
+
+# How long, in half seconds, the stop question waits for the closing window's own exec clients to
+# end before counting the programs in the box: ChatView ends its agent with SIGTERM, then SIGKILL
+# 5 s later.
+boxsession_close_wait_steps=14
+
+# _boxsession_own_execs <agent-vm path> <box>  ->  how many exec clients of that agent-vm (the one
+# Cadabra runs) serve <box> right now. Once no window uses the box they are the closing window's,
+# still ending.
+_boxsession_own_execs() {
+    local _prefix="$1 exec --box $2 "
+    /bin/ps -axo command= 2>/dev/null | _prefix="$_prefix" /usr/bin/awk 'index($0, ENVIRON["_prefix"]) == 1 { n++ } END { print n + 0 }'
+}
+
+# _boxsession_offer_stop <kept box>  ->  0. When the box is running or starting, asks whether to
+# stop it, saying what it holds, which programs from elsewhere run in it (a Terminal shell, avm,
+# another app), and what happens if it is kept; stops it as a job when asked to. With programs
+# from elsewhere running, Keep Running is the default button. A box whose status cannot be read
+# is left alone: there is no window left to explain it in, and the owner lease stops a box
+# Cadabra started when Cadabra exits.
+_boxsession_offer_stop() {
+    local _own
+    local _bin="$(agentvm_bin)"
+    local _left="$boxsession_close_wait_steps"
+    while :; do
+        _own="$(_boxsession_own_execs "$_bin" "$1")"
+        if [ "$_own" = "0" ] || [ "$_left" -le 0 ]; then
+            break
+        fi
+        _left=$((_left - 1))
+        /bin/sleep 0.5
+    done
+    local _row
+    _row="$(agentvm_box_status "$1")"
+    local _status=$?
+    if [ "$_status" -ne 0 ]; then
+        agentvm_last_error "$_status" >/dev/null
+        return 0
+    fi
+    local _state="$(printf '%s\n' "$_row" | /usr/bin/cut -f1)"
+    case "$_state" in
+        running|starting) ;;
+        *) return 0 ;;
+    esac
+    local _execs="$(printf '%s\n' "$_row" | /usr/bin/cut -f8)"
+    local _owner="$(printf '%s\n' "$_row" | /usr/bin/cut -f13)"
+    local _memory="$(printf '%s\n' "$_row" | /usr/bin/cut -f14)"
+    # Programs Cadabra did not start: agent-vm counts every exec and box shell, and the closing
+    # window's own clients may not have ended yet.
+    local _foreign=0
+    case "$_execs" in
+        ''|*[!0123456789]*) ;;
+        *) _foreign=$((_execs - _own)) ;;
+    esac
+    if [ "$_foreign" -lt 0 ]; then
+        _foreign=0
+    fi
+    local _text="No chat window uses it any more."
+    case "$_memory" in
+        ''|*[!0123456789]*) _text="$_text While it runs it holds one of the two virtual machine slots on this Mac." ;;
+        *) _text="$_text While it runs it holds one of the two virtual machine slots on this Mac and $_memory GB of memory." ;;
+    esac
+    if [ "$_foreign" = "1" ]; then
+        _text="$_text
+
+1 program Cadabra did not start runs in it right now (a Terminal shell, avm or another app). Stopping the box ends it."
+    elif [ "$_foreign" -gt 1 ]; then
+        _text="$_text
+
+$_foreign programs Cadabra did not start run in it right now (a Terminal shell, avm or another app). Stopping the box ends them."
+    fi
+    local _me="$(_agentvm_owner_pid)"
+    if [ -n "$_me" ] && [ "$_owner" = "$_me" ]; then
+        _text="$_text
+
+If you keep it running, Cadabra stops it when Cadabra quits."
+    else
+        _text="$_text
+
+Cadabra did not start it, so it keeps running until it is stopped (Tools > AgentVM)."
+    fi
+    # The question is about a box no window uses: a window may have started on it during the
+    # wait or the status read (the alert is not modal to Cadabra, so also while it is up).
+    local _users="$(boxsession_box_users "$1")"
+    if [ "$_users" != "0" ]; then
+        return 0
+    fi
+    local _stop=no
+    local _answer
+    if [ "$_foreign" -gt 0 ]; then
+        "$alert" --level caution --title "Stop the AgentVM box $1?" --ok "Keep Running" --other "Stop Box" "$_text"
+        _answer=$?
+        # Stop Box is the other button (2), not the cancel one, which Escape may choose; an alert
+        # that failed (-1) keeps the box.
+        if [ "$_answer" -eq 2 ]; then
+            _stop=yes
+        fi
+    else
+        "$alert" --level caution --title "Stop the AgentVM box $1?" --ok "Stop Box" --cancel "Keep Running" "$_text"
+        _answer=$?
+        if [ "$_answer" -eq 0 ]; then
+            _stop=yes
+        fi
+    fi
+    if [ "$_stop" != "yes" ]; then
+        return 0
+    fi
+    _users="$(boxsession_box_users "$1")"
+    if [ "$_users" != "0" ]; then
+        return 0
+    fi
+    agentvm_box_stop_job "$1" >/dev/null
+    _status=$?
+    if [ "$_status" -ne 0 ]; then
+        "$alert" --level stop --title "Could not stop the AgentVM box $1" --ok "OK" "$(agentvm_last_error "$_status")"
+    fi
+    return 0
 }
 
 # boxsession_release_own  ->  0. At quit: releases every row of this Cadabra process, so its

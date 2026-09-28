@@ -30,7 +30,9 @@ this file.
     version, path, guestVersion, guestFeatures, guestDigest, guestError
 "status" emits one row:
     state, pid, supervisorVersion, supervisorPath, startedAt, project, projectReadOnly,
-    activeExecs, guestVersion, guestFeatures, image, statusError
+    activeExecs, guestVersion, guestFeatures, image, statusError, ownerPid, memoryGB
+  ownerPid is the process whose exit stops the box ("-" for none); memoryGB is the box's memory,
+  from its record.
 "doctor" emits one row per check:
     name, status, detail
 "images" emits one row per image:
@@ -162,7 +164,8 @@ def status_rows(data):
                data.get("supervisorVersion"), data.get("supervisorPath"), data.get("startedAt"),
                data.get("project"), data.get("projectReadOnly"), data.get("activeExecs"),
                data.get("guestVersion"), data.get("guestFeatures"),
-               record.get("image"), data.get("statusError")])
+               record.get("image"), data.get("statusError"),
+               data.get("ownerPid"), gigabytes(record.get("memoryBytes"))])
 
 
 def doctor_rows(data):

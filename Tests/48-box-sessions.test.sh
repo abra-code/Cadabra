@@ -267,6 +267,142 @@ check "  its row removed"                "" "$(/bin/cat "$REGISTRY")"
 with_fake boxsession_release no-such-window
 check "a window with no row releases nothing" "0" "$?"
 
+section "closing the last window of a running kept box asks whether to stop it"
+# kept_box <state> <programs> [owner pid] - box b1's status as agent-vm 0.3.8 answers it, and a
+# registry row for window w1 on it, as chat init leaves one.
+kept_box() {
+    if [ -n "${3:-}" ]; then
+        /usr/bin/sed -e "s/\"state\": \"ready\"/\"state\": \"$1\"/" -e "s/\"activeExecs\": 1,/\"activeExecs\": $2,/" \
+            -e "s/\"pid\": 44847,/\"ownerPid\": $3, \"pid\": 44847,/" \
+            "$FIXTURES/box-status-ready.json" > "$FAKE_AGENTVM_DIR/box-b1.json"
+    else
+        /usr/bin/sed -e "s/\"state\": \"ready\"/\"state\": \"$1\"/" -e "s/\"activeExecs\": 1,/\"activeExecs\": $2,/" \
+            "$FIXTURES/box-status-ready.json" > "$FAKE_AGENTVM_DIR/box-b1.json"
+    fi
+    /bin/mkdir -p "$(/usr/bin/dirname "$REGISTRY")"
+    printf 'w1\tb1\tno\t%s\tno\t%s\n' "$PROJECT" "$$" > "$REGISTRY"
+    alerts_reset
+    alert_answers_reset
+}
+# stop_jobs  ->  how many stop jobs box b1 has had, from the job list (a job starts detached, so
+# its absence from the fake's log right after the call proves nothing).
+stop_jobs() {
+    cad_call_lib aichat.agentvm.library.sh agentvm_jobs | /usr/bin/awk -F'\t' '$2 == "box-stop" && $3 == "box:b1" { n++ } END { print n + 0 }'
+}
+fake_reset
+kept_box running 0 999999
+alert_answer 0
+with_fake boxsession_close w1
+check "it asks"                          "1" "$(alerts_mention 'Stop the AgentVM box b1?')"
+check "  naming the slot and the memory" "1" "$(alerts_mention 'two virtual machine slots on this Mac and 4 GB of memory')"
+check "  and that a box Cadabra did not start keeps running" "1" "$(alerts_mention 'Cadabra did not start it, so it keeps running')"
+check "Stop Box stops it with a job"     "box stop b1 --json" "$(wait_for_log 'box stop')"
+check "  and the row is gone"            "" "$(/bin/cat "$REGISTRY")"
+fake_reset
+kept_box running 0 999999
+alert_answer 1
+jobs_before=$(stop_jobs)
+with_fake boxsession_close w1
+check "Keep Running leaves it running"   "1|$jobs_before" "$(alerts_count)|$(stop_jobs)"
+if [ -n "${OMC_APP_PROCESS_ID:-}" ]; then
+    fake_reset
+    kept_box starting 0 "$OMC_APP_PROCESS_ID"
+    alert_answer 1
+    with_fake boxsession_close w1
+    check "a box this Cadabra started, still starting: asked too" "1" "$(alerts_mention 'Stop the AgentVM box b1?')"
+    check "  saying Cadabra stops it at quit" "1" "$(alerts_mention 'Cadabra stops it when Cadabra quits')"
+fi
+fake_reset
+kept_box running 2
+alert_answer 0
+jobs_before=$(stop_jobs)
+with_fake boxsession_close w1
+check "programs from elsewhere are named" "1" "$(alerts_mention '2 programs Cadabra did not start run in it right now')"
+check "  and the default button keeps it" "$jobs_before" "$(stop_jobs)"
+fake_reset
+kept_box running 1
+alert_answer 2
+with_fake boxsession_close w1
+check "  while the other one stops it"   "box stop b1 --json" "$(wait_for_log 'box stop')"
+check "  one program, said once"         "1" "$(alerts_mention '1 program Cadabra did not start runs in it right now')"
+fake_reset
+kept_box running 1
+alert_answer 1
+jobs_before=$(stop_jobs)
+with_fake boxsession_close w1
+check "  and a cancel answer, as Escape might give, keeps it" "$jobs_before" "$(stop_jobs)"
+fake_reset
+kept_box running 0
+printf 'w2\tb1\tno\t%s\tno\t%s\n' "$PROJECT" "$$" >> "$REGISTRY"
+with_fake boxsession_close w1
+check "no question while another window uses it" "0|w2" "$(alerts_count)|$(col 1 < "$REGISTRY")"
+# A window that starts on the box after the close released w1: during the wait for the closing
+# window's clients (close_while_w2_starts), or while the question is up (close_while_w2_asked,
+# whose alert adds the row and answers Stop Box).
+W2_ROW="w2${TAB}b1${TAB}no${TAB}$PROJECT${TAB}no${TAB}$$"
+W2_ALERT="$OMCTEST_WORK/alert-opens-w2.sh"
+printf '#!/bin/sh\nprintf "%%s\\n" "$W2_ROW" >> "$W2_REGISTRY"\nexit 0\n' > "$W2_ALERT"
+/bin/chmod +x "$W2_ALERT"
+close_while_w2_starts() {
+    _boxsession_own_execs() { printf '%s\n' "$W2_ROW" >> "$REGISTRY"; echo 0; }
+    boxsession_close w1
+}
+close_while_w2_asked() {
+    W2_REGISTRY="$REGISTRY"
+    export W2_ROW W2_REGISTRY
+    alert="$W2_ALERT"
+    boxsession_close w1
+}
+fake_reset
+kept_box running 2
+alert_answer 255
+jobs_before=$(stop_jobs)
+with_fake boxsession_close w1
+check "an alert that failed keeps a box with programs from elsewhere" "1|$jobs_before" "$(alerts_count)|$(stop_jobs)"
+fake_reset
+kept_box running 0
+jobs_before=$(stop_jobs)
+with_fake close_while_w2_starts
+check "a window that started on it meanwhile: no question" "0|$jobs_before" "$(alerts_count)|$(stop_jobs)"
+fake_reset
+kept_box running 0
+jobs_before=$(stop_jobs)
+with_fake close_while_w2_asked
+check "one that started while it asked: Stop Box leaves it running" "$jobs_before" "$(stop_jobs)"
+check "  and its row"                    "w2" "$(col 1 < "$REGISTRY")"
+# Windows closing together: the handler that asks holds a claim on the box; another one asking
+# meanwhile stays quiet, and a claim whose handler is gone is taken over and removed after.
+CLAIM="$(/usr/bin/dirname "$REGISTRY")/box-stop-question-b1"
+fake_reset
+kept_box running 0
+/bin/mkdir -p "$CLAIM"
+printf '%s\n' "$$" > "$CLAIM/pid"
+with_fake boxsession_close w1
+check "no second question while another close asks" "0|" "$(alerts_count)|$(/bin/cat "$REGISTRY")"
+/bin/rm -rf "$CLAIM"
+/usr/bin/true &
+gone=$!
+wait "$gone"
+fake_reset
+kept_box running 0
+/bin/mkdir -p "$CLAIM"
+printf '%s\n' "$gone" > "$CLAIM/pid"
+alert_answer 1
+with_fake boxsession_close w1
+check "a claim left by a handler that is gone is taken over" "1" "$(alerts_mention 'Stop the AgentVM box b1?')"
+check "  and removed after"             "0" "$([ -d "$CLAIM" ] && echo 1 || echo 0)"
+fake_reset
+kept_box stopped 0
+/bin/cp "$FIXTURES/box-status-stopped.json" "$FAKE_AGENTVM_DIR/box-b1.json"
+with_fake boxsession_close w1
+check "no question for a stopped box"    "0" "$(alerts_count)"
+fake_reset
+alerts_reset
+box=$(with_fake boxsession_start w1 new:dev claude-code-acp "$PROJECT" no)
+with_fake boxsession_close w1
+check "none for a disposable box, which just goes" "0|0" "$(alerts_count)|$([ -f "$FAKE_AGENTVM_DIR/box-$box.json" ] && echo 1 || echo 0)"
+alert_answers_reset
+
 section "rows of a Cadabra that is gone are released at launch"
 fake_reset
 /bin/cp "$FIXTURES/box-status-stopped.json" "$FAKE_AGENTVM_DIR/box-gone1.json"
@@ -508,13 +644,13 @@ check "a box that cannot start puts no line up" "0" "$(cad_writes 543)"
 fake_reset
 netlog_fixture
 printf 'w1\tb1\tno\t%s\tyes\t1\n' "$PROJECT" > "$REGISTRY"
-check "a kept box's line says so, and a read-only share" "AgentVM box b1, project read-only" "$(with_fake boxsession_line_head w1)"
+check "a kept box's line says so, and a read-only share" "Kept AgentVM box b1 (stays running), project read-only" "$(with_fake boxsession_line_head w1)"
 cad_pb_set aichatv2_boxline_w1 "b1${TAB}$since${TAB}AgentVM box b1, project read-only"
 cad_journal_reset
 with_fake boxsession_line_refresh w1
 check "a refresh restates the counts" "AgentVM box b1, project read-only - 2 hosts reached, 1 refused, 1 failed" "$(line_title)"
 check "  and names the hosts in the tooltip" \
-    "Reached: api.anthropic.com, registry.npmjs.org Refused: bag.itunes.apple.com Failed: down.example Counted for every program in AgentVM box b1 since the agent started, each connection when it opens. Programs in the box reach only the hosts its rules allow; agent-vm box netlog b1 --denied lists the refused ones." \
+    "Reached: api.anthropic.com, registry.npmjs.org Refused: bag.itunes.apple.com Failed: down.example Counted for every program in AgentVM box b1 since the agent started, each connection when it opens. Programs in the box reach only the hosts its rules allow; agent-vm box netlog b1 --denied lists the refused ones. A kept box keeps running when its chat windows close, holding one of the two virtual machine slots on this Mac, unless you stop it: closing the last window that uses it asks." \
     "$(line_help)"
 /bin/cat > "$FAKE_AGENTVM_DIR/netlog.json" <<'JSONEOF'
 [

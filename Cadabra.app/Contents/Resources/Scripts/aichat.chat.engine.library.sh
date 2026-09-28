@@ -228,12 +228,14 @@ $why"
 	# The window may have closed during the start, which takes 10-30 s. A close before the row
 	# existed released nothing, so the box would run for a window that is gone until Cadabra
 	# quits; a close after it left the release to its handler. Either way, nothing is injected.
+	# boxsession_close, not boxsession_release: it is that window's close, so a kept box no window
+	# uses any more gets the stop question; after the handler's own close there is no row left.
 	chat_window_is_open "$win"
 	local still_open=$?
 	if [ "$still_open" -ne 0 ]; then
 		CHAT_ENGINE_CONFIG=""
 		echo "box: the window closed while $box started; releasing it"
-		boxsession_release "$win"
+		boxsession_close "$win"
 		return 1
 	fi
 	echo "box: agent in $box ($run_in, level $level, project $project, read-only $read_only)"

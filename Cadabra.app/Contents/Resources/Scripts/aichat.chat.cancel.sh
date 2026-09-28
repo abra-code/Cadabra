@@ -20,14 +20,6 @@ load_target_disarm_for "$OMC_ACTIONUI_WINDOW_UUID"
 chat_window_open_clear "$OMC_ACTIONUI_WINDOW_UUID"
 srvlog "WINDOW-CANCEL enter front=${OMC_FRONT_PROCESS_ID} win=$OMC_ACTIONUI_WINDOW_UUID app_pids=[$(srvlog_apppids)] hosts=[$(srvlog_hosts)] v2_servers=[$(srvlog_servers)]"
 
-# The window's agent-vm box, when its agent ran in one: a disposable box goes once no window uses
-# it, a kept one stays. Only when the registry exists, so a Mac that never used a box never loads
-# the box-session library here.
-if [ -f "$mcp_app_support/box-sessions.tsv" ]; then
-    source "$OMC_APP_BUNDLE_PATH/Contents/Resources/Scripts/aichat.boxsession.library.sh"
-    boxsession_release "$OMC_ACTIONUI_WINDOW_UUID"
-fi
-
 # This window's own llama-server, and only it: the registry records which window each server was
 # launched for, and every other window's server stays running under its own entry. The loop that
 # does it lives in the server library now, because it is wanted somewhere this handler cannot
@@ -41,3 +33,13 @@ stop_window_server "$OMC_ACTIONUI_WINDOW_UUID" WINDOW-CANCEL
 # left running.
 reap_orphaned_bundle_processes
 srvlog "WINDOW-CANCEL exit hosts_after=[$(srvlog_hosts)] v2_servers_after=[$(srvlog_servers)]"
+
+# The window's agent-vm box, when its agent ran in one: a disposable box goes once no window uses
+# it; for a running kept box no window uses any more, the user is asked whether to stop it. Last,
+# because that question waits for the window's own programs in the box to end and then for the
+# user, and the server stop and the sweep above should not wait with it. Only when the registry
+# exists, so a Mac that never used a box never loads the box-session library here.
+if [ -f "$mcp_app_support/box-sessions.tsv" ]; then
+    source "$OMC_APP_BUNDLE_PATH/Contents/Resources/Scripts/aichat.boxsession.library.sh"
+    boxsession_close "$OMC_ACTIONUI_WINDOW_UUID"
+fi
