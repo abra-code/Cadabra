@@ -31,10 +31,12 @@ __AICHAT_AGENTVM_LIB=1
 
 source "$OMC_APP_BUNDLE_PATH/Contents/Resources/Scripts/aichat.library.sh"
 
-# 0.2.0: `box status` and `version --json` (0.1.6), progress events under --json (0.1.8), a clean
-# cancel (0.1.9), permission prompts in the exec log (0.1.10), disposable boxes with an owner
-# lease (0.1.11) and secrets (0.2.0). The Box Manager relies on all of them.
-AGENTVM_MIN_VERSION="0.2.0"
+# Always the agent-vm version update-cadabra.sh builds into Cadabra: there is one development
+# stream, so Cadabra is only ever tested against the newest agent-vm, and an older binary (the
+# developer override pointing at a stale build, say) is refused rather than guessed at.
+# Raise it with every agent-vm version bump. The tests and the fake agent-vm read it from here,
+# so the number lives only on this line.
+AGENTVM_MIN_VERSION="0.3.7"
 AGENTVM_MIN_MACOS="27"
 
 agentvm_embedded="$OMC_APP_BUNDLE_PATH/Contents/Support/AgentVM/agent-vm"

@@ -16,6 +16,9 @@ cad_import_ids aichat.boxes.library.sh ""
 FIXTURES="$OMCTEST_TESTS/fixtures/agentvm"
 CADABRA_AGENT_VM="$OMCTEST_TESTS/helpers/fake_agent_vm.sh"
 FAKE_AGENTVM_DIR="$OMCTEST_WORK/fakevm"
+# The oldest agent-vm Cadabra accepts, as the library declares it (it is raised with every
+# agent-vm version, so no expectation here names the number).
+MIN_VERSION=$(/usr/bin/sed -n 's/^AGENTVM_MIN_VERSION="\(.*\)"$/\1/p' "$OMC_APP_BUNDLE_PATH/Contents/Resources/Scripts/aichat.agentvm.library.sh")
 CADABRA_OPEN="$OMCTEST_WORK/fake_open.sh"
 export CADABRA_AGENT_VM FAKE_AGENTVM_DIR CADABRA_OPEN
 unset AGENT_VM_HOME
@@ -103,7 +106,7 @@ fake_reset
 printf '0.1.11\n' > "$FAKE_AGENTVM_DIR/version"
 open_window
 check "the header says so"             "Boxes are not available" "$(ui_value "$BOXES_HEADER_ID")"
-check "  and why, naming the versions" "1" "$(cad_has "$(ui_value "$BOXES_NOTES_ID")" "needs agent-vm 0.2.0 or later")"
+check "  and why, naming the versions" "1" "$(cad_has "$(ui_value "$BOXES_NOTES_ID")" "needs agent-vm $MIN_VERSION or later")"
 check "the picker is off"              "0" "$(ui_enabled "$BOXES_KIND_ID")"
 check "New Box is off"                 "0" "$(ui_enabled "$BOXES_NEW_BOX_ID")"
 check "New Image is off"               "0" "$(ui_enabled "$BOXES_HEADER_NEW_IMAGE_ID")"

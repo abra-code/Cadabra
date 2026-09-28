@@ -18,6 +18,9 @@ PY="$OMC_APP_BUNDLE_PATH/Contents/Library/Python/bin/python3"
 CONVERT="$OMC_APP_BUNDLE_PATH/Contents/Resources/Scripts/agentvm_json.py"
 EMBEDDED="$OMC_APP_BUNDLE_PATH/Contents/Support/AgentVM/agent-vm"
 FAKE_AGENTVM_DIR="$OMCTEST_WORK/fakevm"
+# The oldest agent-vm Cadabra accepts, as the library declares it (it is raised with every
+# agent-vm version, so no expectation here names the number).
+MIN_VERSION=$(/usr/bin/sed -n 's/^AGENTVM_MIN_VERSION="\(.*\)"$/\1/p' "$OMC_APP_BUNDLE_PATH/Contents/Resources/Scripts/aichat.agentvm.library.sh")
 export FAKE_AGENTVM_DIR
 TAB=$(printf '\t')
 # Where the library leaves agent-vm's stderr. cad_call_lib sources it in a subshell of this file,
@@ -229,7 +232,7 @@ else
     printf '0.1.11\n' > "$FAKE_AGENTVM_DIR/version"
     out=$(with_fake agentvm_available); rc=$?
     check "0.1.11 is too old"                  "1" "$rc"
-    check "  and the reason names both versions" "1" "$(cad_has "$out" "Cadabra needs agent-vm 0.2.0 or later, and $FAKE is 0.1.11.")"
+    check "  and the reason names both versions" "1" "$(cad_has "$out" "Cadabra needs agent-vm $MIN_VERSION or later, and $FAKE is 0.1.11.")"
     fake_reset
     printf '3\n' > "$FAKE_AGENTVM_DIR/exit"
     printf 'dyld: Library not loaded\n' > "$FAKE_AGENTVM_DIR/stderr"

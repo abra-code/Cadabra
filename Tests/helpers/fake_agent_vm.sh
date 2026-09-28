@@ -13,7 +13,8 @@
 #              exits with this status, before looking at its arguments.
 #   fail-<a>-<b>  when present, the command "<a> <b>" (fail-box-delete, fail-image-setup)
 #              prints "Error: " and the file's text to stderr and exits 1.
-#   version    what --version prints (default 0.2.1).
+#   version    what --version prints (default: AGENTVM_MIN_VERSION from the library, the oldest
+#              version Cadabra accepts, so raising it needs no change here).
 #   delay      seconds between the progress events of a long command (default 0).
 #   <key>.json the answer to one query, overriding the fixture of that name:
 #              version, doctor, image-list, box-list, packs, execlog, netlog, box-create,
@@ -43,6 +44,7 @@
 
 state="${FAKE_AGENTVM_DIR:?fake_agent_vm: FAKE_AGENTVM_DIR is not set}"
 fixtures="${FAKE_AGENTVM_FIXTURES:-$(/usr/bin/dirname "$0")/../fixtures/agentvm}"
+agentvm_library="${OMC_APP_BUNDLE_PATH:-$(/usr/bin/dirname "$0")/../../Cadabra.app}/Contents/Resources/Scripts/aichat.agentvm.library.sh"
 [ -d "$state" ] || /bin/mkdir -p "$state"
 
 printf '%s\n' "$*" >> "$state/log"
@@ -113,7 +115,7 @@ case "$1 $2" in
         if [ -f "$state/version" ]; then
             /bin/cat "$state/version"
         else
-            printf '0.2.1\n'
+            /usr/bin/sed -n 's/^AGENTVM_MIN_VERSION="\(.*\)"$/\1/p' "$agentvm_library"
         fi ;;
     "version --json")
         answer version ;;
