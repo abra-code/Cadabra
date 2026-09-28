@@ -233,7 +233,14 @@ section "a free virtual machine slot"
 fake_reset
 out=$(with_fake agentvm_vm_slot_free); rc=$?
 check "the fixture's two running VMs: none free" "1" "$rc"
-check "  doctor's own count is in the reason" "1" "$(cad_has "$(message "$rc")" "No virtual machine slot is free: 2 virtual machines running on this Mac")"
+why=$(message "$rc")
+check "  doctor's own count is in the reason" "1" "$(cad_has "$why" "No virtual machine slot is free: 2 virtual machines running on this Mac")"
+check "  and where to stop a box"   "1" "$(cad_has "$why" "Stop a box in Tools > AgentVM, or a virtual machine in another application, then try again.")"
+printf '%s' '[{"box":{"name":"s3","network":{"mode":"off"}},"state":"running"},{"box":{"name":"try1","network":{"mode":"off"}},"state":"stopped"},{"box":{"name":"b2","network":{"mode":"off"}},"state":"starting"},{"box":{"name":"b4","network":{"mode":"off"}},"state":"stopping"}]' > "$FAKE_AGENTVM_DIR/box-list.json"
+with_fake agentvm_vm_slot_free; rc=$?
+check "running boxes: refused"      "1" "$rc"
+check "  naming those that run or start" "1" "$(cad_has "$(message "$rc")" "AgentVM boxes running: s3, b2. Stop one in Tools > AgentVM")"
+/bin/rm -f "$FAKE_AGENTVM_DIR/box-list.json"
 /usr/bin/sed 's/"warning"/"ok"/g' "$FIXTURES/doctor.json" > "$FAKE_AGENTVM_DIR/doctor.json"
 with_fake agentvm_vm_slot_free; rc=$?
 check "an ok count: free"       "0" "$rc"

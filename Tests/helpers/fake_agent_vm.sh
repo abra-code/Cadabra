@@ -12,7 +12,8 @@
 #   exit       when present, every invocation prints the file "stderr" (if any) to stderr and
 #              exits with this status, before looking at its arguments.
 #   fail-<a>-<b>  when present, the command "<a> <b>" (fail-box-delete, fail-image-setup)
-#              prints "Error: " and the file's text to stderr and exits 1.
+#              prints "Error: " and the file's text to stderr and exits 1, or with the status in
+#              fail-<a>-<b>-status when that is present (75 for agent-vm's "no free VM slot").
 #   version    what --version prints (default: AGENTVM_MIN_VERSION from the library, the oldest
 #              version Cadabra accepts, so raising it needs no change here).
 #   delay      seconds between the progress events of a long command (default 0).
@@ -60,6 +61,9 @@ if [ -f "$state/exit" ]; then
 fi
 if [ -f "$state/fail-$1-$2" ]; then
     printf 'Error: %s\n' "$(/bin/cat "$state/fail-$1-$2")" >&2
+    if [ -f "$state/fail-$1-$2-status" ]; then
+        exit "$(/bin/cat "$state/fail-$1-$2-status")"
+    fi
     exit 1
 fi
 

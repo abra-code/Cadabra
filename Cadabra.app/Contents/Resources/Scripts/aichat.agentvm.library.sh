@@ -488,23 +488,49 @@ agentvm_box_view() {
     agentvm_json box view "$1" >/dev/null
 }
 
-# agentvm_vm_slot_free  ->  0 when another macOS virtual machine can start on this Mac;
-# otherwise 1, with doctor's explanation (how many run, the limit) for agentvm_last_error.
-# macOS runs at most two macOS guests at once, counting every application's, and agent-vm
-# would only find out a minute into a start. Doctor's "running VMs" check says "warning" when
-# the limit is reached, and "info" when it could not count: that is not a reason to refuse.
-agentvm_vm_slot_free() {
+# The status agent-vm exits with when a start finds no free virtual machine slot. The refusal is
+# macOS's own (Virtualization's), so it is right even when two starts pass agentvm_vm_slot_free
+# at the same moment.
+agentvm_no_slot_status=75
+
+# _agentvm_slots_full  ->  doctor's explanation (how many run, the limit) when no macOS virtual
+# machine can start on this Mac, else nothing. macOS runs at most two macOS guests at once,
+# counting every application's. Doctor's "running VMs" check says "warning" when the limit is
+# reached, and "info" when it could not count, which is not a reason to refuse; nor is a doctor
+# that fails: the start then fails with agent-vm's own reason.
+_agentvm_slots_full() {
     local _rows
     _rows="$(agentvm_doctor)"
     local _status=$?
+    /bin/rm -f "$agentvm_err_file"
     if [ "$_status" -ne 0 ]; then
-        # Doctor itself failed: let the start go ahead and fail with agent-vm's own reason.
-        /bin/rm -f "$agentvm_err_file"
         return 0
     fi
-    local _full="$(printf '%s\n' "$_rows" | /usr/bin/awk -F'\t' '$1 == "running VMs" && $2 == "warning" { print $3 }')"
+    printf '%s\n' "$_rows" | /usr/bin/awk -F'\t' '$1 == "running VMs" && $2 == "warning" { print $3 }'
+}
+
+# _agentvm_refuse_no_slot <status> [explanation]  ->  one message for every "no free slot"
+# refusal, Cadabra's own check's or agent-vm's, left for agentvm_last_error; returns status. It
+# names the AgentVM boxes that hold a slot (running, or starting: in a race, the one that took
+# it), since stopping one is what the user can do in Cadabra (agent-vm's own message points to
+# `agent-vm box list` in Terminal). Without doctor's explanation it states the limit.
+_agentvm_refuse_no_slot() {
+    local _why="${2:-macOS runs at most two macOS virtual machines at once, and that many are running}"
+    local _running="$(agentvm_boxes 2>/dev/null | /usr/bin/awk -F'\t' '$2 == "running" || $2 == "starting" { printf "%s%s", sep, $1; sep = ", " }')"
+    local _fix="Stop a box in Tools > AgentVM, or a virtual machine in another application, then try again."
+    if [ -n "$_running" ]; then
+        _fix="AgentVM boxes running: $_running. Stop one in Tools > AgentVM, or a virtual machine in another application, then try again."
+    fi
+    _agentvm_refuse "$1" "No virtual machine slot is free: $_why. $_fix"
+}
+
+# agentvm_vm_slot_free  ->  0 when another macOS virtual machine can start on this Mac;
+# otherwise 1, with the reason for agentvm_last_error. A first check, so a start that cannot
+# succeed is refused before a disposable box is made or a job begins, not a minute into a boot.
+agentvm_vm_slot_free() {
+    local _full="$(_agentvm_slots_full)"
     if [ -n "$_full" ]; then
-        _agentvm_refuse 1 "No virtual machine slot is free: $_full. Stop a box or another virtual machine first."
+        _agentvm_refuse_no_slot 1 "$_full"
         return 1
     fi
     return 0
@@ -648,11 +674,20 @@ agentvm_box_start() {
         *)        agentvm_vm_slot_free || return $? ;;
     esac
     local _owner="$(_agentvm_owner_pid)"
+    local _started
     if [ -n "$_owner" ]; then
         agentvm_json box start "$1" --owner-pid "$_owner" >/dev/null
-        return $?
+        _started=$?
+    else
+        agentvm_json box start "$1" >/dev/null
+        _started=$?
     fi
-    agentvm_json box start "$1" >/dev/null
+    # Two windows can pass the check above at the same moment; agent-vm's refusal of the second
+    # then reads like the check's.
+    if [ "$_started" -eq "$agentvm_no_slot_status" ]; then
+        _agentvm_refuse_no_slot "$_started" "$(_agentvm_slots_full)"
+    fi
+    return "$_started"
 }
 
 # agentvm_box_warmup <box> <project> <yes|no read-only>  ->  0 once a program has run in the box

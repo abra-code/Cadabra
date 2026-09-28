@@ -149,6 +149,30 @@ check "no free VM slot refuses the start" "1" "$status"
 check "  saying why"                     "1" "$(cad_has "$(message "$status")" 'No virtual machine slot is free')"
 check "  with nothing printed"           "" "$box"
 check "  and the row written, for the release" "w1${TAB}b1" "$(/usr/bin/cut -f1,2 "$REGISTRY")"
+# no_slot_start - agent-vm refusing box start for want of a slot (status 75), in its own words, with
+# another box running: another window's start took the last slot after this one's check passed.
+no_slot_start() {
+    printf '%s' 'no free VM slot: cannot start box b1, because macOS runs at most 2 macOS virtual machines at once and that many are running; stop a box (`agent-vm box list` shows the running ones) or a VM in another application, then try again' > "$FAKE_AGENTVM_DIR/fail-box-start"
+    printf '75\n' > "$FAKE_AGENTVM_DIR/fail-box-start-status"
+    printf '%s' '[{"box": {"name": "other", "network": {"mode": "off"}}, "state": "running"}]' > "$FAKE_AGENTVM_DIR/box-list.json"
+}
+fake_reset
+no_slot_start
+box=$(with_fake boxsession_start w1 box:b1 claude-code-acp "$PROJECT" no)
+status=$?
+why=$(message "$status")
+check "agent-vm finding no free slot fails the start" "75" "$status"
+check "  in Cadabra's words, stating the limit" "1" "$(cad_has "$why" 'No virtual machine slot is free: macOS runs at most two macOS virtual machines at once, and that many are running.')"
+check "  naming the box that runs"       "1" "$(cad_has "$why" 'AgentVM boxes running: other. Stop one in Tools > AgentVM')"
+check "  not agent-vm's Terminal advice" "0" "$(cad_has "$why" 'agent-vm box list')"
+check "  with nothing printed"           "" "$box"
+fake_reset
+no_slot_start
+/usr/bin/sed 's/"state": "stopped"/"state": "stopping"/' "$FIXTURES/box-status-stopped.json" > "$FAKE_AGENTVM_DIR/box-b1.json"
+/bin/cp "$FIXTURES/doctor.json" "$FAKE_AGENTVM_DIR/doctor.json"
+with_fake boxsession_start w1 box:b1 claude-code-acp "$PROJECT" no >/dev/null
+status=$?
+check "  with doctor's count once doctor sees the slots full" "1" "$(cad_has "$(message "$status")" 'No virtual machine slot is free: 2 virtual machines running on this Mac')"
 fake_reset
 printf 'the project cannot be your home folder or a folder that contains it' > "$FAKE_AGENTVM_DIR/exec-error"
 box=$(with_fake boxsession_start w1 box:b1 claude-code-acp "$PROJECT" no)
@@ -490,6 +514,15 @@ out=$(engine chat_engine_box_transport w1 "claude-agent-acp" claude-code-acp new
 check "a box that cannot start refuses"  "1" "$(printf '%s\n' "$out" | /usr/bin/head -1)"
 check "  with agent-vm's reason"         "1" "$(alerts_mention 'No virtual machine slot is free')"
 check "  and no config"                  "" "$(printf '%s\n' "$out" | /usr/bin/sed 1d)"
+check "  the made box is gone again"     "0" "$(/bin/ls "$FAKE_AGENTVM_DIR" | /usr/bin/grep -c '^box-cadabra-')"
+check "  and so is its row"              "" "$(/bin/cat "$REGISTRY")"
+fake_reset
+no_slot_start
+alerts_reset
+out=$(engine chat_engine_box_transport w1 "claude-agent-acp" claude-code-acp new:dev false)
+check "agent-vm finding no free slot refuses too" "1" "$(printf '%s\n' "$out" | /usr/bin/head -1)"
+check "  with the same message as the check" "1" "$(alerts_mention 'No virtual machine slot is free: macOS runs at most two')"
+check "  naming the box that runs"       "1" "$(alerts_mention 'AgentVM boxes running: other.')"
 check "  the made box is gone again"     "0" "$(/bin/ls "$FAKE_AGENTVM_DIR" | /usr/bin/grep -c '^box-cadabra-')"
 check "  and so is its row"              "" "$(/bin/cat "$REGISTRY")"
 fake_reset
