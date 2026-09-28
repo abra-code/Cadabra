@@ -197,8 +197,8 @@ boxsession_line_id=544
 boxsession_line_row_id=545
 boxsession_line_network_id=546
 # How many of the network log's last entries a refresh reads. The log of a kept box grows over
-# every session it served (up to 64 MB). agent-vm itself still reads the whole log, but the rows
-# converted and counted here stay few; the most _agentvm_need_count accepts.
+# every session it served (up to 64 MB); agent-vm reads its last entries from the end (0.3.8), and
+# the rows converted and counted here stay few. The most _agentvm_need_count accepts.
 boxsession_line_netlog_last=999
 # How many of the exec log's last runs a refresh reads for permission prompts. The agent is one
 # long run; the programs it starts in the box are not runs of their own.
@@ -453,7 +453,7 @@ EOF
             _help="$_help$_line$boxsession_newline"
         fi
     done
-    _help="${_help}Counted for every program in AgentVM box $1 since the agent started, as each connection ends (one still open, such as the agent's own to its model provider, is counted when it closes)"
+    _help="${_help}Counted for every program in AgentVM box $1 since the agent started, each connection when it opens"
     if [ "$_partial" = "yes" ]; then
         _help="$_help, over its last $boxsession_line_netlog_last connections"
     fi

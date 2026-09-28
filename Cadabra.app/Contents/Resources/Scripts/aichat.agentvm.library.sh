@@ -36,7 +36,7 @@ source "$OMC_APP_BUNDLE_PATH/Contents/Resources/Scripts/aichat.library.sh"
 # developer override pointing at a stale build, say) is refused rather than guessed at.
 # Raise it with every agent-vm version bump. The tests and the fake agent-vm read it from here,
 # so the number lives only on this line.
-AGENTVM_MIN_VERSION="0.3.7"
+AGENTVM_MIN_VERSION="0.3.8"
 AGENTVM_MIN_MACOS="27"
 
 agentvm_embedded="$OMC_APP_BUNDLE_PATH/Contents/Support/AgentVM/agent-vm"

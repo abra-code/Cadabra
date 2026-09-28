@@ -514,7 +514,7 @@ cad_journal_reset
 with_fake boxsession_line_refresh w1
 check "a refresh restates the counts" "AgentVM box b1, project read-only - 2 hosts reached, 1 refused, 1 failed" "$(line_title)"
 check "  and names the hosts in the tooltip" \
-    "Reached: api.anthropic.com, registry.npmjs.org Refused: bag.itunes.apple.com Failed: down.example Counted for every program in AgentVM box b1 since the agent started, as each connection ends (one still open, such as the agent's own to its model provider, is counted when it closes). Programs in the box reach only the hosts its rules allow; agent-vm box netlog b1 --denied lists the refused ones." \
+    "Reached: api.anthropic.com, registry.npmjs.org Refused: bag.itunes.apple.com Failed: down.example Counted for every program in AgentVM box b1 since the agent started, each connection when it opens. Programs in the box reach only the hosts its rules allow; agent-vm box netlog b1 --denied lists the refused ones." \
     "$(line_help)"
 /bin/cat > "$FAKE_AGENTVM_DIR/netlog.json" <<'JSONEOF'
 [
