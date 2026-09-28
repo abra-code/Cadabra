@@ -490,7 +490,8 @@ fake_reset
 cad_journal_reset
 out=$(engine chat_engine_box_transport w1 "claude-agent-acp" claude-code-acp new:dev false)
 box=$(col 2 < "$REGISTRY")
-check "chat init puts the line into its slot" "1" "$(cad_has "$(cad_journal 543)" 'omc_insert_element {"type":"Label","id":544')"
+check "chat init puts the line into its slot" "1" "$(cad_has "$(cad_journal 543)" 'omc_insert_element {"type":"HStack","id":545')"
+check "  a row with the line and its Network... button" "1|1" "$(cad_has "$(cad_journal 543)" '{"type":"Label","id":544')|$(cad_has "$(cad_journal 543)" '"actionID":"aichat.chat.box.network"')"
 check "  naming the disposable box and its image" "Disposable AgentVM box $box from dev - no connections yet" "$(line_title)"
 check "  as the Label's value, which is what it shows" "0" "$(cad_has "$(cad_journal 544)" 'omc_set_property title')"
 check "  and remembers the box and the line for the refreshes" "$box${TAB}Disposable AgentVM box $box from dev" \

@@ -186,6 +186,54 @@
     },
     {
       "ACTIONUI_WINDOW" : {
+        "END_CANCEL_SUBCOMMAND_ID" : "aichat.box.network.close",
+        "END_OK_SUBCOMMAND_ID" : "aichat.box.network.close",
+        "INIT_SUBCOMMAND_ID" : "aichat.box.network.init",
+        "IS_BLOCKING" : false,
+        "JSON_NAME" : "aichat.box.network",
+        "WINDOW_TITLE" : "AgentVM - Box Network"
+      },
+      "COMMAND_ID" : "aichat.box.network",
+      "EXECUTION_MODE" : "exe_shell_script",
+      "NAME" : "Cadabra"
+    },
+    {
+      "COMMAND_ID" : "aichat.box.network.init",
+      "EXECUTION_MODE" : "exe_script_file",
+      "NAME" : "Cadabra"
+    },
+    {
+      "COMMAND_ID" : "aichat.box.network.selection.changed",
+      "EXECUTION_MODE" : "exe_script_file",
+      "NAME" : "Cadabra"
+    },
+    {
+      "COMMAND_ID" : "aichat.box.network.allow",
+      "EXECUTION_MODE" : "exe_script_file",
+      "NAME" : "Cadabra"
+    },
+    {
+      "COMMAND_ID" : "aichat.box.network.refresh",
+      "EXECUTION_MODE" : "exe_script_file",
+      "NAME" : "Cadabra"
+    },
+    {
+      "COMMAND_ID" : "aichat.box.network.done",
+      "EXECUTION_MODE" : "exe_script_file",
+      "NAME" : "Cadabra"
+    },
+    {
+      "COMMAND_ID" : "aichat.box.network.close",
+      "EXECUTION_MODE" : "exe_script_file",
+      "NAME" : "Cadabra"
+    },
+    {
+      "COMMAND_ID" : "aichat.chat.box.network",
+      "EXECUTION_MODE" : "exe_script_file",
+      "NAME" : "Cadabra"
+    },
+    {
+      "ACTIONUI_WINDOW" : {
         "END_CANCEL_SUBCOMMAND_ID" : "aichat.chat.cancel",
         "INIT_SUBCOMMAND_ID" : "aichat.chat.init",
         "IS_BLOCKING" : false,

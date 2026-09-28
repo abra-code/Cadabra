@@ -33,7 +33,7 @@
 #   box create <name> --image <image> ... --json (creates box-<name>.json),
 #   box delete <name> --json (removes it), image delete <name> --json, box view <name> ... --json,
 #   image info <name> --json and box info <name> --json (the box must exist),
-#   box shell <name>, secret list --json, secret set <name> (value on stdin),
+#   box shell <name>, box network <name> ... --json (changes nothing), secret list --json, secret set <name> (value on stdin),
 #   secret delete <name>, exec --box <name> ... -- <argv> (runs nothing),
 #   and the long ones, which print progress events on stderr like agent-vm
 #   and exit 130 (SIGINT) or 143 (SIGTERM) when stopped:
@@ -177,6 +177,9 @@ case "$1 $2" in
         ;;
     "box view")
         need_box "$3" ;;
+    "box network")
+        need_box "$3"
+        printf '{"allow": [], "mode": "allowlist"}\n' ;;
     "box shell")
         need_box "$3"
         printf 'fake shell in %s\n' "$3" ;;

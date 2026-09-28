@@ -446,6 +446,20 @@ agentvm_box_create() {
     agentvm_json "$@" >/dev/null
 }
 
+# agentvm_box_allow <box> <rule>  ->  0 once the rule is among the box's network rules. A
+# running box's proxy rereads its rules at once, so the next connection it covers gets through.
+# The rule is an argv element after --allow, so one that is empty, starts with "-" or holds
+# whitespace is refused.
+agentvm_box_allow() {
+    _agentvm_need_name box "$1" || return $?
+    case "$2" in
+        ''|-*|*' '*|*"$(printf '\t')"*)
+            _agentvm_refuse 2 "\"$2\" is not a network rule: a host, \"*.domain\", \"host:port\" or \"pack:<name>\"."
+            return $? ;;
+    esac
+    agentvm_json box network "$1" --allow "$2" >/dev/null
+}
+
 # agentvm_box_delete <box>  ->  0 once the box and its disk are gone. agent-vm refuses a
 # running box, with a message saying to stop it first.
 agentvm_box_delete() {

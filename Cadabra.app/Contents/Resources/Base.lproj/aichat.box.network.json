@@ -1,0 +1,76 @@
+{
+  "type": "VStack",
+  "properties": {
+    "spacing": 12,
+    "alignment": "leading",
+    "padding": "default",
+    "frame": { "minWidth": 680, "idealWidth": 760, "minHeight": 380, "idealHeight": 460 }
+  },
+  "children": [
+    {
+      "type": "Text",
+      "id": 800,
+      "properties": {
+        "text": "",
+        "frame": { "maxWidth": "infinity", "alignment": "leading" }
+      }
+    },
+    {
+      "type": "Table",
+      "id": 801,
+      "properties": {
+        "columns": ["Host", "Port", " ⓘ", "Connections", "Why"],
+        "widths": [230, 60, 18, 90, 292],
+        "minWidths": [160, 50, 18, 80, 120],
+        "actionID": "aichat.box.network.selection.changed",
+        "frame": { "maxWidth": "infinity", "minHeight": 180, "maxHeight": "infinity" }
+      }
+    },
+    {
+      "type": "HStack",
+      "properties": { "spacing": 8, "frame": { "maxWidth": "infinity" } },
+      "children": [
+        {
+          "type": "Button",
+          "id": 802,
+          "properties": {
+            "title": "Allow in This Box...",
+            "disabled": true,
+            "help": "Add the selected refused host to this box's network rules; the agent's next try gets through",
+            "actionID": "aichat.box.network.allow"
+          }
+        },
+        { "type": "Spacer" },
+        {
+          "type": "Button",
+          "id": 804,
+          "properties": {
+            "title": "Refresh",
+            "help": "Read the box's network log again",
+            "actionID": "aichat.box.network.refresh"
+          }
+        },
+        {
+          "type": "Button",
+          "id": 805,
+          "properties": {
+            "title": "Done",
+            "buttonStyle": "borderedProminent",
+            "keyboardShortcut": { "key": "return" },
+            "actionID": "aichat.box.network.done"
+          }
+        }
+      ]
+    },
+    {
+      "type": "Text",
+      "id": 806,
+      "properties": {
+        "text": "",
+        "font": "footnote",
+        "foregroundStyle": "secondary",
+        "frame": { "maxWidth": "infinity", "alignment": "leading" }
+      }
+    }
+  ]
+}

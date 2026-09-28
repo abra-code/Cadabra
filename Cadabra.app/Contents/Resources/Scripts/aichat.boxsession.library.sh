@@ -178,9 +178,10 @@ boxsession_meta_fields() {
     printf '%s\n' "$_row" | /usr/bin/awk -F'\t' -v image="$_image" 'BEGIN { OFS = "\t" } { print $2, image, $3, $4, $5 }'
 }
 
-# THE BOX LINE, under the model button of a chat window whose agent runs in a box (a Label put
-# into the empty slot 543 of aichat.chat.json, so windows without a box keep their layout):
-#   Box s3, project read-only - 4 hosts reached, 2 refused
+# THE BOX LINE, under the model button of a chat window whose agent runs in a box (a Label and
+# a Network... button in a row put into the empty slot 543 of aichat.chat.json, so windows
+# without a box keep their layout; the button opens aichat.box.network.json):
+#   AgentVM box s3, project read-only - 4 hosts reached, 2 refused
 # Its tooltip names the hosts. The counts cover the connections of every program in the box
 # since the agent started, from agent-vm's network log; the chat entry handler refreshes them
 # in the background after each message. The line also counts the macOS permission prompts those
@@ -192,6 +193,9 @@ boxsession_meta_fields() {
 # shown. The tooltip (help) has no such value and is set as a property.
 boxsession_line_slot_id=543
 boxsession_line_id=544
+# The row holding the line and its Network... button (aichat.chat.box.network.sh).
+boxsession_line_row_id=545
+boxsession_line_network_id=546
 # How many of the network log's last entries a refresh reads. The log of a kept box grows over
 # every session it served (up to 64 MB). agent-vm itself still reads the whole log, but the rows
 # converted and counted here stay few; the most _agentvm_need_count accepts.
@@ -233,8 +237,8 @@ boxsession_line_show() {
     fi
     pb_set "aichatv2_boxline_$1" "$2$boxsession_tab$_since$boxsession_tab$_head"
     pb_set "aichatv2_boxprompts_$1" ""
-    "$dialog" "$1" "$boxsession_line_id" omc_remove_element 2>/dev/null
-    "$dialog" "$1" "$boxsession_line_slot_id" omc_insert_element "{\"type\":\"Label\",\"id\":$boxsession_line_id,\"properties\":{\"title\":\"\",\"systemImage\":\"shippingbox\",\"font\":\"footnote\",\"foregroundStyle\":\"secondary\",\"padding\":{\"top\":0,\"leading\":14,\"bottom\":6,\"trailing\":14},\"frame\":{\"maxWidth\":\"infinity\",\"alignment\":\"leading\"}}}"
+    "$dialog" "$1" "$boxsession_line_row_id" omc_remove_element 2>/dev/null
+    "$dialog" "$1" "$boxsession_line_slot_id" omc_insert_element "{\"type\":\"HStack\",\"id\":$boxsession_line_row_id,\"properties\":{\"spacing\":8,\"padding\":{\"top\":0,\"leading\":14,\"bottom\":6,\"trailing\":14},\"frame\":{\"maxWidth\":\"infinity\",\"alignment\":\"leading\"}},\"children\":[{\"type\":\"Label\",\"id\":$boxsession_line_id,\"properties\":{\"title\":\"\",\"systemImage\":\"shippingbox\",\"font\":\"footnote\",\"foregroundStyle\":\"secondary\",\"frame\":{\"maxWidth\":\"infinity\",\"alignment\":\"leading\"}}},{\"type\":\"Button\",\"id\":$boxsession_line_network_id,\"properties\":{\"title\":\"Network...\",\"buttonStyle\":\"bordered\",\"controlSize\":\"small\",\"help\":\"The hosts programs in the AgentVM box reached and were refused, and allowing a refused one\",\"actionID\":\"aichat.chat.box.network\"}}]}"
     "$dialog" "$1" "$boxsession_line_id" "$_head - no connections yet"
     "$dialog" "$1" "$boxsession_line_id" omc_set_property help "Programs in the AgentVM box reach only the hosts its rules allow. The counts start when the agent does."
 }
