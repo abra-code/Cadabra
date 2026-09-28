@@ -167,6 +167,41 @@ check "asking is refused for an agent with no recipe" "1" "$(cad_has "$(ui_value
 continue_with codex-acp "codex-acp" damaged free
 check "an unreadable place is refused"   "1" "$(cad_has "$(ui_value "$RESULT_TEXT_ID")" 'could not be read')"
 
+section "Continue asks before running a program from the home folder in a box"
+cad_reset
+fake_reset
+ui_reset
+alerts_reset
+alert_answers_reset
+alert_answer 0
+continue_with "custom:1" "$HOME/.opencode/bin/opencode acp" new:dev free
+check "it asks"                          "1" "$(alerts_mention 'which is in your home folder on this Mac')"
+check "  naming the program"             "1" "$(alerts_mention "starts $HOME/.opencode/bin/opencode,")"
+check "Edit Command stores nothing"      "mac|" "$(cad_call acp_agent_run_in custom)|$(cad_get /agents/external/id)"
+check "  and the window stays"           "0|0" "$(chain_asked aichat.mcp.servers)|$(chain_asked aichat.chat)"
+check "  saying what to change"          "1" "$(cad_has "$(ui_value "$RESULT_TEXT_ID")" "the program's name in the AgentVM box")"
+alert_answer 255
+continue_with "custom:1" "$HOME/.opencode/bin/opencode acp" new:dev free
+check "an alert that failed stores nothing either" "mac|0" "$(cad_call acp_agent_run_in custom)|$(chain_asked aichat.mcp.servers)"
+alert_answer 2
+continue_with "custom:1" "$HOME/.opencode/bin/opencode acp" new:dev free
+check "Continue Anyway stores the box"   "new:dev" "$(cad_call acp_agent_run_in custom)"
+check "  and goes on to the project step" "1" "$(chain_asked aichat.mcp.servers)"
+alerts_reset
+alert_answers_reset
+continue_with "custom:1" "$HOME/.opencode/bin/opencode acp" mac free
+check "on this Mac nothing is asked"     "0|mac" "$(alerts_count)|$(cad_call acp_agent_run_in custom)"
+continue_with "custom:1" "my-agent --acp" new:dev free
+check "nor for a plain program name in a box" "0|new:dev" "$(alerts_count)|$(cad_call acp_agent_run_in custom)"
+continue_with opencode "opencode acp" new:dev free
+check "nor for an agent the catalog gives its own box command" "0|new:dev" "$(alerts_count)|$(cad_call acp_agent_run_in opencode)"
+cad_reset
+alerts_reset
+continue_with "custom:1" "~/.opencode/bin/opencode acp" new:dev free
+check "a program written with ~ is refused, without a question" "0|mac|" "$(alerts_count)|$(cad_call acp_agent_run_in custom)|$(cad_get /agents/external/id)"
+check "  saying ~ is not expanded"       "1" "$(cad_has "$(ui_value "$RESULT_TEXT_ID")" 'Cadabra does not expand ~ in a command, so ~/.opencode/bin/opencode cannot start.')"
+check "  and the window stays"           "0|0" "$(chain_asked aichat.mcp.servers)|$(chain_asked aichat.chat)"
+
 section "where boxes cannot be used, Continue leaves the stored place alone"
 cad_reset
 cad_call acp_agent_set_run_in claude-code-acp box:try1

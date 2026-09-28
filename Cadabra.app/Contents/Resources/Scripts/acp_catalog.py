@@ -26,6 +26,7 @@ Usage:
     acp_catalog.py box-keys <id> [<catalog.json>]
     acp_catalog.py box-login <id> [<catalog.json>]
     acp_catalog.py box-unavailable <id> <level> [<catalog.json>]
+    acp_catalog.py box-mac-path <id> <home> <command line> [<catalog.json>]
 
 "rows" emits, tab separated, one row per agent:
     id, label, command, args, url, summary, note
@@ -65,11 +66,19 @@ this agent (no box object, or no such level): the level would not be applied, an
 work more freely than chosen. "free" needs nothing applied, so it is always available. The dialog
 refuses the choice with the reason.
 
+"box-mac-path" emits, on one line, the program of <command line> when the agent would run that
+command in a box (the catalog gives it no box argv of its own) and the program is a path in the
+home folder <home> on this Mac, or starts with "~". Such a path is not in the box, whose files are
+its own, unless it lies inside the project, which is shared at the same path; so the dialog asks
+rather than refuses. Nothing when the box has its own argv, the program is a plain name or a path
+outside the home folder (a system path the macOS guest has too), or the command does not split.
+
 A missing or unreadable catalog is reported on stderr and exits non-zero with NO rows on
 stdout, so the dialog shows an empty list rather than a plausible-looking partial one.
 """
 import json
 import os
+import shlex
 import sys
 
 # The emitted columns, in order. This tuple is also the PRIVACY BOUNDARY of the catalog: a key
@@ -166,20 +175,40 @@ def box_keys(box):
     return rows
 
 
+def box_mac_path(box, home, command_line):
+    """The program of command_line when a box would run it and it is a path in home, or None."""
+    argv = box.get("argv") if isinstance(box, dict) else None
+    if isinstance(argv, list) and any(str(word) != "" for word in argv):
+        return None
+    try:
+        words = shlex.split(command_line)
+    except ValueError:
+        return None
+    if not words:
+        return None
+    program = words[0]
+    home = home.rstrip("/")
+    if program.startswith("~") or (home and (program == home or program.startswith(home + "/"))):
+        return program
+    return None
+
+
 def main():
     argv = sys.argv[1:]
     known = (argv and (argv[0] in ("rows", "custom")
                        or (argv[0] == "box" and len(argv) >= 2)
                        or (argv[0] in ("box-keys", "box-login") and len(argv) >= 2)
                        or (argv[0] == "box-list" and len(argv) >= 3 and argv[2] in ("allow", "secrets"))
-                       or (argv[0] == "box-unavailable" and len(argv) >= 3)))
+                       or (argv[0] == "box-unavailable" and len(argv) >= 3)
+                       or (argv[0] == "box-mac-path" and len(argv) >= 4)))
     if not known:
         sys.stderr.write("usage: acp_catalog.py rows|custom [<catalog.json>] | box <id> [<catalog.json>]"
                          " | box-list <id> allow|secrets [<catalog.json>]"
                          " | box-keys|box-login <id> [<catalog.json>]"
-                         " | box-unavailable <id> <level> [<catalog.json>]\n")
+                         " | box-unavailable <id> <level> [<catalog.json>]"
+                         " | box-mac-path <id> <home> <command line> [<catalog.json>]\n")
         return 2
-    rest = argv[2:] if argv[0] in ("box", "box-keys", "box-login") else argv[3:] if argv[0] in ("box-list", "box-unavailable") else argv[1:]
+    rest = argv[2:] if argv[0] in ("box", "box-keys", "box-login") else argv[3:] if argv[0] in ("box-list", "box-unavailable") else argv[4:] if argv[0] == "box-mac-path" else argv[1:]
     path = rest[0] if rest else default_catalog_path()
     try:
         data = load(path)
@@ -204,6 +233,17 @@ def main():
                       "without asking." % LEVEL_WORDS[argv[2]])
         if isinstance(reason, str) and reason.strip():
             sys.stdout.write(" ".join(reason.split()) + "\n")
+        return 0
+
+    if argv[0] == "box-mac-path":
+        try:
+            box = box_of(data, argv[1])
+        except Exception as exc:
+            sys.stderr.write("acp_catalog: cannot read %s: %s\n" % (path, exc))
+            return 1
+        program = box_mac_path(box, argv[2], argv[3])
+        if program is not None:
+            sys.stdout.write(" ".join(program.split()) + "\n")
         return 0
 
     if argv[0] == "box-list":

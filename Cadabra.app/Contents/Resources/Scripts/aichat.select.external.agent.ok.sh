@@ -124,6 +124,30 @@ if [ "$in_box" = "yes" ]; then
         "$dialog_tool" "$window_uuid" $RESULT_TEXT_ID "$level_problem"
         exit 0
     fi
+    # A command that starts a program in the home folder on this Mac (~/.opencode/bin/opencode,
+    # say) would run in the box, where that path does not exist unless it lies inside the shared
+    # project. Asked, not refused, for that case; acp_catalog.py box-mac-path says when it applies.
+    # Continue Anyway is the other button, so neither Return nor Escape takes it, and an alert
+    # that failed (-1) keeps the window for editing too.
+    # A program written with "~" is refused outright: nothing expands it, not the transport, not
+    # agent-vm in the box and not the launch on this Mac, so it cannot start anywhere.
+    mac_path="$("$acp_python" "$acp_catalog_py" box-mac-path "$selected_id" "$HOME" "$command_line" 2>/dev/null)"
+    case "$mac_path" in
+        "~"*)
+            "$dialog_tool" "$window_uuid" $RESULT_TEXT_ID "Cadabra does not expand ~ in a command, so $mac_path cannot start. Write the program's name as it is installed in the AgentVM box's image."
+            exit 0 ;;
+    esac
+    if [ -n "$mac_path" ]; then
+        "$alert" --level caution --title "Run $mac_path in the AgentVM box?" --ok "Edit Command" --other "Continue Anyway" \
+            "This command starts $mac_path, which is in your home folder on this Mac. An AgentVM box has its own files, so the agent will not find that program there unless it is inside the project folder the box shares.
+
+Name the program as it is installed in the box's image (usually just its name), or continue if it is in the project."
+        mac_path_answer=$?
+        if [ "$mac_path_answer" -ne 2 ]; then
+            "$dialog_tool" "$window_uuid" $RESULT_TEXT_ID "Change the command to the program's name in the AgentVM box, or choose This Mac under Runs in."
+            exit 0
+        fi
+    fi
 fi
 
 # Where it runs is stored BEFORE the agent is switched to, so a write that fails leaves the
