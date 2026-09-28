@@ -139,7 +139,7 @@ check "  what it added over its base" "1" "$(cad_has "$(ui_value "$BOXES_DETAIL_
 check "  asked for this image only"  "1" "$(fake_asked "image info dev-agents --json")"
 printf 'no such subcommand' > "$FAKE_AGENTVM_DIR/fail-image-info"
 select_image dev-agents
-check "an agent-vm without image info: the list's own size" "1" "$(cad_has "$(ui_value "$BOXES_DETAIL_ID")" "Own size:      220 MB (what deleting it frees)")"
+check "image info failing: the own size is unknown" "1" "$(cad_has "$(ui_value "$BOXES_DETAIL_ID")" "Own size:      unknown")"
 check "  and no total"               "0" "$(cad_has "$(ui_value "$BOXES_DETAIL_ID")" "Total size")"
 /bin/rm -f "$FAKE_AGENTVM_DIR/fail-image-info"
 check "the image buttons are shown"  "1" "$(ui_visible "$BOXES_IMAGE_BUTTONS_ID")"
@@ -221,7 +221,7 @@ check "a poll loop was asked for"    "1" "$(chain_asked aichat.boxes.poll)"
 check "the job is listed as running" "1" "$(ui_rows "$BOXES_JOBS_ID" | /usr/bin/grep -c "^Start cadabra-spike${TAB}running")"
 check "the box shows it starting"    "1" "$(ui_rows "$BOXES_BOXES_ID" | /usr/bin/grep -c "^cadabra-spike${TAB}starting...")"
 check "Start is off while it runs"   "0" "$(ui_enabled "$BOXES_BOX_START_ID")"
-/bin/cp "$FIXTURES/box-status-ready.json" "$FAKE_AGENTVM_DIR/box-cadabra-spike.json"
+/bin/cp "$FIXTURES/box-status-running.json" "$FAKE_AGENTVM_DIR/box-cadabra-spike.json"
 omc_run aichat.boxes.poll
 check_status "the poll loop ended with the job" 0
 check "the job is done"              "1" "$(ui_rows "$BOXES_JOBS_ID" | /usr/bin/grep -c "^Start cadabra-spike${TAB}done")"
@@ -336,7 +336,7 @@ check "an image in use: agent-vm's reason" "1" "$(alerts_mention "image dev is i
 
 section "View, View and Control, Shell"
 fake_reset
-/bin/cp "$FIXTURES/box-status-ready.json" "$FAKE_AGENTVM_DIR/box-try1.json"
+/bin/cp "$FIXTURES/box-status-running.json" "$FAKE_AGENTVM_DIR/box-try1.json"
 open_window
 select_box try1
 omc_run aichat.boxes.box.view

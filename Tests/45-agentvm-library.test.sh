@@ -76,8 +76,8 @@ check "no guest error is \"-\""  "-"     "$(printf '%s\n' "$row" | col 6)"
 check "exactly six fields"       "6"     "$(printf '%s\n' "$row" | /usr/bin/awk -F'\t' '{ print NF }')"
 
 section "agentvm_json.py: the status of a running box"
-row=$(convert status "$FIXTURES/box-status-ready.json")
-check "state"            "ready"                                        "$(printf '%s\n' "$row" | col 1)"
+row=$(convert status "$FIXTURES/box-status-running.json")
+check "state"            "running"                                      "$(printf '%s\n' "$row" | col 1)"
 check "the supervisor's pid" "44847"                                    "$(printf '%s\n' "$row" | col 2)"
 check "its version"      "0.1.8"                                        "$(printf '%s\n' "$row" | col 3)"
 check "its path"         "/Users/you/Development/agent-vm/.build/signed/release/agent-vm" "$(printf '%s\n' "$row" | col 4)"
@@ -121,7 +121,7 @@ check "the running VMs check is there" "1" "$(printf '%s\n' "$rows" | /usr/bin/g
 section "agentvm_json.py never emits an empty field or a line break inside one"
 # The invariant that keeps `IFS=<tab> read` from shifting fields. Each hostile value is paired
 # with the column it must land in, so a collapse shows up as a value in the wrong place.
-printf '%s' '{"state":"ready","pid":7,"supervisorVersion":"","supervisorPath":"/a\tb","project":"/p\nq","projectReadOnly":false,"activeExecs":0,"guestFeatures":[],"box":{"image":"x"}}' \
+printf '%s' '{"state":"running","pid":7,"supervisorVersion":"","supervisorPath":"/a\tb","project":"/p\nq","projectReadOnly":false,"activeExecs":0,"guestFeatures":[],"box":{"image":"x"}}' \
     > "$OMCTEST_WORK/hostile.json"
 row=$(convert status "$OMCTEST_WORK/hostile.json")
 check "one line"                         "1"     "$(printf '%s\n' "$row" | /usr/bin/awk 'END { print NR }')"
@@ -253,10 +253,10 @@ fi
 
 section "box status through the fake"
 fake_reset
-/bin/cp "$FIXTURES/box-status-ready.json" "$FAKE_AGENTVM_DIR/box-cadabra-x.json"
+/bin/cp "$FIXTURES/box-status-running.json" "$FAKE_AGENTVM_DIR/box-cadabra-x.json"
 row=$(with_fake agentvm_box_status cadabra-x); rc=$?
 check "succeeds"                   "0"     "$rc"
-check "  with the converted row"   "ready" "$(printf '%s\n' "$row" | col 1)"
+check "  with the converted row"   "running" "$(printf '%s\n' "$row" | col 1)"
 check "  after asking exactly this" "box status cadabra-x --json" "$(/bin/cat "$FAKE_AGENTVM_DIR/log")"
 check "  leaving no error file behind" "0" "$([ -e "$ERR_FILE" ] && echo 1 || echo 0)"
 

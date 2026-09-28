@@ -17,7 +17,7 @@ The first form writes version.json, doctor.json, image-list.json, box-list.json,
 box-status-stopped.json, and execlog.json and netlog.json from STOPPED_BOX's logs (so pick a
 box that has run a program and tried the network). RUNNING_BOX, when given, must be running
 with a project shared and a program running in it, so the fixture carries every field; it
-writes box-status-ready.json. For example:
+writes box-status-running.json. For example:
     agent-vm exec --box B --project ~/Development/scratch --read-only -- /bin/sleep 30 &
 Nothing here starts or stops a virtual machine. Note that `box list` deletes disposable boxes
 that have stopped, as it always does.
@@ -103,9 +103,9 @@ def stopped(data):
     return None if data.get("state") == "stopped" else f"the box is {data.get('state')}, not stopped"
 
 
-def ready_with_exec(data):
-    if data.get("state") != "ready":
-        return f"the box is {data.get('state')}, not ready"
+def running_with_exec(data):
+    if data.get("state") != "running":
+        return f"the box is {data.get('state')}, not running"
     if not data.get("project") or not data.get("activeExecs"):
         return "no project is shared or no program runs in the box (see the usage)"
     return None
@@ -128,8 +128,8 @@ def queries(agent_vm, stopped_box, running_box):
     ok = capture(agent_vm, ["box", "netlog", stopped_box, "--last", "5"], "netlog.json",
                  not_empty) and ok
     if running_box:
-        ok = capture(agent_vm, ["box", "status", running_box], "box-status-ready.json",
-                     ready_with_exec) and ok
+        ok = capture(agent_vm, ["box", "status", running_box], "box-status-running.json",
+                     running_with_exec) and ok
     return ok
 
 

@@ -308,8 +308,7 @@ boxes_show_boxes() {
             }
         }
         {
-            # "running" since agent-vm 0.2.18, "ready" before it.
-            state = $2 == "ready" ? "running" : $2
+            state = $2
             if ($12 == "true") state = state ", disposable"
             if ($1 in kind) state = kind[$1] == "box-start" ? "starting..." : (kind[$1] == "box-stop" ? "stopping..." : "busy...")
             memory = $6 == "-" ? "-" : $6 " GB"
@@ -383,10 +382,9 @@ boxes_need_text() {
     esac
 }
 
-# boxes_size_lines <image|box> <name> <own size from the list>  ->  the detail pane's size lines.
-# agent-vm 0.2.18 measures an image's or a box's space only in `image info` / `box info` (about
-# 0.1-0.4 s, once per selection); an older one has no info command and still puts the own size in
-# its list, which is the fallback.
+# boxes_size_lines <image|box> <name>  ->  the detail pane's size lines. agent-vm measures an
+# image's or a box's space only in `image info` / `box info` (about 0.1-0.4 s, once per
+# selection); when that fails, the own size is unknown.
 boxes_size_lines() {
     local _sizes
     if [ "$1" = "image" ]; then
@@ -397,7 +395,7 @@ boxes_size_lines() {
     local _status=$?
     if [ "$_status" -ne 0 ] || [ -z "$_sizes" ]; then
         /bin/rm -f "$agentvm_err_file"
-        printf 'Own size:      %s (what deleting it frees)\n' "${3:-unknown}"
+        printf 'Own size:      unknown\n'
         return 0
     fi
     local _own="$(boxes_field "$_sizes" 1)"
@@ -449,7 +447,7 @@ boxes_show_image() {
         boxes_line 'CPUs:' "$(boxes_field "$_row" 11)"
         boxes_line 'Memory:' "$(boxes_field "$_row" 12)" GB
         boxes_line 'Disk:' "$(boxes_field "$_row" 13)" GB
-        boxes_size_lines image "$_name" "$(boxes_field "$_row" 6)"
+        boxes_size_lines image "$_name"
         printf 'Folder:        %s\n' "$_path"
         if [ -n "$_kinds" ]; then
             printf '\nNeeds:\n'
@@ -487,9 +485,6 @@ boxes_show_box() {
     local _path="$(boxes_field "$_row" 16)"
     local _busy="$(boxes_busy_kind "$_uuid" "box:$_name")"
     local _shown="$_state"
-    # A box that is up: "running" since agent-vm 0.2.18, "ready" before it.
-    [ "$_state" = "ready" ] && _state="running"
-    [ "$_state" = "running" ] && _shown="running"
     [ "$(boxes_field "$_row" 12)" = "true" ] && _shown="$_shown, disposable (deleted once it stops)"
     [ -n "$_busy" ] && _shown="$(boxes_busy_word "$_busy")"
     "$dialog" "$_uuid" "$BOXES_TITLE_ID" "Box $_name"
@@ -501,7 +496,7 @@ boxes_show_box() {
         printf 'Image:         %s\n' "$(boxes_field "$_row" 3)"
         boxes_line 'CPUs:' "$(boxes_field "$_row" 5)"
         boxes_line 'Memory:' "$(boxes_field "$_row" 6)" GB
-        boxes_size_lines box "$_name" "$(boxes_field "$_row" 7)"
+        boxes_size_lines box "$_name"
         local _mode="$(boxes_field "$_row" 17)"
         printf 'Network:       %s\n' "$_mode"
         if [ "$_mode" = "allowlist" ]; then
@@ -765,7 +760,7 @@ boxes_new_init() {
     local _index="$(printf '%s\n' "$_images" | /usr/bin/awk -v want="$_wanted" '$0 == want { print NR; exit }')"
     "$dialog" "$_uuid" "$BOXES_NEW_IMAGE_ID" "${_index:-1}"
     "$dialog" "$_uuid" "$BOXES_NEW_NETWORK_ID" "1"
-    # A user pack agent-vm cannot use (its problem, since agent-vm 0.2.10) is named as broken: a
+    # A user pack agent-vm cannot use (its problem) is named as broken: a
     # box that names it is refused, so offering it as if it worked would be a trap.
     local _packs="$(agentvm_packs 2>/dev/null | /usr/bin/awk -F'\t' '{ printf "%s%s%s", sep, $1, ($3 != "" && $3 != "-") ? " (broken: " $3 ")" : ""; sep = ", " }')"
     agentvm_last_error >/dev/null

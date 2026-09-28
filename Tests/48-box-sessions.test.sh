@@ -114,14 +114,10 @@ check "  nothing is made"                "" "$(logged 'box create')"
 check "  the share is read-only"         "exec --box b1 --project $PROJECT --read-only -- /usr/bin/true" "$(logged 'exec')"
 check "  registered as kept"             "w1${TAB}b1${TAB}no${TAB}$PROJECT${TAB}yes" "$(/usr/bin/cut -f1-5 "$REGISTRY")"
 fake_reset
-/bin/cp "$FIXTURES/box-status-ready.json" "$FAKE_AGENTVM_DIR/box-b1.json"
+/bin/cp "$FIXTURES/box-status-running.json" "$FAKE_AGENTVM_DIR/box-b1.json"
 /bin/cp "$FIXTURES/doctor.json" "$FAKE_AGENTVM_DIR/doctor.json"
 box=$(with_fake boxsession_start w1 box:b1 claude-code-acp "$PROJECT" no)
 check "a box that runs is not started again" "b1|" "$box|$(logged 'box start')"
-fake_reset
-/usr/bin/sed 's/"state" *: *"ready"/"state" : "running"/' "$FIXTURES/box-status-ready.json" > "$FAKE_AGENTVM_DIR/box-b1.json"
-box=$(with_fake boxsession_start w1 box:b1 claude-code-acp "$PROJECT" no)
-check "  nor one agent-vm 0.2.18 calls running" "b1|" "$box|$(logged 'box start')"
 check "  and the full VM slots do not refuse it: it is one of them" "0" "$(cad_has "$(/bin/cat "$FAKE_AGENTVM_DIR/log")" 'doctor')"
 
 fake_reset
@@ -256,7 +252,7 @@ check "the last one deletes it (stopped)" "0" "$([ -f "$FAKE_AGENTVM_DIR/box-$bo
 check "  and no row is left"             "" "$(/bin/cat "$REGISTRY")"
 fake_reset
 box=$(with_fake boxsession_start w1 new:dev claude-code-acp "$PROJECT" no)
-/bin/cp "$FIXTURES/box-status-ready.json" "$FAKE_AGENTVM_DIR/box-$box.json"
+/bin/cp "$FIXTURES/box-status-running.json" "$FAKE_AGENTVM_DIR/box-$box.json"
 with_fake boxsession_release w1
 check "a running one is stopped by a job" "box stop $box --json" "$(wait_for_log 'box stop')"
 fake_reset
@@ -272,12 +268,12 @@ section "closing the last window of a running kept box asks whether to stop it"
 # registry row for window w1 on it, as chat init leaves one.
 kept_box() {
     if [ -n "${3:-}" ]; then
-        /usr/bin/sed -e "s/\"state\": \"ready\"/\"state\": \"$1\"/" -e "s/\"activeExecs\": 1,/\"activeExecs\": $2,/" \
+        /usr/bin/sed -e "s/\"state\": \"running\"/\"state\": \"$1\"/" -e "s/\"activeExecs\": 1,/\"activeExecs\": $2,/" \
             -e "s/\"pid\": 44847,/\"ownerPid\": $3, \"pid\": 44847,/" \
-            "$FIXTURES/box-status-ready.json" > "$FAKE_AGENTVM_DIR/box-b1.json"
+            "$FIXTURES/box-status-running.json" > "$FAKE_AGENTVM_DIR/box-b1.json"
     else
-        /usr/bin/sed -e "s/\"state\": \"ready\"/\"state\": \"$1\"/" -e "s/\"activeExecs\": 1,/\"activeExecs\": $2,/" \
-            "$FIXTURES/box-status-ready.json" > "$FAKE_AGENTVM_DIR/box-b1.json"
+        /usr/bin/sed -e "s/\"state\": \"running\"/\"state\": \"$1\"/" -e "s/\"activeExecs\": 1,/\"activeExecs\": $2,/" \
+            "$FIXTURES/box-status-running.json" > "$FAKE_AGENTVM_DIR/box-b1.json"
     fi
     /bin/mkdir -p "$(/usr/bin/dirname "$REGISTRY")"
     printf 'w1\tb1\tno\t%s\tno\t%s\n' "$PROJECT" "$$" > "$REGISTRY"
@@ -722,7 +718,7 @@ JSONEOF
 }
 PBOX=cadabra-spike
 fake_reset
-/bin/cp "$FIXTURES/box-status-ready.json" "$FAKE_AGENTVM_DIR/box-$PBOX.json"
+/bin/cp "$FIXTURES/box-status-running.json" "$FAKE_AGENTVM_DIR/box-$PBOX.json"
 netlog_fixture
 execlog_fixture
 check "the prompts since the agent started, each once, in order, with whether the program was stopped" \
@@ -786,7 +782,7 @@ alerts_reset
 with_fake boxsession_line_refresh w1
 check "a Keychain prompt alone gets the login advice only" "1|0" "$(alerts_mention 'Keychain item belongs')|$(alerts_mention 'Full Disk Access')"
 fake_reset
-/bin/cp "$FIXTURES/box-status-ready.json" "$FAKE_AGENTVM_DIR/box-$PBOX.json"
+/bin/cp "$FIXTURES/box-status-running.json" "$FAKE_AGENTVM_DIR/box-$PBOX.json"
 netlog_fixture
 printf '[]\n' > "$FAKE_AGENTVM_DIR/execlog.json"
 cad_pb_set aichatv2_boxprompts_w1 ""

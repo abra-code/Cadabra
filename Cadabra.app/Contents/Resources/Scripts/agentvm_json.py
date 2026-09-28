@@ -38,17 +38,18 @@ this file.
 "images" emits one row per image:
     name, state, failure, macOS, basedOn, ownSize, needs, recipe, created, guestVersion,
     cpus, memoryGB, diskGB, path, needKinds
-  macOS is "27.0 (26A428)"; ownSize is what deleting the image frees ("598 MB"), "-" from
-  agent-vm 0.2.18 on (its lists measure nothing; "sizes" reads image info); needs is
+  macOS is "27.0 (26A428)"; ownSize is "-" (agent-vm's lists measure nothing; "sizes"
+  reads image info), and is kept so the later columns keep their places; needs is
   for people ("guest update, Full Disk Access"), needKinds for code ("guest-update,...").
 "boxes" emits one row per box:
     name, state, image, network, cpus, memoryGB, ownSize, pid, project, projectReadOnly,
     activeExecs, disposable, ownerPid, startedAt, supervisorVersion, path, netMode, rules
-  network is for people ("allowlist, 2 rules"); rules is the allow list, comma-joined.
+  network is for people ("allowlist, 2 rules"); rules is the allow list, comma-joined; ownSize
+  is "-", as for images.
 "packs" emits one row per pack:
     name, hosts, problem
-  problem is agent-vm's reason a user pack cannot be used (since 0.2.10, which reads packs from
-  files); such a pack has no hosts. "-" for a usable pack, and for agent-vm before 0.2.10.
+  problem is agent-vm's reason a user pack cannot be used; such a pack has no hosts. "-" for a
+  usable pack.
 "execlog" emits one row per program run, oldest first:
     started, status, seconds, program, prompts, stoppedOnPrompt
   status is "no end recorded" while the run goes on, and also when its client died without
@@ -57,7 +58,7 @@ this file.
   macOS privacy prompts the run waited on, joined with "; ".
 "netlog" emits one row per entry, oldest first:
     time, decision, host, port, method, reason
-"sizes" emits one row, the space an image or a box takes (agent-vm 0.2.18 measures it only in
+"sizes" emits one row, the space an image or a box takes (agent-vm measures it only in
 `image info` and `box info`; the lists leave it out to stay quick):
     ownSize, totalSize, addedOverBase, addedSize
   ownSize is what deleting it frees ("280 MB"), totalSize all it holds, shared or not; for an

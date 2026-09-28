@@ -35,7 +35,7 @@
   "projectReadOnly": true,
   "running": true,
   "startedAt": "2026-09-25T06:57:49Z",
-  "state": "ready",
+  "state": "running",
   "supervisorPath": "/Users/you/Development/agent-vm/.build/signed/release/agent-vm",
   "supervisorVersion": "0.1.8"
 }

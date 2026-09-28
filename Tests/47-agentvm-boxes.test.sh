@@ -95,7 +95,7 @@ check "the rules"          "pack:npm"       "$(printf '%s\n' "$row" | col 18)"
 check "drift: no stored field is absent" "" "$(printf '%s\n' "$row" | absent name state image network cpus memoryGB ownSize _ _ _ _ _ _ _ _ path netMode rules)"
 
 section "boxes: a running disposable box, from the fields box status has"
-printf '%s' '[{"box":{"name":"cadabra-x","image":"dev","cpuCount":2,"memoryBytes":4294967296,"network":{"mode":"allowlist","allow":["pack:npm","example.com"]}},"state":"ready","running":true,"pid":812,"project":"/p","projectReadOnly":false,"activeExecs":2,"disposable":true,"ownerPid":77,"startedAt":"2026-09-25T09:18:17Z","supervisorVersion":"0.2.1","path":"/b","diskUsage":{"bytes":9000000000}}]' > "$OMCTEST_WORK/running.json"
+printf '%s' '[{"box":{"name":"cadabra-x","image":"dev","cpuCount":2,"memoryBytes":4294967296,"network":{"mode":"allowlist","allow":["pack:npm","example.com"]}},"state":"running","running":true,"pid":812,"project":"/p","projectReadOnly":false,"activeExecs":2,"disposable":true,"ownerPid":77,"startedAt":"2026-09-25T09:18:17Z","supervisorVersion":"0.2.1","path":"/b","diskUsage":{"bytes":9000000000}}]' > "$OMCTEST_WORK/running.json"
 row=$(convert boxes "$OMCTEST_WORK/running.json")
 check "two rules"          "allowlist, 2 rules" "$(printf '%s\n' "$row" | col 4)"
 check "the supervisor pid" "812"            "$(printf '%s\n' "$row" | col 8)"
@@ -222,7 +222,7 @@ check "  naming the box"        "image dev is in use by the box b1; delete the b
 with_fake agentvm_image_delete dev; rc=$?
 check "deleting an image"       "0" "$rc"
 check "  asked"                 "image delete dev --json" "$(last_call)"
-/bin/cp "$FIXTURES/box-status-ready.json" "$FAKE_AGENTVM_DIR/box-b2.json"
+/bin/cp "$FIXTURES/box-status-running.json" "$FAKE_AGENTVM_DIR/box-b2.json"
 with_fake agentvm_box_view b2
 check "view"                    "box view b2 --json" "$(last_call)"
 with_fake agentvm_box_view b2 interactive
@@ -248,7 +248,7 @@ check "  and no stale message is left" "agent-vm failed (status 0) and gave no r
 # -----------------------------------------------------------------------------------------
 section "a shell in Terminal"
 fake_reset
-/bin/cp "$FIXTURES/box-status-ready.json" "$FAKE_AGENTVM_DIR/box-b1.json"
+/bin/cp "$FIXTURES/box-status-running.json" "$FAKE_AGENTVM_DIR/box-b1.json"
 cad_reset
 opened="$OMCTEST_WORK/opened"
 /bin/cat > "$OMCTEST_WORK/fake_open.sh" <<EOF

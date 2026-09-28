@@ -1,2 +1,2 @@
 {"box": "cadabra-spike", "event": "progress", "message": "starting", "step": "starting"}
-{"box": "cadabra-spike", "event": "progress", "message": "ready", "step": "ready"}
+{"box": "cadabra-spike", "event": "progress", "message": "running", "step": "running"}

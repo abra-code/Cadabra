@@ -301,7 +301,7 @@ agentvm_version_info() {
 #
 # Never starts or stops anything (agent-vm 0.1.6's `box status`), so it is safe to poll, but a
 # supervisor that does not answer can hold it up for about 7 seconds (agent-vm's BoxStatus.of:
-# 2 s for the socket to appear, 5 s for the answer). state is stopped, starting, ready,
+# 2 s for the socket to appear, 5 s for the answer). state is stopped, starting, running,
 # stopping or unresponsive: something holds the box's lock but no supervisor answers (pid is
 # "-"), or a supervisor answered without a state (pid is its pid); statusError says which.
 # pid identifies the supervisor, which owns the virtual machine; activeExecs counts the
@@ -345,17 +345,16 @@ _agentvm_need_count() {
 }
 
 # agentvm_images  ->  one row per image: name, state, failure, macOS, basedOn, ownSize, needs,
-# recipe, created, guestVersion, cpus, memoryGB, diskGB, path, needKinds. ownSize is "-" from
-# agent-vm 0.2.18 on, whose lists measure no disk (agentvm_image_sizes does).
+# recipe, created, guestVersion, cpus, memoryGB, diskGB, path, needKinds. ownSize is "-":
+# agent-vm's lists measure no disk, agentvm_image_sizes does.
 agentvm_images() {
     agentvm_rows images image list
 }
 
 # agentvm_boxes  ->  one row per box: name, state, image, network, cpus, memoryGB, ownSize, pid,
 # project, projectReadOnly, activeExecs, disposable, ownerPid, startedAt, supervisorVersion,
-# path, netMode, rules. ownSize is "-" from agent-vm 0.2.18 on (agentvm_box_sizes); state is
-# "running" for a box that is up ("ready" before 0.2.18). Like `box status`, listing never
-# starts or stops anything; it does
+# path, netMode, rules. ownSize is "-" (agentvm_box_sizes measures it); state is "running"
+# for a box that is up. Like `box status`, listing never starts or stops anything; it does
 # delete disposable boxes that have stopped (agent-vm's `box gc`, run by `box list`).
 agentvm_boxes() {
     agentvm_rows boxes box list
@@ -644,8 +643,7 @@ agentvm_box_start() {
     fi
     local _state="$(printf '%s\n' "$_row" | /usr/bin/cut -f1)"
     case "$_state" in
-        # "running" since agent-vm 0.2.18; "ready" from an older one (a developer override).
-        running|ready) return 0 ;;
+        running)  return 0 ;;
         starting|stopping) ;;
         *)        agentvm_vm_slot_free || return $? ;;
     esac
@@ -686,10 +684,9 @@ agentvm_box_warmup() {
 }
 
 # agentvm_image_sizes <image> / agentvm_box_sizes <box>  ->  one row: ownSize, totalSize,
-# addedOverBase, addedSize (agentvm_json.py sizes). agent-vm 0.2.18 measures space only in
+# addedOverBase, addedSize (agentvm_json.py sizes). agent-vm measures space only in
 # `image info` and `box info` (about 0.1 s per disk, 0.3 s more for an image's growth over its
-# base), so the lists stay quick; the Box Manager asks for one row when it is selected. An
-# older agent-vm has no info command and fails, and its lists still carry the own size.
+# base), so the lists stay quick; the Box Manager asks for one row when it is selected.
 agentvm_image_sizes() {
     _agentvm_need_name image "$1" || return $?
     agentvm_rows sizes image info "$1"

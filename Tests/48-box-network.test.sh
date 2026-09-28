@@ -27,7 +27,7 @@ SINCE="2026-09-27T10:00:00Z"
 fake_reset() {
     /bin/rm -rf "$FAKE_AGENTVM_DIR"
     /bin/mkdir -p "$FAKE_AGENTVM_DIR"
-    /bin/cp "$FIXTURES/box-status-ready.json" "$FAKE_AGENTVM_DIR/box-b1.json"
+    /bin/cp "$FIXTURES/box-status-running.json" "$FAKE_AGENTVM_DIR/box-b1.json"
     /bin/cat > "$FAKE_AGENTVM_DIR/netlog.json" <<'JSONEOF'
 [
   {"decision": "denied", "host": "old.example", "method": "CONNECT", "port": 443, "reason": "not in the allowlist", "time": "2026-09-27T09:00:00Z"},
@@ -163,7 +163,7 @@ alert_answers_reset
 section "a box whose network is off keeps the rule, and says nothing gets through yet"
 fake_reset
 /bin/cat > "$FAKE_AGENTVM_DIR/box-list.json" <<'JSONEOF'
-[{"box": {"image": "dev", "name": "b1", "network": {"allow": [], "mode": "off"}}, "running": true, "state": "ready"}]
+[{"box": {"image": "dev", "name": "b1", "network": {"allow": [], "mode": "off"}}, "running": true, "state": "running"}]
 JSONEOF
 open_network netoff
 select_host registry.npmjs.org

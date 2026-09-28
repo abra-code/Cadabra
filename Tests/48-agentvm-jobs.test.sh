@@ -119,7 +119,7 @@ section "it ends done"
 check "done"                        "done" "$(wait_until "$id" done)"
 row=$(job_row "$id")
 check "  status 0"                  "0"     "$(printf '%s\n' "$row" | col 6)"
-check "  the last step"             "ready" "$(printf '%s\n' "$row" | col 9)"
+check "  the last step"             "running" "$(printf '%s\n' "$row" | col 9)"
 check "  an end time"               "1" "$(printf '%s\n' "$row" | col 8 | /usr/bin/grep -c 'Z$')"
 check "  no error"                  "-"     "$(printf '%s\n' "$row" | col 13)"
 check "  agent-vm's answer was kept" "1" "$(/usr/bin/grep -c '"state"' "$JOBS/$id/out" | /usr/bin/tr -d ' ')"
