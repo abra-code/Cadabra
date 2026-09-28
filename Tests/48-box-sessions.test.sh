@@ -737,6 +737,44 @@ check "a message does"                 "AgentVM box b1 - 2 hosts reached, 1 refu
 cad_pb_set "aichatv2_boxline_$win" ""
 cad_pb_set "aichatv2_session_$win" ""
 
+section "coming to the front refreshes the line, unless it was refreshed moments ago"
+# activated  ->  the window's activation handler, with the fake agent-vm.
+activated() {
+    ( CADABRA_AGENT_VM="$FAKE"; export CADABRA_AGENT_VM; omc_run aichat.chat.activated ) >/dev/null 2>&1
+}
+fake_reset
+netlog_fixture
+printf '%s\tb1\tno\t%s\tno\t1\n' "$win" "$PROJECT" > "$REGISTRY"
+cad_pb_set "aichatv2_boxline_$win" "b1${TAB}$since${TAB}AgentVM box b1"
+cad_pb_set "aichatv2_boxline_at_$win" ""
+cad_journal_reset
+activated
+w_left=50
+while [ -z "$(line_help)" ] && [ "$w_left" -gt 0 ]; do w_left=$((w_left - 1)); /bin/sleep 0.1; done
+check "the window coming to the front restates the line" "AgentVM box b1 - 2 hosts reached, 1 refused, 1 failed" "$(line_title)"
+check "  and notes when"                "1" "$(cad_pb_get "aichatv2_boxline_at_$win" | /usr/bin/grep -c '^[0-9][0-9]*$')"
+: > "$FAKE_AGENTVM_DIR/log"
+activated
+/bin/sleep 1
+check "again moments later: agent-vm is not asked" "" "$(logged 'box netlog')"
+cad_pb_set "aichatv2_boxline_at_$win" "$(( $(/bin/date +%s) - 11 ))"
+cad_journal_reset
+activated
+w_left=50
+while [ -z "$(line_help)" ] && [ "$w_left" -gt 0 ]; do w_left=$((w_left - 1)); /bin/sleep 0.1; done
+check "  but once the gap has passed it is" "1" "$(logged 'box netlog' | /usr/bin/awk 'END { print NR }')"
+cad_pb_set "aichatv2_boxline_$win" ""
+cad_pb_set "aichatv2_boxline_at_$win" ""
+: > "$FAKE_AGENTVM_DIR/log"
+activated
+/bin/sleep 1
+check "a window without a box line reads nothing" "" "$(/bin/cat "$FAKE_AGENTVM_DIR/log")"
+printf 'w3\tb1\tno\t%s\tno\t1\n' "$PROJECT" > "$REGISTRY"
+cad_pb_set aichatv2_boxline_at_w3 123
+with_fake boxsession_release w3
+check "releasing a window forgets when its line was refreshed" "" "$(cad_pb_get aichatv2_boxline_at_w3)"
+/bin/rm -f "$REGISTRY"
+
 section "the box line counts the permission prompts its programs met, and tells of a new one once"
 # execlog_fixture [stopped]  ->  an exec log: a run before the agent started (a prompt not
 # counted), the agent's run with two prompts, and a later run meeting one of them again.

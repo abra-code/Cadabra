@@ -190,10 +190,12 @@ boxsession_meta_fields() {
 #   AgentVM box s3, project read-only - 4 hosts reached, 2 refused
 # Its tooltip names the hosts. The counts cover the connections of every program in the box
 # since the agent started, from agent-vm's network log; the chat entry handler refreshes them
-# in the background after each message. The line also counts the macOS permission prompts those
+# in the background after each message, and aichat.chat.activated.sh when the window comes to the
+# front (boxsession_line_focus). The line also counts the macOS permission prompts those
 # programs met (" - 1 permission prompt", from the exec log), and the refresh that first finds
 # one tells the user in an alert. The window's pasteboard key aichatv2_boxline_<window>
-# holds what the refreshes need: box TAB since TAB the line's first part.
+# holds what the refreshes need: box TAB since TAB the line's first part, and
+# aichatv2_boxline_at_<window> the time of the last refresh, in seconds since 1970.
 # The line's text is set as the Label's value, not with omc_set_property title: a Label shows its
 # value, which ActionUI seeds from the title once, at insertion, so a later title change is not
 # shown. The tooltip (help) has no such value and is set as a property.
@@ -405,6 +407,7 @@ boxsession_line_refresh() {
     if [ -z "$_stamp" ]; then
         return 0
     fi
+    pb_set "aichatv2_boxline_at_$1" "$(/bin/date +%s)"
     local _box="${_stamp%%"$boxsession_tab"*}"
     local _rest="${_stamp#*"$boxsession_tab"}"
     local _since="${_rest%%"$boxsession_tab"*}"
@@ -445,6 +448,33 @@ boxsession_line_refresh() {
         _boxsession_prompt_notice "$1" "$_box" "$_prompts"
     fi
     return 0
+}
+
+# boxsession_line_focus_gap: seconds a window's line stays fresh enough that coming to the front
+# does not refresh it again.
+boxsession_line_focus_gap=10
+
+# boxsession_line_focus <window>  ->  0. The window came to the front: its line is refreshed, so
+# hosts reached or refused while it was behind other windows (a long turn, a program the agent left
+# running) show without waiting for the next message. Not when the line was refreshed less than
+# boxsession_line_focus_gap seconds ago: switching between windows would otherwise read agent-vm's
+# logs on every click, and each refresh that overlaps another could tell of a new permission
+# prompt twice. Nothing for a window without a line.
+boxsession_line_focus() {
+    local _stamp="$(pb_get "aichatv2_boxline_$1")"
+    if [ -z "$_stamp" ]; then
+        return 0
+    fi
+    local _at="$(pb_get "aichatv2_boxline_at_$1")"
+    local _now="$(/bin/date +%s)"
+    case "$_at" in
+        ''|*[!0123456789]*) ;;
+        *)
+            if [ $((_now - _at)) -lt "$boxsession_line_focus_gap" ]; then
+                return 0
+            fi ;;
+    esac
+    boxsession_line_refresh "$1"
 }
 
 # _boxsession_net_text <box> <boxsession_net_counts row>  ->  sets _tail and _help, the caller's
@@ -668,6 +698,7 @@ boxsession_release() {
     # The box line has nothing left to count for this window; a refresh started after this finds
     # no stamp and does nothing.
     pb_set "aichatv2_boxline_$1" ""
+    pb_set "aichatv2_boxline_at_$1" ""
     pb_set "aichatv2_boxprompts_$1" ""
     local _box="$(printf '%s\n' "$_row" | /usr/bin/cut -f2)"
     local _disposable="$(printf '%s\n' "$_row" | /usr/bin/cut -f3)"

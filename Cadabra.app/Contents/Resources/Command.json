@@ -238,10 +238,16 @@
         "INIT_SUBCOMMAND_ID" : "aichat.chat.init",
         "IS_BLOCKING" : false,
         "JSON_NAME" : "aichat.chat",
+        "WINDOW_DID_ACTIVATE_SUBCOMMAND_ID" : "aichat.chat.activated",
         "WINDOW_TITLE" : "Cadabra"
       },
       "COMMAND_ID" : "aichat.chat",
       "EXECUTION_MODE" : "exe_shell_script",
+      "NAME" : "Cadabra"
+    },
+    {
+      "COMMAND_ID" : "aichat.chat.activated",
+      "EXECUTION_MODE" : "exe_script_file",
       "NAME" : "Cadabra"
     },
     {
