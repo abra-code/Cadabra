@@ -257,6 +257,28 @@ check "the boxes were read again"    "$((lists_before + 1))" "$(fake_asked "box 
 check "  and the loop left nothing running behind" "" "$(cad_pb_get "cadabra_boxes_seen_$OMC_ACTIONUI_WINDOW_UUID")"
 cad_call_lib aichat.agentvm.library.sh agentvm_job_forget "$id" >/dev/null
 
+section "a job agent-vm refused for want of a virtual machine slot says so in Cadabra's words"
+fake_reset 0
+printf '%s' 'no free VM slot: cannot start box try1, because macOS runs at most 2 macOS virtual machines at once and that many are running; stop a box (`agent-vm box list` shows the running ones) or a VM in another application, then try again' > "$FAKE_AGENTVM_DIR/fail-box-start"
+printf '75\n' > "$FAKE_AGENTVM_DIR/fail-box-start-status"
+id=$(cad_call_lib aichat.agentvm.library.sh agentvm_box_start_job try1)
+wait_jobs_done
+open_window
+check "the jobs list says no slot was free" "1" "$(ui_rows "$BOXES_JOBS_ID" | /usr/bin/grep -c "^Start try1${TAB}failed${TAB}no free virtual machine slot")"
+select_job "$id"
+check "  and so do its details"      "1" "$(cad_has "$(ui_value "$BOXES_DETAIL_ID")" 'No virtual machine slot was free: macOS runs at most two')"
+check "  pointing to the Boxes list" "1" "$(cad_has "$(ui_value "$BOXES_DETAIL_ID")" 'Stop a box in the Boxes list')"
+check "  not to Terminal"            "0" "$(cad_has "$(ui_value "$BOXES_DETAIL_ID")" 'agent-vm box list')"
+cad_call_lib aichat.agentvm.library.sh agentvm_job_forget "$id" >/dev/null
+/bin/rm -f "$FAKE_AGENTVM_DIR/fail-box-start-status"
+id=$(cad_call_lib aichat.agentvm.library.sh agentvm_box_start_job try1)
+wait_jobs_done
+open_window
+check "another failure keeps agent-vm's first line" "1" "$(ui_rows "$BOXES_JOBS_ID" | /usr/bin/grep -c "^Start try1${TAB}failed${TAB}no free VM slot: cannot start box try1")"
+select_job "$id"
+check "  and its words in the details" "1" "$(cad_has "$(ui_value "$BOXES_DETAIL_ID")" 'agent-vm box list')"
+cad_call_lib aichat.agentvm.library.sh agentvm_job_forget "$id" >/dev/null
+
 section "a job: its details, Cancel and Remove"
 fake_reset 3
 open_window

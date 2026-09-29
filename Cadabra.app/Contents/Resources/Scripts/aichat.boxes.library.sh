@@ -200,16 +200,19 @@ boxes_busy_kind() {
 }
 
 # boxes_show_jobs <uuid>  ->  the jobs table and the progress bar of the newest running job.
-# Rows: Job, State, Progress, then the job id hidden in column 4.
+# Rows: Job, State, Progress, then the job id hidden in column 4. A failed job shows the first line
+# of its error, except one agent-vm refused for want of a virtual machine slot (its status 75),
+# whose words point to a Terminal command: that says so in Cadabra's (boxes_no_slot_text).
 boxes_show_jobs() {
     local _uuid="$1"
     local _file="$(boxes_cache "$_uuid" jobs)"
     [ -f "$_file" ] || : > "$_file"
-    /usr/bin/awk -F'\t' '
+    /usr/bin/awk -F'\t' -v no_slot="$agentvm_no_slot_status" '
         {
             progress = $11
             if ($5 == "running" && $10 != "-") progress = sprintf("%d%% %s", $10 * 100, progress)
             if ($5 == "failed" || $5 == "lost") progress = $13
+            if ($5 == "failed" && $6 == no_slot) progress = "no free virtual machine slot"
             if ($5 == "done" && progress == "-") progress = "finished"
             printf "%s\t%s\t%s\t%s\n", $4, $5, progress, $1
         }' "$_file" | "$dialog" "$_uuid" "$BOXES_JOBS_ID" omc_table_set_rows_from_stdin
@@ -538,6 +541,11 @@ boxes_show_box() {
     boxes_enable "$_uuid" "$BOXES_BOX_DELETE_ID" "$((_stopped * _free))"
 }
 
+# What a job agent-vm refused for want of a virtual machine slot says in its details, in place of
+# agent-vm's own words, which point to `agent-vm box list` in Terminal. Every job that boots a
+# virtual machine can meet it: a start, a guest update, a setup, a build.
+boxes_no_slot_text="No virtual machine slot was free: macOS runs at most two macOS virtual machines at once, and that many were running. Stop a box in the Boxes list, or a virtual machine in another application, then try again."
+
 # boxes_show_job <uuid> <id>  ->  the job's details: what it runs, how far it got, its error.
 boxes_show_job() {
     local _uuid="$1" _id="$2"
@@ -558,7 +566,9 @@ boxes_show_job() {
         [ -n "$(boxes_field "$_row" 6)" ] && printf 'Exit status:   %s\n' "$(boxes_field "$_row" 6)"
         [ -n "$(boxes_field "$_row" 11)" ] && printf 'Last step:     %s\n' "$(boxes_field "$_row" 11)"
         [ -n "$(boxes_field "$_row" 12)" ] && printf 'Note:          %s\n' "$(boxes_field "$_row" 12)"
-        if [ "$_state" = "failed" ] || [ "$_state" = "lost" ]; then
+        if [ "$_state" = "failed" ] && [ "$(boxes_field "$_row" 6)" = "$agentvm_no_slot_status" ]; then
+            printf '\n%s\n' "$boxes_no_slot_text"
+        elif [ "$_state" = "failed" ] || [ "$_state" = "lost" ]; then
             printf '\n%s\n' "$(agentvm_job_error "$_id" 2>/dev/null)"
         fi
         if [ "$_state" = "running" ] && [ "$_kind" = "image-setup" ]; then
