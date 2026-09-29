@@ -102,7 +102,6 @@ bundle and verifies that they actually launch (`--help` lists every option):
 ./update-cadabra.sh                              # everything: llama.cpp (latest release) and the rest built from source
 ./update-cadabra.sh --version=b8797              # pin the llama.cpp build tag
 ./update-cadabra.sh --skip-llama                 # rebuild and redeploy everything but llama.cpp
-./update-cadabra.sh --skip-llama --skip-agent --skip-pdfutil --skip-replay --skip-packages   # just agent-vm
 ```
 
 | Component | Destination | Source |
@@ -111,13 +110,17 @@ bundle and verifies that they actually launch (`--help` lists every option):
 | `mlx-agent` + resource bundles | `Contents/Support/MLX/` | built from source with `xcodebuild` |
 | `pdfutil` | `Contents/Support/` | built from source with `./build.sh` |
 | `replay` | `Contents/Support/` | built from source with `xcodebuild` |
-| `agent-vm` + `agent-vm-guest` + `packs.json` | `Contents/Support/AgentVM/` | built from source with its `Scripts/build.sh` |
 | Python MCP servers | `Contents/Library/Packages/` | `pip install` with the bundle's own `python3` |
 
-mlx-agent, pdfutil, replay and agent-vm are built from sibling checkouts (`--agent-repo=`,
-`--pdfutil-repo=`, `--replay-repo=`, `--agent-vm-repo=`); the script offers to `git clone` the first
-three if they are missing. agent-vm is not published yet, so its sibling checkout must exist. No WebUI
-is downloaded or patched - Cadabra's chat is native.
+mlx-agent, pdfutil and replay are built from sibling checkouts (`--agent-repo=`, `--pdfutil-repo=`,
+`--replay-repo=`); the script offers to `git clone` them if they are missing. No WebUI is downloaded
+or patched - Cadabra's chat is native.
+
+Cadabra carries no agent-vm. Boxes run the agent-vm that AgentVM's package installs for the user
+(`~/.local/bin/agent-vm`, from https://github.com/abra-code/agent-vm/releases), the same one Terminal
+runs. The developer setting `/developer/agent-vm` in Cadabra's settings file points it at another
+build, such as `~/Development/agent-vm/.build/signed/release/agent-vm`. An earlier build's
+`Contents/Support/AgentVM/` is removed by the script.
 
 **arm64 only:** Cadabra runs only on Macs with Apple silicon, so every engine is built and deployed
 for arm64 alone, and the script refuses to run on an Intel Mac.

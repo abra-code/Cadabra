@@ -16,7 +16,7 @@ FAKE="$OMCTEST_TESTS/helpers/fake_agent_vm.sh"
 FIXTURES="$OMCTEST_TESTS/fixtures/agentvm"
 PY="$OMC_APP_BUNDLE_PATH/Contents/Library/Python/bin/python3"
 CONVERT="$OMC_APP_BUNDLE_PATH/Contents/Resources/Scripts/agentvm_json.py"
-EMBEDDED="$OMC_APP_BUNDLE_PATH/Contents/Support/AgentVM/agent-vm"
+INSTALLED="$HOME/.local/bin/agent-vm"
 FAKE_AGENTVM_DIR="$OMCTEST_WORK/fakevm"
 # The oldest agent-vm Cadabra accepts, as the library declares it (it is raised with every
 # agent-vm version, so no expectation here names the number).
@@ -148,17 +148,17 @@ out=$(convert doctor "$OMCTEST_WORK/badchecks.json" 2>/dev/null); rc=$?
 check "doctor without a checks list is refused"   "1" "$rc"
 
 # -----------------------------------------------------------------------------------------
-section "which agent-vm: the embedded one unless something says otherwise"
+section "which agent-vm: the installed one unless something says otherwise"
 cad_reset
-check "no seam, no setting: the embedded binary" "$EMBEDDED" "$(lib agentvm_bin)"
-check "  and it says so"                         "embedded"  "$(lib agentvm_origin)"
+check "no seam, no setting: the installed link" "$INSTALLED" "$(lib agentvm_bin)"
+check "  and it says so"                        "installed" "$(lib agentvm_origin)"
 set_developer agent-vm "/Users/you/Development/agent-vm/.build/signed/release/agent-vm"
 check "the developer setting wins over it" "/Users/you/Development/agent-vm/.build/signed/release/agent-vm" "$(lib agentvm_bin)"
 check "  and it says so"                   "developer" "$(lib agentvm_origin)"
 check "the test seam wins over both"       "$FAKE"     "$(with_fake agentvm_bin)"
 check "  and it says so"                   "test"      "$(with_fake agentvm_origin)"
 set_developer agent-vm ""
-check "an empty setting means the embedded one" "$EMBEDDED" "$(lib agentvm_bin)"
+check "an empty setting means the installed one" "$INSTALLED" "$(lib agentvm_bin)"
 cad_reset
 lib agentvm_bin >/dev/null
 check "reading the setting did not create the settings file" "0" "$([ -e "$cad_settings" ] && echo 1 || echo 0)"
@@ -211,7 +211,7 @@ section "binary gate: what each origin says when its agent-vm is missing"
 check "a relative developer path"   "1" "$(cad_has "$(lib agentvm_bin_reason agent-vm developer)" "not an absolute path")"
 check "a developer path that is not there" "1" "$(cad_has "$(lib agentvm_bin_reason /nowhere/agent-vm developer)" "points at /nowhere/agent-vm, which is not an executable file")"
 check "a directory is not an agent-vm" "1" "$(cad_has "$(lib agentvm_bin_reason "$OMCTEST_WORK/adir" developer)" "not an executable file")"
-check "the embedded one missing"    "1" "$(cad_has "$(lib agentvm_bin_reason /nowhere/agent-vm embedded)" "Reinstall Cadabra")"
+check "the installed one missing"   "1" "$(cad_has "$(lib agentvm_bin_reason /nowhere/agent-vm installed)" "AgentVM is not installed: there is no agent-vm at /nowhere/agent-vm. Install AgentVM from https://github.com/abra-code/agent-vm/releases.")"
 check "the seam missing"            "1" "$(cad_has "$(lib agentvm_bin_reason /nowhere/agent-vm test)" "CADABRA_AGENT_VM is /nowhere/agent-vm")"
 check "the fake passes"             ""  "$(lib agentvm_bin_reason "$FAKE" test)"
 
@@ -249,6 +249,29 @@ else
     fake_reset
     out=$( ( CADABRA_AGENT_VM="$OMCTEST_WORK/adir"; export CADABRA_AGENT_VM; lib agentvm_available ) ); rc=$?
     check "a seam at a directory is unavailable" "1" "$rc"
+
+    # No seam and no setting: the installed agent-vm, in the layout AgentVM's package makes
+    # (~/.local/bin/agent-vm, a link into the version's own folder), played by the fake.
+    cad_reset
+    fake_reset
+    out=$(lib agentvm_available); rc=$?
+    check "nothing installed: unavailable"     "1" "$rc"
+    check "  AgentVM is not installed, and where to get it" "AgentVM is not installed: there is no agent-vm at $INSTALLED. Install AgentVM from https://github.com/abra-code/agent-vm/releases." "$out"
+    check "  and no folder for its files"      "" "$(lib agentvm_real_dir)"
+    VERSION_DIR="$HOME/.local/share/agent-vm/versions/$MIN_VERSION"
+    /bin/mkdir -p "$VERSION_DIR" "$HOME/.local/bin"
+    /bin/ln -s "$FAKE" "$VERSION_DIR/agent-vm"
+    /bin/ln -s "../share/agent-vm/versions/$MIN_VERSION/agent-vm" "$INSTALLED"
+    out=$(lib agentvm_available); rc=$?
+    check "installed: available"               "0" "$rc"
+    check "  run through the link"             "--version" "$(/bin/cat "$FAKE_AGENTVM_DIR/log")"
+    check "  its files are beside the real program, where the links end" "$(cd "$OMCTEST_TESTS/helpers" && pwd -P)" "$(lib agentvm_real_dir)"
+    printf '0.1.11\n' > "$FAKE_AGENTVM_DIR/version"
+    out=$(lib agentvm_available); rc=$?
+    check "an installed 0.1.11 is too old"     "1" "$rc"
+    check "  and the reason says to install the newest" "Cadabra needs agent-vm $MIN_VERSION or later, and $INSTALLED is 0.1.11. Install the newest AgentVM from https://github.com/abra-code/agent-vm/releases." "$out"
+    /bin/rm -rf "$HOME/.local"
+    fake_reset
 fi
 
 section "box status through the fake"

@@ -284,13 +284,55 @@ check "  and no file is written outside Shells" "0" "$([ -e "$HOME/Library/Appli
 lib agentvm_last_error >/dev/null
 cad_reset
 
-section "the recipes Cadabra ships"
-RECIPES="$OMC_APP_BUNDLE_PATH/Contents/Resources/Recipes"
-rows=$(lib agentvm_recipes)
+section "the recipes beside agent-vm"
+# The real path: the library finds the recipes by resolving agent-vm's links.
+RECIPES="$(cd "$OMCTEST_TESTS/helpers/Recipes" && pwd -P)"
+rows=$(with_fake agentvm_recipes)
 check "four, by folder name" "acp-agents homebrew-node xcode xcode-platforms" "$(printf '%s\n' "$rows" | col 1 | /usr/bin/tr '\n' ' ' | /usr/bin/sed 's/ $//')"
 check "  each with its recipe.json" "$RECIPES/xcode/recipe.json" "$(printf '%s\n' "$rows" | /usr/bin/awk -F'\t' '$1 == "xcode" { print $2 }')"
 check "  and its description" "Homebrew and Node" "$(printf '%s\n' "$rows" | /usr/bin/awk -F'\t' '$1 == "homebrew-node" { print $3 }')"
 check "homebrew-node's copied file came along" "1" "$([ -f "$RECIPES/homebrew-node/files/zprofile" ] && echo 1 || echo 0)"
+
+section "the installed agent-vm's recipes are in its version's folder, found through its link"
+# The layout AgentVM's package installs: ~/.local/bin/agent-vm links into a version's folder.
+VERSION_DIR="$HOME/.local/share/agent-vm/versions/9.9.9"
+/bin/mkdir -p "$VERSION_DIR/Recipes/only-this" "$HOME/.local/bin"
+printf '#!/bin/sh\n' > "$VERSION_DIR/agent-vm"
+/bin/chmod +x "$VERSION_DIR/agent-vm"
+/bin/cp "$RECIPES/homebrew-node/recipe.json" "$VERSION_DIR/Recipes/only-this/recipe.json"
+/bin/ln -s ../share/agent-vm/versions/9.9.9/agent-vm "$HOME/.local/bin/agent-vm"
+rows=$(lib agentvm_recipes)
+check "that version's recipes, and no others" "only-this" "$(printf '%s\n' "$rows" | col 1)"
+check "  at their real path" "$(cd "$VERSION_DIR" && pwd -P)/Recipes/only-this/recipe.json" "$(printf '%s\n' "$rows" | col 2)"
+/bin/rm -f "$HOME/.local/bin/agent-vm"
+/bin/ln -s ../share/agent-vm/versions/0.0.1/agent-vm "$HOME/.local/bin/agent-vm"
+check "a link to a version that is gone: none" "" "$(lib agentvm_recipes)"
+/bin/rm -rf "$HOME/.local"
+check "no agent-vm at all: none"               "" "$(lib agentvm_recipes)"
+
+section "a developer build's recipes are its working tree's"
+# agent-vm's build script leaves no Recipes beside .build/signed/release/agent-vm.
+TREE="$OMCTEST_WORK/agent-vm-tree"
+/bin/mkdir -p "$TREE/.build/signed/release" "$TREE/Recipes/from-tree"
+: > "$TREE/Package.swift"
+printf '#!/bin/sh\n' > "$TREE/.build/signed/release/agent-vm"
+/bin/chmod +x "$TREE/.build/signed/release/agent-vm"
+/bin/cp "$RECIPES/homebrew-node/recipe.json" "$TREE/Recipes/from-tree/recipe.json"
+cad_reset
+set_developer agent-vm "$TREE/.build/signed/release/agent-vm"
+rows=$(lib agentvm_recipes)
+check "the tree's recipes"       "from-tree" "$(printf '%s\n' "$rows" | col 1)"
+check "  from the tree's folder" "$(cd "$TREE" && pwd -P)/Recipes/from-tree/recipe.json" "$(printf '%s\n' "$rows" | col 2)"
+/bin/mkdir -p "$TREE/.build/signed/release/Recipes/beside"
+/bin/cp "$RECIPES/xcode/recipe.json" "$TREE/.build/signed/release/Recipes/beside/recipe.json"
+check "recipes beside the build win" "beside" "$(lib agentvm_recipes | col 1)"
+/bin/rm -rf "$TREE/.build/signed/release/Recipes"
+cad_reset
+# The same layout as the installed agent-vm: no working tree is looked for.
+/bin/mkdir -p "$HOME/.local/bin"
+/bin/ln -s "$TREE/.build/signed/release/agent-vm" "$HOME/.local/bin/agent-vm"
+check "the installed origin never looks above its folder" "" "$(lib agentvm_recipes)"
+/bin/rm -rf "$HOME/.local"
 
 section "a recipe's inputs and parameters"
 rows=$(lib agentvm_recipe_info "$RECIPES/xcode/recipe.json")

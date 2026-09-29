@@ -91,7 +91,7 @@ forget_server_host_entry() {
 #     — the time / search MCP servers, children of mlx-agent
 #   • replay             ($OMC_APP_BUNDLE_PATH/Contents/Support/replay) — the Local
 #     (files & shell) MCP server, a child of mlx-agent
-# A fifth kind runs out of the bundle's agent-vm (or the developer override) but is not a
+# A fifth kind runs out of the installed agent-vm (or the developer override) but is not a
 # bundle process in the same sense: `agent-vm exec`, the client that runs one program in a
 # box for mlx-agent or the chat. Only that subcommand is swept; see _bundle_managed_process.
 #
@@ -141,9 +141,14 @@ forget_server_host_entry() {
 #     on purpose so they survive the window and Cadabra itself;
 #   - any subcommand agent-vm adds later, which is why this is a one-entry allowlist rather than
 #     a list of exclusions.
-# Two binaries count: the embedded one, and the agent-vm in use when that is another one (the
+# Two binaries count: the installed one, and the agent-vm in use when that is another one (the
 # developer override, /developer/agent-vm), passed as the second argument. Exec clients started
 # before the override was changed carry the old path and are missed until it is changed back.
+# Cadabra runs the installed agent-vm through its link, ~/.local/bin/agent-vm, so that is the
+# path its exec clients show, whichever version the link pointed at when they started. The same
+# agent-vm serves Terminal, where a shell finds it through PATH and ps shows a bare "agent-vm"
+# or "avm", which does not match; an orphaned exec client someone started by the link's full
+# path is swept like Cadabra's own.
 #
 # THE ONE BUNDLED PYTHON THAT IS NEVER SWEPT: the agent-vm job runner (agentvm_job.py run). It
 # waits, detached at PPID 1 on purpose, for an image build or a box start that must outlive
@@ -169,7 +174,7 @@ _bundle_managed_process() {
         "$OMC_APP_BUNDLE_PATH/Contents/Support/Llama.cpp/llama-server "*) return 0 ;;
         "$OMC_APP_BUNDLE_PATH/Contents/Support/MLX/mlx-agent"|\
         "$OMC_APP_BUNDLE_PATH/Contents/Support/MLX/mlx-agent "*)          return 0 ;;
-        "$OMC_APP_BUNDLE_PATH/Contents/Support/AgentVM/agent-vm exec "*)  return 0 ;;
+        "$agentvm_installed exec "*)                                      return 0 ;;
     esac
     if [ -n "${2:-}" ]; then
         case "$1" in
@@ -179,7 +184,7 @@ _bundle_managed_process() {
     return 1
 }
 
-# _bundle_other_agentvm  ->  the agent-vm in use when it is not the embedded one, or nothing.
+# _bundle_other_agentvm  ->  the agent-vm in use when it is not the installed one, or nothing.
 # Asked once per sweep, not once per process line. Absolute paths only: agentvm_available
 # refuses a relative override, so Cadabra never runs one, and every "agent-vm exec" found
 # through a PATH belongs to someone else.
@@ -189,7 +194,7 @@ _bundle_other_agentvm() {
         /*) ;;
         *)  return 0 ;;
     esac
-    if [ "$_in_use" != "$agentvm_embedded" ]; then
+    if [ "$_in_use" != "$agentvm_installed" ]; then
         printf '%s\n' "$_in_use"
     fi
 }

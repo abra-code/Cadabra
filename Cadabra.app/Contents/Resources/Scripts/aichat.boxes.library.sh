@@ -154,7 +154,7 @@ boxes_show_header() {
     fi
     local _version="$(agentvm_version_info | /usr/bin/cut -f1)"
     local _origin="$(agentvm_origin)"
-    local _where="the one inside Cadabra"
+    local _where="installed"
     case "$_origin" in
         developer) _where="developer build: $(agentvm_bin)" ;;
         test)      _where="test double" ;;
@@ -917,8 +917,8 @@ boxes_ni_setting() {
 }
 
 # boxes_ni_init <uuid>  ->  fills the window: the ready images for "An existing image" (the one
-# "New Image from This..." was pressed on chosen), and the recipes Cadabra ships. Both pickers
-# deliver 1-based indexes, so their ordered lists are kept on the pasteboard.
+# "New Image from This..." was pressed on chosen), and the recipes that came with agent-vm.
+# Both pickers deliver 1-based indexes, so their ordered lists are kept on the pasteboard.
 boxes_ni_init() {
     local _uuid="$1"
     local _wanted="$("$pasteboard" "$BOXES_NI_BASE_KEY" get)"
@@ -934,7 +934,7 @@ boxes_ni_init() {
     if [ -n "$_images" ]; then
         "$dialog" "$_uuid" "$BOXES_NI_BASE_ID" omc_set_property options "$(printf '%s\n' "$_images" | _boxes_json_list)"
     fi
-    # Recipe picker: "None", each shipped recipe by its description up to the first " (",
+    # Recipe picker: "None", each of agent-vm's recipes by its description up to the first " (",
     # then "A recipe file of your own".
     local _recipes="$(agentvm_recipes)"
     "$pasteboard" "$(boxes_key cadabra_boxes_ni_recipes "$_uuid")" set "$(printf '%s\n' "$_recipes" | /usr/bin/cut -f2)"
@@ -971,7 +971,7 @@ boxes_ni_source() {
 }
 
 # boxes_ni_recipe_path <uuid> <picker index> <recipe file field>  ->  the recipe the picker
-# names: nothing for "None", a shipped recipe's path, or the file field for the last option.
+# names: nothing for "None", one of agent-vm's recipes, or the file field for the last option.
 boxes_ni_recipe_path() {
     local _count="$(boxes_ni_setting "$1" recipes | /usr/bin/awk 'NF { n++ } END { print n + 0 }')"
     case "$2" in

@@ -1,6 +1,6 @@
 #!/bin/sh
 # aichat.boxes.image.new.init.sh
-# Fills the New Image window: the ready images to start from and the recipes Cadabra ships.
+# Fills the New Image window: the ready images to start from and the recipes that came with agent-vm.
 
 source "$OMC_APP_BUNDLE_PATH/Contents/Resources/Scripts/aichat.boxes.library.sh"
 

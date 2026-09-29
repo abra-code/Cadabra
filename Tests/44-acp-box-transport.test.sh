@@ -10,7 +10,7 @@
 
 cad_py="$OMC_APP_BUNDLE_PATH/Contents/Library/Python/bin/python3"
 SCRIPTS="$OMC_APP_BUNDLE_PATH/Contents/Resources/Scripts"
-AGENTVM="/Applications/Cadabra.app/Contents/Support/AgentVM/agent-vm"
+AGENTVM="/Users/someone/.local/bin/agent-vm"
 PROJECT="/Users/someone/src/app"
 
 catalog() { "$cad_py" "$SCRIPTS/acp_catalog.py" "$@" 2>&1; }

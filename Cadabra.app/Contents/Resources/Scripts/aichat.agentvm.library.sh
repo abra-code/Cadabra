@@ -11,9 +11,14 @@
 #     (the CADABRA_CURL pattern of aichat.library.sh);
 #   - /developer/agent-vm in the settings file: a developer override, typically
 #     ~/Development/agent-vm/.build/signed/release/agent-vm, so Cadabra can follow an agent-vm
-#     working tree without a redeploy while the two change together;
-#   - the embedded Contents/Support/AgentVM/agent-vm, built by update-cadabra.sh. agent-vm-guest
-#     sits next to it, because agent-vm installs the guest daemon into images from there.
+#     working tree while the two change together;
+#   - the installed ~/.local/bin/agent-vm. Cadabra carries no agent-vm of its own: AgentVM's
+#     package installs it for the user, with agent-vm-guest, the network packs and the image
+#     recipes in a folder of their own (~/.local/share/agent-vm/versions/<version>/), and the
+#     link in ~/.local/bin points at the newest. Terminal (agent-vm, avm) and every other app
+#     run the same one. Cadabra runs it through the link, so a program it started shows the
+#     link's path in ps (the orphan sweep in aichat.server.library.sh relies on that), and a
+#     version installed while a box runs takes over at the next start.
 # /developer/agent-vm-home, when set, becomes AGENT_VM_HOME for every run: agent-vm's store root,
 # which a project on another volume needs, and which a Finder-launched app cannot inherit from a
 # shell. It applies to whichever binary runs, so switching binaries never switches stores.
@@ -31,15 +36,17 @@ __AICHAT_AGENTVM_LIB=1
 
 source "$OMC_APP_BUNDLE_PATH/Contents/Resources/Scripts/aichat.library.sh"
 
-# Always the agent-vm version update-cadabra.sh builds into Cadabra: there is one development
-# stream, so Cadabra is only ever tested against the newest agent-vm, and an older binary (the
-# developer override pointing at a stale build, say) is refused rather than guessed at.
-# Raise it with every agent-vm version bump. The tests and the fake agent-vm read it from here,
-# so the number lives only on this line.
+# Always the newest agent-vm version Cadabra is tested with: there is one development stream,
+# so an older agent-vm (an installation from before a Cadabra update, or the developer override
+# pointing at a stale build) is refused rather than guessed at.
+# Raise it with every agent-vm version Cadabra moves to. The tests and the fake agent-vm read it
+# from here, so the number lives only on this line.
 AGENTVM_MIN_VERSION="0.3.8"
 AGENTVM_MIN_MACOS="27"
 
-agentvm_embedded="$OMC_APP_BUNDLE_PATH/Contents/Support/AgentVM/agent-vm"
+# Where AgentVM's package puts the link to the newest agent-vm, and where to get the package.
+agentvm_installed="$HOME/.local/bin/agent-vm"
+agentvm_releases_page="https://github.com/abra-code/agent-vm/releases"
 agentvm_python="$OMC_APP_BUNDLE_PATH/Contents/Library/Python/bin/python3"
 agentvm_json_py="$OMC_APP_BUNDLE_PATH/Contents/Resources/Scripts/agentvm_json.py"
 agentvm_job_py="$OMC_APP_BUNDLE_PATH/Contents/Resources/Scripts/agentvm_job.py"
@@ -56,7 +63,7 @@ agentvm_setting() {
     "$plister" get string "$cadabra_settings" "/developer/$1" 2>/dev/null
 }
 
-# agentvm_origin  ->  test, developer or embedded: where agentvm_bin's answer comes from.
+# agentvm_origin  ->  test, developer or installed: where agentvm_bin's answer comes from.
 # The Box Manager names it next to the version, so a forgotten override is visible.
 agentvm_origin() {
     if [ -n "${CADABRA_AGENT_VM:-}" ]; then
@@ -68,7 +75,7 @@ agentvm_origin() {
         echo "developer"
         return 0
     fi
-    echo "embedded"
+    echo "installed"
 }
 
 # agentvm_bin  ->  the agent-vm this library runs (see the header for the order).
@@ -82,7 +89,21 @@ agentvm_bin() {
         printf '%s\n' "$_override"
         return 0
     fi
-    printf '%s\n' "$agentvm_embedded"
+    printf '%s\n' "$agentvm_installed"
+}
+
+# agentvm_real_dir  ->  the folder agentvm_bin's links end in: the installed version's own
+# folder, where agent-vm-guest, the packs and the recipes sit beside agent-vm. Nothing when
+# the binary is not there.
+agentvm_real_dir() {
+    local _real
+    _real="$(/usr/bin/readlink -f "$(agentvm_bin)" 2>/dev/null)"
+    local _status=$?
+    # A broken link prints the part it could resolve, with status 1.
+    if [ "$_status" -ne 0 ] || [ -z "$_real" ]; then
+        return 0
+    fi
+    /usr/bin/dirname "$_real"
 }
 
 # agentvm_run <args...>  ->  agent-vm's output and status, run with Cadabra's store setting.
@@ -219,11 +240,11 @@ agentvm_bin_reason() {
         developer)
             case "$1" in
                 /*) ;;
-                *)  printf 'The developer setting /developer/agent-vm is "%s", which is not an absolute path. Fix it, or clear it to use the agent-vm inside Cadabra.\n' "$1"
+                *)  printf 'The developer setting /developer/agent-vm is "%s", which is not an absolute path. Fix it, or clear it to use the installed agent-vm.\n' "$1"
                     return 0 ;;
             esac
             if [ ! -f "$1" ] || [ ! -x "$1" ]; then
-                printf 'The developer setting /developer/agent-vm points at %s, which is not an executable file. Build agent-vm there, or clear the setting to use the agent-vm inside Cadabra.\n' "$1"
+                printf 'The developer setting /developer/agent-vm points at %s, which is not an executable file. Build agent-vm there, or clear the setting to use the installed agent-vm.\n' "$1"
             fi ;;
         test)
             if [ ! -f "$1" ] || [ ! -x "$1" ]; then
@@ -231,7 +252,7 @@ agentvm_bin_reason() {
             fi ;;
         *)
             if [ ! -f "$1" ] || [ ! -x "$1" ]; then
-                printf 'This copy of Cadabra has no agent-vm (%s is missing). Reinstall Cadabra.\n' "$1"
+                printf 'AgentVM is not installed: there is no agent-vm at %s. Install AgentVM from %s.\n' "$1" "$agentvm_releases_page"
             fi ;;
     esac
 }
@@ -241,9 +262,9 @@ agentvm_bin_reason() {
 agentvm_version_reason() {
     # One line: the reason goes into an alert, and a crashing binary can print several.
     local _output="$(printf '%s' "$3" | /usr/bin/tr '\n' ' ')"
-    local _fix="Reinstall Cadabra."
+    local _fix="Install the newest AgentVM from $agentvm_releases_page."
     if [ "$2" = "developer" ]; then
-        _fix="Rebuild it, or clear the developer setting /developer/agent-vm to use the agent-vm inside Cadabra."
+        _fix="Rebuild it, or clear the developer setting /developer/agent-vm to use the installed agent-vm."
     fi
     if [ "$4" != "0" ]; then
         printf '%s did not report its version (status %s: %s). %s\n' "$1" "$4" "${_output:-no output}" "$_fix"
@@ -809,15 +830,41 @@ agentvm_image_setup_job() {
 
 # -- Building an image -------------------------------------------------------------------
 
-# The recipes Cadabra ships (copies of agent-vm's, see Recipes/README.md), one folder each.
-agentvm_recipes_dir="$OMC_APP_BUNDLE_PATH/Contents/Resources/Recipes"
+# agentvm_recipes_dir  ->  the folder of agent-vm's image recipes, or nothing. AgentVM's package
+# puts Recipes/ beside the real agent-vm (agentvm_real_dir). A developer build
+# (/developer/agent-vm) in an agent-vm working tree has none beside it, since agent-vm's build
+# script copies only the programs and their JSON files to .build/signed/release; for that
+# origin the working tree's own Recipes/ is used: the nearest folder above the build that holds
+# Package.swift and Recipes/.
+agentvm_recipes_dir() {
+    local _dir="$(agentvm_real_dir)"
+    [ -n "$_dir" ] || return 0
+    if [ -d "$_dir/Recipes" ]; then
+        printf '%s\n' "$_dir/Recipes"
+        return 0
+    fi
+    local _origin="$(agentvm_origin)"
+    [ "$_origin" = "developer" ] || return 0
+    local _up="$_dir"
+    local _step
+    for _step in 1 2 3 4; do
+        _up="$(/usr/bin/dirname "$_up")"
+        if [ -f "$_up/Package.swift" ] && [ -d "$_up/Recipes" ]; then
+            printf '%s\n' "$_up/Recipes"
+            return 0
+        fi
+    done
+}
 
-# agentvm_recipes  ->  one row per shipped recipe: folder name, path of its recipe.json,
-# description. Sorted by folder name (byte order, on the name alone: the glob's own order puts
-# "xcode-platforms/" before "xcode/"); a folder whose recipe cannot be read is left out.
+# agentvm_recipes  ->  one row per recipe that came with agent-vm (agentvm_recipes_dir): folder
+# name, path of its recipe.json, description. Sorted by folder name (byte order, on the name
+# alone: the glob's own order puts "xcode-platforms/" before "xcode/"); a folder whose recipe
+# cannot be read is left out, and so is everything when there is no recipes folder.
 agentvm_recipes() {
+    local _dir="$(agentvm_recipes_dir)"
+    [ -n "$_dir" ] || return 0
     local _recipe _row
-    for _recipe in "$agentvm_recipes_dir"/*/recipe.json; do
+    for _recipe in "$_dir"/*/recipe.json; do
         [ -f "$_recipe" ] || continue
         _row="$("$agentvm_python" "$agentvm_json_py" recipe "$_recipe" 2>/dev/null | /usr/bin/head -1)"
         [ -n "$_row" ] || continue

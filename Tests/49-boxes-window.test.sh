@@ -473,7 +473,8 @@ omc_run aichat.boxes.box.new.create
 check "network off takes no rules" "1" "$(fake_asked "box create offline --image dev --net off --json")"
 
 # -----------------------------------------------------------------------------------------
-RECIPES="$OMC_APP_BUNDLE_PATH/Contents/Resources/Recipes"
+# The real path: the library finds the recipes by resolving agent-vm's links.
+RECIPES="$(cd "$OMCTEST_TESTS/helpers/Recipes" && pwd -P)"
 
 section "a pack agent-vm cannot use is named as broken"
 fake_reset

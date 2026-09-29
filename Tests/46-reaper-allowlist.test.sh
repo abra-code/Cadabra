@@ -18,7 +18,8 @@
 unset CADABRA_AGENT_VM AGENT_VM_HOME
 
 B="$OMC_APP_BUNDLE_PATH/Contents"
-AVM="$B/Support/AgentVM/agent-vm"
+# The installed agent-vm as Cadabra runs it: through the link AgentVM's package makes.
+AVM="$HOME/.local/bin/agent-vm"
 DEV="/Users/you/Development/agent-vm/.build/signed/release/agent-vm"
 
 # swept <command line> [other agent-vm]  ->  yes or no
@@ -33,7 +34,7 @@ check "replay"             "yes" "$(swept "$B/Support/replay --mcp-server --allo
 check "mlx-agent"          "yes" "$(swept "$B/Support/MLX/mlx-agent acp --model m")"
 
 section "agent-vm: exec clients are swept"
-check "an exec client of the embedded agent-vm" "yes" "$(swept "$AVM exec --box b --project /p -- opencode acp")"
+check "an exec client of the installed agent-vm" "yes" "$(swept "$AVM exec --box b --project /p -- opencode acp")"
 check "  also with the developer override set"  "yes" "$(swept "$AVM exec --box b -- /usr/bin/true" "$DEV")"
 
 section "agent-vm: nothing else is, however it looks"
@@ -46,7 +47,10 @@ check "a box shell"                     "no" "$(swept "$AVM box shell b")"
 check "a subcommand that does not exist yet" "no" "$(swept "$AVM future-thing --exec")"
 check "exec as a later argument"        "no" "$(swept "$AVM box execlog b")"
 check "no subcommand at all"            "no" "$(swept "$AVM")"
-check "the guest daemon beside it"      "no" "$(swept "$B/Support/AgentVM/agent-vm-guest exec x")"
+check "the guest daemon in its version folder" "no" "$(swept "$HOME/.local/share/agent-vm/versions/1.0.0/agent-vm-guest exec x")"
+check "the version folder's agent-vm, by its real path" "no" "$(swept "$HOME/.local/share/agent-vm/versions/1.0.0/agent-vm exec --box b -- x")"
+check "a Terminal agent-vm found through PATH" "no" "$(swept "agent-vm exec --box b -- x")"
+check "  or avm"                          "no" "$(swept "$HOME/.local/bin/avm exec --box b -- x")"
 check "the path only as an argument"    "no" "$(swept "/bin/sh -c $AVM exec --box b")"
 
 section "the agent-vm job runner is the one bundled Python never swept"
@@ -82,11 +86,11 @@ set_developer() {
     "$cad_plister" set string "$1" "$cad_settings" /developer/agent-vm >/dev/null 2>&1
 }
 cad_reset
-check "none by default: the embedded one is always covered" "" "$(other)"
+check "none by default: the installed one is always covered" "" "$(other)"
 set_developer "$DEV"
 check "the developer override"                              "$DEV" "$(other)"
 set_developer "$AVM"
-check "an override naming the embedded one adds nothing"    "" "$(other)"
+check "an override naming the installed one adds nothing"   "" "$(other)"
 # Cadabra never runs a relative override (agentvm_available refuses it), so every exec client
 # carrying that name is someone else's: "agent-vm exec" found through a PATH, at PPID 1.
 set_developer "agent-vm"
