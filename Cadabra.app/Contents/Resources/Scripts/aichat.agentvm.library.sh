@@ -283,8 +283,13 @@ agentvm_version_reason() {
 }
 
 # agentvm_available  ->  0 when boxes can be used here; otherwise prints why, one line meant for
-# an alert, and returns 1. Checked before any other call, and before a "where it runs" picker
-# offers anything but This Mac.
+# an alert, and returns why: 1 when installing AgentVM would not help (an older macOS, a broken
+# developer setting or test seam), agentvm_not_installed when the installed agent-vm is not
+# there, agentvm_too_old when it is there but older than AGENTVM_MIN_VERSION or does not run.
+# agentvm_install_job fixes the last two. Checked before any other call, and before a "where it
+# runs" picker offers anything but This Mac.
+agentvm_not_installed=2
+agentvm_too_old=3
 agentvm_available() {
     local _reason="$(agentvm_macos_reason "$(/usr/bin/sw_vers -productVersion 2>/dev/null)")"
     if [ -n "$_reason" ]; then
@@ -296,6 +301,7 @@ agentvm_available() {
     _reason="$(agentvm_bin_reason "$_bin" "$_origin")"
     if [ -n "$_reason" ]; then
         printf '%s\n' "$_reason"
+        [ "$_origin" = "installed" ] && return "$agentvm_not_installed"
         return 1
     fi
     local _version
@@ -304,6 +310,7 @@ agentvm_available() {
     _reason="$(agentvm_version_reason "$_bin" "$_origin" "$_version" "$_status")"
     if [ -n "$_reason" ]; then
         printf '%s\n' "$_reason"
+        [ "$_origin" = "installed" ] && return "$agentvm_too_old"
         return 1
     fi
     return 0
@@ -608,6 +615,38 @@ _agentvm_job_result() {
     fi
     local _message="$(/bin/cat "$agentvm_err_file" 2>/dev/null)"
     _agentvm_refuse "$1" "${_message:-agentvm_job.py $2 failed (status $1)}"
+}
+
+# -- Installing AgentVM --------------------------------------------------------------------
+
+# The newest AgentVM release on GitHub, and the Developer ID team its package must be signed by.
+agentvm_releases_api="https://api.github.com/repos/abra-code/agent-vm/releases/latest"
+agentvm_team_id="T9NM2ZLDTY"
+agentvm_install_py="$OMC_APP_BUNDLE_PATH/Contents/Resources/Scripts/agentvm_install.py"
+# The job's target: one install at a time, whichever window started it.
+agentvm_install_target="agentvm:AgentVM"
+
+# agentvm_install_job <install|update>  ->  the new job's id (kind agentvm-install). The job
+# downloads the newest AgentVM release package from GitHub, refuses it unless it is notarized
+# and signed by AgentVM's team, opens it in Installer, where the user installs it for their
+# account (no administrator password), and once Installer quits checks that agentvm_installed
+# reports the release's version (agentvm_install.py). The package always installs to
+# agentvm_installed, so this is for the installed origin only. Status 3 while another install
+# runs.
+agentvm_install_job() {
+    local _title="Install AgentVM"
+    [ "$1" = "update" ] && _title="Update AgentVM"
+    /bin/rm -f "$agentvm_err_file"
+    "$agentvm_python" "$agentvm_job_py" start "$(agentvm_jobs_dir)" agentvm-install "$agentvm_install_target" "$_title" -- \
+        "$agentvm_python" "$agentvm_install_py" install --api "$agentvm_releases_api" \
+        --min "$AGENTVM_MIN_VERSION" --team "$agentvm_team_id" --link "$agentvm_installed" 2>"$agentvm_err_file"
+    _agentvm_job_result $? start
+}
+
+# agentvm_installing  ->  0 while an install job runs.
+agentvm_installing() {
+    local _title="$(agentvm_job_busy "$agentvm_install_target")"
+    [ -n "$_title" ]
 }
 
 # agentvm_jobs  ->  one row per job, oldest first: id, kind, target, title, state, status,

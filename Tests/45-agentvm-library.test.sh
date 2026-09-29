@@ -255,7 +255,7 @@ else
     cad_reset
     fake_reset
     out=$(lib agentvm_available); rc=$?
-    check "nothing installed: unavailable"     "1" "$rc"
+    check "nothing installed: unavailable, an install away" "2" "$rc"
     check "  AgentVM is not installed, and where to get it" "AgentVM is not installed: there is no agent-vm at $INSTALLED. Install AgentVM from https://github.com/abra-code/agent-vm/releases." "$out"
     check "  and no folder for its files"      "" "$(lib agentvm_real_dir)"
     VERSION_DIR="$HOME/.local/share/agent-vm/versions/$MIN_VERSION"
@@ -268,7 +268,7 @@ else
     check "  its files are beside the real program, where the links end" "$(cd "$OMCTEST_TESTS/helpers" && pwd -P)" "$(lib agentvm_real_dir)"
     printf '0.1.11\n' > "$FAKE_AGENTVM_DIR/version"
     out=$(lib agentvm_available); rc=$?
-    check "an installed 0.1.11 is too old"     "1" "$rc"
+    check "an installed 0.1.11 is too old, an update away" "3" "$rc"
     check "  and the reason says to install the newest" "Cadabra needs agent-vm $MIN_VERSION or later, and $INSTALLED is 0.1.11. Install the newest AgentVM from https://github.com/abra-code/agent-vm/releases." "$out"
     /bin/rm -rf "$HOME/.local"
     fake_reset

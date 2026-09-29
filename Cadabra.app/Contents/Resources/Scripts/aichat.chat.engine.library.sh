@@ -141,10 +141,33 @@ chat_engine_box_transport() {
 	local available_status=$?
 	if [ "$available_status" -ne 0 ]; then
 		echo "box: agent-vm unavailable: $unavailable"
-		"$alert" --level "stop" --title "$APPLET_NAME" --ok "OK" \
-			"This agent is set to run in an AgentVM box, and boxes cannot be used here.
+		# A missing or old AgentVM is one click away: the same install job as the Box Manager's
+		# Install AgentVM..., followed there. The conversation still does not start now.
+		local mode="" verb=""
+		case "$available_status" in
+			"$agentvm_not_installed") mode="install"; verb="Install" ;;
+			"$agentvm_too_old")       mode="update";  verb="Update" ;;
+		esac
+		if [ -z "$mode" ]; then
+			"$alert" --level "stop" --title "$APPLET_NAME" --ok "OK" \
+				"This agent is set to run in an AgentVM box, and boxes cannot be used here.
 
 $unavailable"
+			return 1
+		fi
+		"$alert" --level "caution" --title "$APPLET_NAME" --ok "$verb AgentVM" --cancel "Cancel" \
+			"This agent is set to run in an AgentVM box, and boxes cannot be used yet.
+
+$unavailable
+
+$verb AgentVM downloads its newest release from GitHub, checks that Apple notarized it and AgentVM's developer signed it, and opens it in Installer, which installs it for your user account with no administrator password. The AgentVM window shows the progress. Start the conversation again when it is done."
+		if [ $? -eq 0 ]; then
+			source "$OMC_APP_BUNDLE_PATH/Contents/Resources/Scripts/aichat.boxes.library.sh"
+			boxes_install_agentvm_elsewhere "$mode"
+			if [ $? -eq 0 ]; then
+				"$next_command" "$OMC_CURRENT_COMMAND_GUID" "aichat.boxes.open"
+			fi
+		fi
 		return 1
 	fi
 	local project="$(mcp_prefs_get_string servers/local/project)"

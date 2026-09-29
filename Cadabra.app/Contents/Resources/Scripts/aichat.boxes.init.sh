@@ -15,6 +15,11 @@ boxes_clear_detail "$window_uuid"
 boxes_show_kind "$window_uuid" images
 boxes_show_header "$window_uuid"
 if [ $? -ne 0 ]; then
+    # The jobs still show: an install of AgentVM runs as one, and so may a job from before.
+    running="$(boxes_show_jobs_only "$window_uuid")"
+    if [ "$running" -gt 0 ]; then
+        "$next_command" "$OMC_CURRENT_COMMAND_GUID" "aichat.boxes.poll"
+    fi
     exit 0
 fi
 boxes_populate "$window_uuid" images

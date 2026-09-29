@@ -700,6 +700,11 @@
       "NAME" : "Cadabra"
     },
     {
+      "COMMAND_ID" : "aichat.boxes.agentvm.install",
+      "EXECUTION_MODE" : "exe_script_file",
+      "NAME" : "Cadabra"
+    },
+    {
       "COMMAND_ID" : "aichat.boxes.image.new.from",
       "ENVIRONMENT_VARIABLES" : {
         "OMC_ACTIONUI_TABLE_200_COLUMN_1_VALUE" : ""

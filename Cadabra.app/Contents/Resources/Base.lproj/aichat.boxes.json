@@ -27,6 +27,17 @@
               "id": 101,
               "properties": { "text": "", "font": "caption", "foregroundStyle": "secondary" }
             },
+            {
+              "type": "Button",
+              "id": 134,
+              "properties": {
+                "title": "Install AgentVM...",
+                "controlSize": "small",
+                "hidden": true,
+                "help": "Download the newest AgentVM release from GitHub, check it, and open it in Installer",
+                "actionID": "aichat.boxes.agentvm.install"
+              }
+            },
             { "type": "Spacer" },
             {
               "type": "Text",

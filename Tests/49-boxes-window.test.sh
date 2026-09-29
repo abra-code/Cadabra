@@ -111,6 +111,7 @@ check "the picker is off"              "0" "$(ui_enabled "$BOXES_KIND_ID")"
 check "New Box is off"                 "0" "$(ui_enabled "$BOXES_NEW_BOX_ID")"
 check "New Image is off"               "0" "$(ui_enabled "$BOXES_HEADER_NEW_IMAGE_ID")"
 check "nothing was listed"             "0" "$(fake_asked "image list")"
+check "no Install AgentVM... for a test double" "0" "$(ui_visible "$BOXES_INSTALL_ID")"
 
 # -----------------------------------------------------------------------------------------
 section "the picker switches tables"

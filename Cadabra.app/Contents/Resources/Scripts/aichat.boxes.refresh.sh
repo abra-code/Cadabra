@@ -9,6 +9,10 @@ echo "[$(/usr/bin/basename "$0")]"
 window_uuid="$OMC_ACTIONUI_WINDOW_UUID"
 boxes_show_header "$window_uuid"
 if [ $? -ne 0 ]; then
+    running="$(boxes_show_jobs_only "$window_uuid")"
+    if [ "$running" -gt 0 ]; then
+        "$next_command" "$OMC_CURRENT_COMMAND_GUID" "aichat.boxes.poll"
+    fi
     exit 0
 fi
 boxes_populate "$window_uuid" images

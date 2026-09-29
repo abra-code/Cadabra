@@ -26,6 +26,7 @@ source "$OMC_APP_BUNDLE_PATH/Contents/Resources/Scripts/aichat.agentvm.library.s
 
 BOXES_HEADER_ID=100
 BOXES_NOTES_ID=101
+BOXES_INSTALL_ID=134
 BOXES_KIND_ID=110
 BOXES_REFRESH_ID=120
 BOXES_NEW_BOX_ID=121
@@ -137,21 +138,47 @@ boxes_alert_error() {
 
 # -- The header ------------------------------------------------------------------------------
 
-# boxes_show_header <uuid>  ->  0 when agent-vm can be used; otherwise the header says why, the
-# controls are disabled, and it returns 1.
+# boxes_show_header <uuid>  ->  0 when agent-vm can be used, and the controls are enabled;
+# otherwise the header says why, the controls are disabled, and it returns agentvm_available's
+# status. When AgentVM is missing or too old, Install AgentVM... or Update AgentVM... is shown
+# beside the reason, disabled while an install job runs. Refresh stays enabled either way, so
+# an AgentVM installed from elsewhere (Terminal, AgentVM.app) is found without reopening.
 boxes_show_header() {
     local _uuid="$1"
     local _reason
     _reason="$(agentvm_available)"
-    if [ $? -ne 0 ]; then
-        "$dialog" "$_uuid" "$BOXES_HEADER_ID" "Boxes are not available"
+    local _status=$?
+    local _id
+    if [ "$_status" -ne 0 ]; then
+        local _header="Boxes are not available" _button=""
+        case "$_status" in
+            "$agentvm_not_installed") _header="AgentVM is not installed"; _button="Install AgentVM..." ;;
+            "$agentvm_too_old")       _header="AgentVM needs an update";  _button="Update AgentVM..." ;;
+        esac
+        if [ -n "$_button" ]; then
+            "$dialog" "$_uuid" "$BOXES_INSTALL_ID" omc_set_property title "$_button"
+            "$dialog" "$_uuid" "$BOXES_INSTALL_ID" omc_show
+            agentvm_installing
+            if [ $? -eq 0 ]; then
+                _header="Installing AgentVM..."
+                "$dialog" "$_uuid" "$BOXES_INSTALL_ID" omc_disable
+            else
+                "$dialog" "$_uuid" "$BOXES_INSTALL_ID" omc_enable
+            fi
+        else
+            "$dialog" "$_uuid" "$BOXES_INSTALL_ID" omc_hide
+        fi
+        "$dialog" "$_uuid" "$BOXES_HEADER_ID" "$_header"
         "$dialog" "$_uuid" "$BOXES_NOTES_ID" "$_reason"
-        local _id
-        for _id in $BOXES_KIND_ID $BOXES_REFRESH_ID $BOXES_NEW_BOX_ID $BOXES_HEADER_NEW_IMAGE_ID; do
+        for _id in $BOXES_KIND_ID $BOXES_NEW_BOX_ID $BOXES_HEADER_NEW_IMAGE_ID; do
             "$dialog" "$_uuid" "$_id" omc_disable
         done
-        return 1
+        return "$_status"
     fi
+    "$dialog" "$_uuid" "$BOXES_INSTALL_ID" omc_hide
+    for _id in $BOXES_KIND_ID $BOXES_NEW_BOX_ID $BOXES_HEADER_NEW_IMAGE_ID; do
+        "$dialog" "$_uuid" "$_id" omc_enable
+    done
     local _version="$(agentvm_version_info | /usr/bin/cut -f1)"
     local _origin="$(agentvm_origin)"
     local _where="installed"
@@ -620,7 +647,8 @@ boxes_after_job_start() {
 
 # boxes_poll <uuid>  ->  repaints the jobs while any runs; returns when none does, when a newer
 # loop took over, or when the window closed. When a job ends, the lists it changed are read
-# again: images after an image job, boxes after every job.
+# again: images after an image job or an AgentVM install, boxes after every job. The header is
+# shown again too, which enables the window once an install has made agent-vm usable.
 boxes_poll() {
     local _uuid="$1"
     local _key="$(boxes_key cadabra_boxes_poll "$_uuid")"
@@ -651,7 +679,7 @@ boxes_poll() {
         if [ -n "$_ended" ]; then
             _kinds="$(printf '%s\n' "$_ended" | /usr/bin/tr '\n' ' ')"
             case " $_kinds" in
-                *" update-guest "*|*" image-setup "*|*" image-create "*) boxes_read_images "$_uuid" ;;
+                *" update-guest "*|*" image-setup "*|*" image-create "*|*" agentvm-install "*) boxes_read_images "$_uuid" ;;
             esac
             boxes_read_boxes "$_uuid"
             boxes_show_header "$_uuid" >/dev/null
@@ -1160,6 +1188,79 @@ VALUES
 boxes_ni_forget() {
     "$pasteboard" "$(boxes_key cadabra_boxes_ni_images "$1")" set ""
     "$pasteboard" "$(boxes_key cadabra_boxes_ni_recipes "$1")" set ""
+}
+
+# -- Installing AgentVM ------------------------------------------------------------------------
+
+# boxes_show_jobs_only <uuid>  ->  the jobs table while agent-vm cannot be used, so an install
+# job (or any job still running from before) is seen. Prints the number of running jobs.
+boxes_show_jobs_only() {
+    boxes_read_jobs "$1"
+    boxes_show_jobs "$1"
+    boxes_running_count "$1"
+}
+
+# boxes_install_agentvm <uuid>  ->  asks, then starts the install job (agentvm_install_job) and
+# polls it; 0 when started or declined, otherwise the refusal is shown in an alert. Install or
+# Update follows from what agentvm_available says now, and nothing is started when agent-vm can
+# be used after all (installed meanwhile from Terminal, say): the header is shown again instead.
+boxes_install_agentvm() {
+    local _uuid="$1"
+    agentvm_available >/dev/null
+    local _status=$?
+    local _verb
+    case "$_status" in
+        "$agentvm_not_installed") _verb="install" ;;
+        "$agentvm_too_old")       _verb="update" ;;
+        *)  boxes_show_header "$_uuid"
+            if [ $? -eq 0 ]; then
+                boxes_populate "$_uuid" images
+            fi
+            return 0 ;;
+    esac
+    local _title="Install AgentVM?" _ok="Install" _running=""
+    if [ "$_verb" = "update" ]; then
+        _title="Update AgentVM?"
+        _ok="Update"
+        _running=" Boxes that are running keep their version until they are stopped."
+    fi
+    "$alert" --level caution --title "$_title" --ok "$_ok" --cancel "Cancel" \
+        "Cadabra downloads the newest AgentVM release from $agentvm_releases_page, checks that Apple notarized it and AgentVM's developer signed it, and opens it in Installer. It installs for your user account only, in the .local folder of your home folder, with no administrator password. Under Customize, Installer also offers to add ~/.local/bin to your shell's PATH, for agent-vm and avm in Terminal.$_running"
+    if [ $? -ne 0 ]; then
+        return 0
+    fi
+    local _job
+    _job="$(agentvm_install_job "$_verb")"
+    _status=$?
+    if [ "$_status" -ne 0 ]; then
+        boxes_alert_error "Could not start the AgentVM installation" "$_status"
+        return 0
+    fi
+    boxes_show_header "$_uuid" >/dev/null
+    boxes_after_job_start "$_uuid" "$_job"
+}
+
+# boxes_install_agentvm_elsewhere <install|update>  ->  0 once the install job started, which
+# the open Box Manager (if any) then follows; 1 after an alert with the refusal. For a window
+# that is not the Box Manager and has asked already (chat start); open the Box Manager after it
+# (aichat.boxes.open), which shows the job's progress. An install that already runs (started
+# from another window) counts as started: the Box Manager shows that one.
+boxes_install_agentvm_elsewhere() {
+    agentvm_installing
+    if [ $? -eq 0 ]; then
+        return 0
+    fi
+    local _job
+    _job="$(agentvm_install_job "$1")"
+    local _status=$?
+    if [ "$_status" -ne 0 ]; then
+        boxes_alert_error "Could not start the AgentVM installation" "$_status"
+        return 1
+    fi
+    boxes_manager_job_started "$_job"
+    local _uuid="$("$pasteboard" "$BOXES_MANAGER_KEY" get)"
+    [ -n "$_uuid" ] && boxes_show_header "$_uuid" >/dev/null
+    return 0
 }
 
 # -- Images that need something: Update All, and Full Disk Access after a build -------------
