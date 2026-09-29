@@ -629,6 +629,15 @@
       "NAME" : "Cadabra"
     },
     {
+      "COMMAND_ID" : "aichat.boxes.box.recreate",
+      "ENVIRONMENT_VARIABLES" : {
+        "OMC_ACTIONUI_TABLE_300_COLUMN_1_VALUE" : "",
+        "OMC_ACTIONUI_TABLE_300_COLUMN_3_VALUE" : ""
+      },
+      "EXECUTION_MODE" : "exe_script_file",
+      "NAME" : "Cadabra"
+    },
+    {
       "COMMAND_ID" : "aichat.boxes.job.selection.changed",
       "ENVIRONMENT_VARIABLES" : {
         "OMC_ACTIONUI_TABLE_400_COLUMN_1_VALUE" : "",

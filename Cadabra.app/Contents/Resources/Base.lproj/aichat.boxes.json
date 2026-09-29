@@ -236,6 +236,7 @@
                 { "type": "Button", "id": 555, "properties": { "title": "Shell", "help": "Open a shell in the box in Terminal", "actionID": "aichat.boxes.box.shell" } },
                 { "type": "Button", "id": 556, "properties": { "systemImage": "folder", "help": "Show the box's folder in the Finder", "actionID": "aichat.boxes.reveal" } },
                 { "type": "Spacer" },
+                { "type": "Button", "id": 558, "properties": { "title": "Recreate...", "help": "Make the box again from its image, keeping its settings; everything saved in it is deleted", "actionID": "aichat.boxes.box.recreate" } },
                 { "type": "Button", "id": 557, "properties": { "title": "Delete...", "role": "destructive", "actionID": "aichat.boxes.box.delete" } }
               ]
             }

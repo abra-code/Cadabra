@@ -33,7 +33,8 @@
 #   --version, version --json, doctor --json, image list --json, box list --json,
 #   box packs --json, box status|execlog|netlog <name> ... --json,
 #   box create <name> --image <image> ... --json (creates box-<name>.json),
-#   box delete <name> --json (removes it), image delete <name> --json, box view <name> ... --json,
+#   box delete <name> --json (removes it), box recreate <name> --json (a stopped record again),
+#   image delete <name> --json, box view <name> ... --json,
 #   image info <name> --json and box info <name> --json (the box must exist),
 #   box shell <name>, box network <name> ... --json (changes nothing), secret list --json, secret set <name> (value on stdin),
 #   secret delete <name>, exec --box <name> ... -- <argv> (runs nothing),
@@ -179,6 +180,10 @@ case "$1 $2" in
     "box delete")
         need_box "$3"
         /bin/rm -f "$state/box-$3.json" ;;
+    "box recreate")
+        need_box "$3"
+        /bin/cp "$fixtures/box-status-stopped.json" "$state/box-$3.json"
+        answer box-create ;;
     "image delete")
         ;;
     "box view")

@@ -469,6 +469,15 @@ agentvm_box_delete() {
     agentvm_json box delete "$1" >/dev/null
 }
 
+# agentvm_box_recreate <box>  ->  0 once the stopped box is made again as a fresh clone of its
+# image as the image is now (after a guest update, say), with the same CPUs, memory, network rules
+# and disposable flag (agent-vm's `box recreate`). Everything written in the old box goes,
+# logins included. agent-vm refuses a box that runs. A clone, so it takes a moment, not a job.
+agentvm_box_recreate() {
+    _agentvm_need_name box "$1" || return $?
+    agentvm_json box recreate "$1" >/dev/null
+}
+
 # agentvm_image_delete <image>  ->  0 once it is gone. agent-vm refuses an image that boxes or
 # other images are made from, naming them.
 agentvm_image_delete() {

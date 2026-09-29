@@ -198,6 +198,7 @@ check "Stop off"                    "0" "$(ui_enabled "$BOXES_BOX_STOP_ID")"
 check "View off (not running)"      "0" "$(ui_enabled "$BOXES_BOX_VIEW_ID")"
 check "Shell off (not running)"     "0" "$(ui_enabled "$BOXES_BOX_SHELL_ID")"
 check "Delete on (stopped)"         "1" "$(ui_enabled "$BOXES_BOX_DELETE_ID")"
+check "Recreate on (stopped)"       "1" "$(ui_enabled "$BOXES_BOX_RECREATE_ID")"
 
 section "Reveal shows the selected item's folder"
 /bin/rm -f "$OMCTEST_WORK/opened"
@@ -355,6 +356,52 @@ alerts_reset
 alert_answer 0
 omc_run aichat.boxes.image.delete
 check "an image in use: agent-vm's reason" "1" "$(alerts_mention "image dev is in use by the box try1")"
+
+section "Recreate asks, names the image, and makes the box again"
+fake_reset
+open_window
+select_box try1
+omc_table_cell "$BOXES_BOXES_ID" 3 dev
+alerts_reset
+alert_answers_reset
+alert_answer 1
+omc_run aichat.boxes.box.recreate
+check "asked"                        "1" "$(alerts_mention "Recreate the box try1?")"
+check "  naming the image"           "1" "$(alerts_mention "made again from the image dev as the image is now")"
+check "  and that its contents go"   "1" "$(alerts_mention "logins included, is deleted")"
+check "Cancel recreates nothing"     "0" "$(fake_asked "box recreate")"
+alert_answer 0
+titles_before=$(journal_count "$OMC_ACTIONUI_WINDOW_UUID" "$BOXES_TITLE_ID" "Box try1")
+omc_run aichat.boxes.box.recreate
+check "Recreate asks agent-vm"       "1" "$(fake_asked "box recreate try1 --json")"
+check "  the boxes are read again"   "1" "$([ "$(fake_asked "box list")" -ge 2 ] && echo 1 || echo 0)"
+check "  and the box is shown again" "$((titles_before + 1))" "$(journal_count "$OMC_ACTIONUI_WINDOW_UUID" "$BOXES_TITLE_ID" "Box try1")"
+printf 'the image dev is being updated; try again once its job ends' > "$FAKE_AGENTVM_DIR/fail-box-recreate"
+alerts_reset
+alert_answer 0
+omc_run aichat.boxes.box.recreate
+check "a refusal: agent-vm's reason" "1" "$(alerts_mention "the image dev is being updated")"
+check "  under a title naming the box" "1" "$(alerts_mention "Could not recreate try1")"
+# agent-vm deletes the box first; when making it again fails, the box is gone.
+printf 'box try1 was deleted, but creating it again failed: the image dev is damaged; create it with: agent-vm box create try1 --image dev' > "$FAKE_AGENTVM_DIR/fail-box-recreate"
+printf '[]' > "$FAKE_AGENTVM_DIR/box-list.json"
+alerts_reset
+alert_answer 0
+omc_run aichat.boxes.box.recreate
+check "deleted but not made again: agent-vm's reason" "1" "$(alerts_mention "creating it again failed")"
+check "  the box leaves the list"   "0" "$(ui_rows "$BOXES_BOXES_ID" | /usr/bin/grep -c "^try1${TAB}")"
+check "  and the detail is cleared" "Select an image, a box or a job." "$(ui_value "$BOXES_TITLE_ID")"
+fake_reset
+printf '%s' '[{"box": {"image": "dev", "name": "try1", "network": {"allow": [], "mode": "off"}}, "running": true, "state": "running"}]' > "$FAKE_AGENTVM_DIR/box-list.json"
+open_window
+select_box try1
+check "Recreate off (running)"       "0" "$(ui_enabled "$BOXES_BOX_RECREATE_ID")"
+check "  like Delete"                "0" "$(ui_enabled "$BOXES_BOX_DELETE_ID")"
+printf '%s' '[{"box": {"image": "dev", "name": "try1", "network": {"allow": [], "mode": "off"}}, "disposable": true, "running": false, "state": "stopped"}]' > "$FAKE_AGENTVM_DIR/box-list.json"
+open_window
+select_box try1
+check "Recreate off for a stopped disposable box" "0" "$(ui_enabled "$BOXES_BOX_RECREATE_ID")"
+check "  which Delete still offers"  "1" "$(ui_enabled "$BOXES_BOX_DELETE_ID")"
 
 section "View, View and Control, Shell"
 fake_reset

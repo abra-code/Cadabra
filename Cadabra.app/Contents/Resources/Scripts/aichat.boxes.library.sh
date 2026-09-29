@@ -52,9 +52,10 @@ BOXES_BOX_CONTROL_ID=554
 BOXES_BOX_SHELL_ID=555
 BOXES_BOX_REVEAL_ID=556
 BOXES_BOX_DELETE_ID=557
+BOXES_BOX_RECREATE_ID=558
 
 BOXES_IMAGE_ACTION_IDS="$BOXES_IMAGE_NEW_BOX_ID $BOXES_IMAGE_UPDATE_ID $BOXES_IMAGE_SETUP_ID $BOXES_IMAGE_REVEAL_ID $BOXES_IMAGE_DELETE_ID"
-BOXES_BOX_ACTION_IDS="$BOXES_BOX_START_ID $BOXES_BOX_STOP_ID $BOXES_BOX_VIEW_ID $BOXES_BOX_CONTROL_ID $BOXES_BOX_SHELL_ID $BOXES_BOX_REVEAL_ID $BOXES_BOX_DELETE_ID"
+BOXES_BOX_ACTION_IDS="$BOXES_BOX_START_ID $BOXES_BOX_STOP_ID $BOXES_BOX_VIEW_ID $BOXES_BOX_CONTROL_ID $BOXES_BOX_SHELL_ID $BOXES_BOX_REVEAL_ID $BOXES_BOX_DELETE_ID $BOXES_BOX_RECREATE_ID"
 
 # The open Box Manager's window uuid, for Tools > Boxes... and the windows that change what it
 # lists. Keyed by this process, so a uuid left behind by a Cadabra that quit or crashed with the
@@ -539,6 +540,12 @@ boxes_show_box() {
     boxes_enable "$_uuid" "$BOXES_BOX_SHELL_ID" "$_running"
     boxes_enable "$_uuid" "$BOXES_BOX_REVEAL_ID" "$([ -n "$_path" ] && echo 1 || echo 0)"
     boxes_enable "$_uuid" "$BOXES_BOX_DELETE_ID" "$((_stopped * _free))"
+    # Recreate only for a kept box. A stopped disposable box is waiting to be collected, or was just
+    # made for a chat window that is about to start it; a fresh record would keep the first around
+    # and could pull the second out from under its window.
+    local _kept=1
+    [ "$(boxes_field "$_row" 12)" = "true" ] && _kept=0
+    boxes_enable "$_uuid" "$BOXES_BOX_RECREATE_ID" "$((_stopped * _free * _kept))"
 }
 
 # What a job agent-vm refused for want of a virtual machine slot says in its details, in place of
