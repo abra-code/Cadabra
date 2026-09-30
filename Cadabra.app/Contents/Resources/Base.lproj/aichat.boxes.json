@@ -34,7 +34,7 @@
                 "title": "Install AgentVM...",
                 "controlSize": "small",
                 "hidden": true,
-                "help": "Download the newest AgentVM release from GitHub, check it, and open it in Installer",
+                "help": "Download the newest AgentVM release from GitHub, check it, and install it for your user account",
                 "actionID": "aichat.boxes.agentvm.install"
               }
             },

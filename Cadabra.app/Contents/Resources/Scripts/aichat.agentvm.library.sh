@@ -628,11 +628,10 @@ agentvm_install_target="agentvm:AgentVM"
 
 # agentvm_install_job <install|update>  ->  the new job's id (kind agentvm-install). The job
 # downloads the newest AgentVM release package from GitHub, refuses it unless it is notarized
-# and signed by AgentVM's team, opens it in Installer, where the user installs it for their
-# account (no administrator password), and once Installer quits checks that agentvm_installed
-# reports the release's version (agentvm_install.py). The package always installs to
-# agentvm_installed, so this is for the installed origin only. Status 3 while another install
-# runs.
+# and signed by AgentVM's team, installs its agent-vm part for the user (no administrator
+# password, no shell profile change), and checks that agentvm_installed reports the release's
+# version (agentvm_install.py). The package always installs to agentvm_installed, so this is
+# for the installed origin only. Status 3 while another install runs.
 agentvm_install_job() {
     local _title="Install AgentVM"
     [ "$1" = "update" ] && _title="Update AgentVM"

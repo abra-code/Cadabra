@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Download AgentVM's newest release package from GitHub, check it, and open it in Installer.
+"""Download AgentVM's newest release package from GitHub, check it, and install it.
 
 Cadabra carries no agent-vm. It runs the one AgentVM's package installs for the user: the link
 ~/.local/bin/agent-vm, into ~/.local/share/agent-vm/versions/<version>/. When that is missing
@@ -23,41 +23,57 @@ agentvm_job.py list reads): release, download, verify, install, check.
     download  fetches the package into a new temporary folder, over https only.
     verify    the package must pass Gatekeeper's install assessment as notarized Developer ID
               software (spctl), and the first certificate of its signature must be a Developer
-              ID Installer certificate of TEAM (pkgutil). Nothing unverified is ever opened.
-    install   opens the package in Installer and waits until Installer quits. The user sees
-              what the package installs, for them only and with no administrator password, and
-              can untick its "add ~/.local/bin to your shell's PATH" part under Customize.
-              Nothing here edits a shell profile or installs behind the user's back.
+              ID Installer certificate of TEAM (pkgutil). Nothing unverified is ever installed.
+    install   installs the package without Installer's windows (installer -target
+              CurrentUserHomeDirectory): the package installs for the user only, so no
+              administrator password is asked. Only its agent-vm part is selected; every other
+              part is left out, its "add ~/.local/bin to your shell's PATH" part included, so
+              nothing here edits a shell profile. installer confirms that selection before
+              anything is installed; a package with no agent-vm part, or one that would
+              install more, is refused. Installing that takes over 10 minutes is stopped.
     check     the link must now report the release's version; when it does not, the
-              installation was canceled in Installer, or failed.
+              installation failed.
 The temporary folder is removed however the job ends, a system shutdown (SIGTERM) included; a
 download that stays below 1000 bytes a second for a minute fails.
 
 Cancel (SIGINT, from agentvm_job.py cancel) stops the job before the install step with status
-130. Once Installer is open, a cancel is only noted: the package is Installer's until it quits,
-and Installer has its own Cancel. On failure the last stderr line is "Error: <what failed and
-what to do>", and the status is 1.
+130. Once installing has begun, a cancel is only noted: it takes a few seconds, and stopping
+it halfway would leave a partial version behind. On failure the last stderr line is "Error:
+<what failed and what to do>", and the status is 1.
 
 Test seams, like CADABRA_CURL in aichat.library.sh: CADABRA_CURL, CADABRA_SPCTL,
-CADABRA_PKGUTIL and CADABRA_OPEN name the programs used in place of /usr/bin/curl,
-/usr/sbin/spctl, /usr/sbin/pkgutil and /usr/bin/open.
+CADABRA_PKGUTIL and CADABRA_INSTALLER name the programs used in place of /usr/bin/curl,
+/usr/sbin/spctl, /usr/sbin/pkgutil and /usr/sbin/installer; CADABRA_INSTALL_TIMEOUT, in
+seconds, replaces the 10 minutes installing may take.
 """
 import argparse
 import json
 import os
+import plistlib
 import re
 import shutil
 import signal
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 
 CURL = os.environ.get("CADABRA_CURL") or "/usr/bin/curl"
 SPCTL = os.environ.get("CADABRA_SPCTL") or "/usr/sbin/spctl"
 PKGUTIL = os.environ.get("CADABRA_PKGUTIL") or "/usr/sbin/pkgutil"
-OPEN = os.environ.get("CADABRA_OPEN") or "/usr/bin/open"
-INSTALLER_APP = "com.apple.installer"
+INSTALLER = os.environ.get("CADABRA_INSTALLER") or "/usr/sbin/installer"
+# The package installs into the home folder only (its Distribution enables no other domain).
+INSTALL_TARGET = "CurrentUserHomeDirectory"
+# The package's agent-vm part: the choice PackageBuilder makes for the component
+# com.abracode.pkg.agent-vm. Every other part is left out, "add ~/.local/bin to your shell's
+# PATH" (com_abracode_pkg_agent_vm_path_choice) among them, and so is any part a later package
+# adds, until it is named here.
+AGENTVM_CHOICE = "com_abracode_pkg_agent_vm_choice"
+# installer -verboseR reports progress as "installer:%<percent>".
+INSTALLER_PROGRESS = re.compile(r"^installer:%([0-9]+(?:\.[0-9]+)?)\s*$")
+# How long installing may take before it is stopped; it takes seconds when nothing blocks it.
+INSTALL_TIMEOUT = int(os.environ.get("CADABRA_INSTALL_TIMEOUT") or 600)
 
 RELEASES_PAGE = "https://github.com/abra-code/agent-vm/releases"
 VERSION_PATTERN = re.compile(r"^[0-9]+(\.[0-9]+)*$")
@@ -239,35 +255,124 @@ def verify(path, team):
 
 # -- install -------------------------------------------------------------------------------
 
-def install(path, version):
-    event("install", f"Waiting for Installer: follow its steps to install AgentVM {version}")
-    # From here on a cancel is only noted: the package is Installer's until it quits (removing
-    # it would pull it out from under an installation), and Installer has its own Cancel.
+def query_parts(path, extra, doing):
+    """installer's list of the package's part settings: [(choice, attribute, setting)]."""
+    name = os.path.basename(path)
+    try:
+        done = subprocess.run([INSTALLER, *extra, "-pkg", path, "-target", INSTALL_TARGET],
+                              stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+                              stderr=subprocess.PIPE, timeout=300)
+    except OSError as problem:
+        raise Failure(f"could not run {INSTALLER}: {problem.strerror}")
+    except subprocess.TimeoutExpired:
+        raise Failure(f"installer did not {doing} {name} within 5 minutes")
+    if done.returncode != 0:
+        reason = " ".join(done.stderr.decode("utf-8", errors="replace").split())
+        raise Failure(f"installer could not {doing} {name}: "
+                      f"{reason or f'installer status {done.returncode}'}")
+    try:
+        settings = plistlib.loads(done.stdout)
+    except Exception:
+        raise Failure(f"installer's answer when asked to {doing} {name} could not be read.")
+    return [(setting.get("choiceIdentifier"), setting.get("choiceAttribute"),
+             setting.get("attributeSetting"))
+            for setting in (settings if isinstance(settings, list) else [])
+            if isinstance(setting, dict) and isinstance(setting.get("choiceIdentifier"), str)]
+
+
+def choose_parts(path, folder):
+    """A choice changes file for installer that selects the agent-vm part and nothing else,
+    confirmed with installer before anything is installed: changing one part can change
+    others, and Cadabra promises never to install the PATH part."""
+    name = os.path.basename(path)
+    choices = []
+    for choice, _attribute, _setting in query_parts(path, ["-showChoiceChangesXML"],
+                                                    "list the parts of"):
+        if choice not in choices:
+            choices.append(choice)
+    if AGENTVM_CHOICE not in choices:
+        raise Failure(f"{name} has no agent-vm part ({AGENTVM_CHOICE}), so Cadabra cannot tell "
+                      f"what it would install. See {RELEASES_PAGE}.")
+    changes = os.path.join(folder, "choices.plist")
+    with open(changes, "wb") as target:
+        plistlib.dump([{"choiceIdentifier": choice, "choiceAttribute": "selected",
+                        "attributeSetting": 1 if choice == AGENTVM_CHOICE else 0}
+                       for choice in choices], target)
+    selected = {choice: bool(setting) for choice, attribute, setting
+                in query_parts(path, ["-showChoicesAfterApplyingChangesXML", changes],
+                               "confirm the parts to install from")
+                if attribute == "selected"}
+    extra = sorted(choice for choice, chosen in selected.items() if chosen and choice != AGENTVM_CHOICE)
+    if not selected.get(AGENTVM_CHOICE) or extra:
+        found = ", ".join(extra) if extra else f"{AGENTVM_CHOICE} not selected"
+        raise Failure(f"{name} does not let Cadabra install only its agent-vm part ({found}), "
+                      f"so nothing was installed. See {RELEASES_PAGE}.")
+    return changes
+
+
+def install(path, version, folder):
+    event("install", f"Installing AgentVM {version}")
+    changes = choose_parts(path, folder)
+    # From here on a cancel is only noted: installing takes a few seconds, and stopping it
+    # halfway would leave a partial version in ~/.local/share/agent-vm/versions.
     asked = []
     signal.signal(signal.SIGINT, lambda _signum, _frame: asked.append(True))
     try:
-        status, output = run_long([OPEN, "-W", "-b", INSTALLER_APP, path])
+        status, words, stalled = run_installer(
+            [INSTALLER, "-pkg", path, "-target", INSTALL_TARGET,
+             "-applyChoiceChangesXML", changes, "-verboseR"], version)
     finally:
         signal.signal(signal.SIGINT, signal.default_int_handler)
+    if stalled:
+        raise Failure(f"Installing {os.path.basename(path)} did not finish within "
+                      f"{INSTALL_TIMEOUT // 60} minutes, so it was stopped. Install AgentVM "
+                      "again; /var/log/install.log shows what installer was waiting for.")
     if status != 0:
-        raise Failure(f"Could not open {os.path.basename(path)} in Installer: "
-                      f"{' '.join(output.split()) or f'open status {status}'}")
+        raise Failure(f"Could not install {os.path.basename(path)}: "
+                      f"{words or f'installer status {status}'} (/var/log/install.log has the details).")
 
 
-def run_long(argv):
-    """(status, output) of a command that may wait for the user for as long as they take."""
+def run_installer(argv, version):
+    """(status, its last words, whether it was stopped for taking too long) of installer, its
+    progress passed on as events."""
     try:
-        done = subprocess.run(argv, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
-                              stderr=subprocess.STDOUT)
+        child = subprocess.Popen(argv, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+                                 stderr=subprocess.STDOUT)
     except OSError as problem:
         raise Failure(f"could not run {argv[0]}: {problem.strerror}")
-    return done.returncode, done.stdout.decode("utf-8", errors="replace")
+    # A cancel is only noted while installing, so a stalled installer (for one, waiting for
+    # another installation to complete) would hold the job, and every later install, forever.
+    stalled = []
+    timer = threading.Timer(INSTALL_TIMEOUT, lambda: (stalled.append(True), child.kill()))
+    timer.start()
+    said = []
+    phases = []
+    last = -1.0
+    try:
+        with child.stdout:
+            for raw in child.stdout:
+                line = raw.decode("utf-8", errors="replace").strip()
+                progress = INSTALLER_PROGRESS.match(line)
+                if progress:
+                    fraction = float(progress.group(1)) / 100
+                    if fraction - last >= 0.01:
+                        last = fraction
+                        event("install", f"Installing AgentVM {version}", fraction)
+                elif line.startswith(("installer:PHASE:", "installer:STATUS:")):
+                    # Kept apart: a failure may be told only in these.
+                    phases = (phases + [line])[-3:]
+                elif line:
+                    said = (said + [line])[-3:]
+        status = child.wait()
+    finally:
+        timer.cancel()
+    return status, " ".join(said or phases), bool(stalled)
 
 
 def check(link, version):
     event("check", "Checking the installed agent-vm")
-    not_installed = (f"Installer closed, and AgentVM {version} is not installed: the "
-                     "installation was canceled, or it failed (/var/log/install.log has the details).")
+    not_installed = (f"The installation ended, and AgentVM {version} is not installed "
+                     "(/var/log/install.log has the details).")
     if not (os.path.isfile(link) and os.access(link, os.X_OK)):
         raise Failure(f"{not_installed} There is no agent-vm at {link}.")
     status, output = run([link, "--version"])
@@ -289,7 +394,7 @@ def install_newest(args):
         path = os.path.join(folder, name)
         download(address, path, size)
         verify(path, args.team)
-        install(path, version)
+        install(path, version, folder)
         check(args.link, version)
     finally:
         shutil.rmtree(folder, ignore_errors=True)

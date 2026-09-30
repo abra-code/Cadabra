@@ -3,11 +3,11 @@
 # installed agent-vm is missing or too old: agentvm_install.py's steps and refusals, the install
 # job, the Box Manager's Install AgentVM... button, and the offer at chat start.
 #
-# Nothing reaches the network, Gatekeeper or Installer: curl, spctl, pkgutil and open are
-# fake_install_tools.sh (CADABRA_CURL, CADABRA_SPCTL, CADABRA_PKGUTIL, CADABRA_OPEN), whose
-# "Installer" lays out ~/.local the way agent-vm's package does, in the isolated $HOME. The
-# installed agent-vm is fake_agent_vm.sh behind that link. No CADABRA_AGENT_VM here: what is
-# tested is the installed origin itself.
+# Nothing reaches the network, Gatekeeper or the real installer: curl, spctl, pkgutil and
+# installer are fake_install_tools.sh (CADABRA_CURL, CADABRA_SPCTL, CADABRA_PKGUTIL,
+# CADABRA_INSTALLER), whose installer lays out ~/.local the way agent-vm's package does, in
+# the isolated $HOME. The installed agent-vm is fake_agent_vm.sh behind that link. No
+# CADABRA_AGENT_VM here: what is tested is the installed origin itself.
 #
 # Needs the sandbox off (the job runner). POSIX sh only. Validate with "sh -n", never "bash -n".
 . "${OMCTEST_LIB:?set OMCTEST_LIB, or run via: appletbuilder test}"
@@ -30,19 +30,19 @@ TAB=$(printf '\t')
 
 TOOLS="$OMCTEST_WORK/tools"
 /bin/mkdir -p "$TOOLS"
-for t_tool in curl spctl pkgutil open; do
+for t_tool in curl spctl pkgutil installer; do
     /bin/ln -sf "$OMCTEST_TESTS/helpers/fake_install_tools.sh" "$TOOLS/$t_tool"
 done
 CADABRA_CURL="$TOOLS/curl"
 CADABRA_SPCTL="$TOOLS/spctl"
 CADABRA_PKGUTIL="$TOOLS/pkgutil"
-CADABRA_OPEN="$TOOLS/open"
+CADABRA_INSTALLER="$TOOLS/installer"
 FAKE_INSTALL_DIR="$OMCTEST_WORK/install"
 FAKE_AGENTVM="$OMCTEST_TESTS/helpers/fake_agent_vm.sh"
 FAKE_AGENTVM_DIR="$OMCTEST_WORK/fakevm"
 # The installed agent-vm runs the fake through links, so it cannot find its fixtures beside itself.
 FAKE_AGENTVM_FIXTURES="$FIXTURES"
-export CADABRA_CURL CADABRA_SPCTL CADABRA_PKGUTIL CADABRA_OPEN FAKE_INSTALL_DIR FAKE_AGENTVM FAKE_AGENTVM_DIR FAKE_AGENTVM_FIXTURES
+export CADABRA_CURL CADABRA_SPCTL CADABRA_PKGUTIL CADABRA_INSTALLER FAKE_INSTALL_DIR FAKE_AGENTVM FAKE_AGENTVM_DIR FAKE_AGENTVM_FIXTURES
 
 lib() { cad_call_lib "$LIB" "$@"; }
 col() { /usr/bin/cut -f"$1"; }
@@ -136,7 +136,7 @@ wait_jobs_done() {
 temps_before=$(temp_folders)
 
 # -----------------------------------------------------------------------------------------
-section "the newest release, checked, opened in Installer, then found installed"
+section "the newest release, checked, installed without Installer's windows, then found installed"
 install_reset
 check "installed"                           "0" "$(run_install)"
 check "  says so"                           "Installed AgentVM $NEWEST: $LINK" "$(/bin/cat "$OMCTEST_WORK/out")"
@@ -145,7 +145,12 @@ check "  asked GitHub for the newest release, https only" "1" "$(/usr/bin/grep -
 check "  downloaded the release's package"  "1" "$(/usr/bin/grep -c "^curl .*https://github.com/abra-code/agent-vm/releases/download/v$NEWEST/agent-vm_$NEWEST.pkg\$" "$FAKE_INSTALL_DIR/log")"
 check "  Gatekeeper's install assessment"   "1" "$(/usr/bin/grep -c "^spctl --assess --type install --verbose .*/agent-vm_$NEWEST.pkg\$" "$FAKE_INSTALL_DIR/log")"
 check "  the signature's team"              "1" "$(/usr/bin/grep -c "^pkgutil --check-signature .*/agent-vm_$NEWEST.pkg\$" "$FAKE_INSTALL_DIR/log")"
-check "  opened in Installer, waiting for it" "1" "$(/usr/bin/grep -c "^open -W -b com.apple.installer .*/agent-vm_$NEWEST.pkg\$" "$FAKE_INSTALL_DIR/log")"
+check "  its parts listed, for this user"   "1" "$(/usr/bin/grep -c "^installer -showChoiceChangesXML -pkg .*/agent-vm_$NEWEST.pkg -target CurrentUserHomeDirectory\$" "$FAKE_INSTALL_DIR/log")"
+check "  installed for this user, with progress" "1" "$(/usr/bin/grep -c "^installer -pkg .*/agent-vm_$NEWEST.pkg -target CurrentUserHomeDirectory -applyChoiceChangesXML .*/choices.plist -verboseR\$" "$FAKE_INSTALL_DIR/log")"
+check "  the selection confirmed first"  "1" "$(/usr/bin/grep -c "^installer -showChoicesAfterApplyingChangesXML .*/choices.plist -pkg .*/agent-vm_$NEWEST.pkg -target CurrentUserHomeDirectory\$" "$FAKE_INSTALL_DIR/log")"
+check "  the agent-vm part selected"        "1" "$(/usr/bin/grep -c '^choice com_abracode_pkg_agent_vm_choice 1$' "$FAKE_INSTALL_DIR/log")"
+check "  the PATH part left out"            "1" "$(/usr/bin/grep -c '^choice com_abracode_pkg_agent_vm_path_choice 0$' "$FAKE_INSTALL_DIR/log")"
+check "  its progress passed on"            "1" "$(/usr/bin/grep -c '^{"event": "progress", "step": "install", "message": "Installing AgentVM '"$NEWEST"'", "fraction": 0.5}$' "$OMCTEST_WORK/err")"
 check "  with the package still there"      "1" "$(/usr/bin/grep -c '^package-present yes$' "$FAKE_INSTALL_DIR/log")"
 check "  and the link answers the version"  "$NEWEST" "$("$LINK" --version)"
 check "the temporary folder is gone"        "$temps_before" "$(temp_folders)"
@@ -202,35 +207,35 @@ printf '%s\n' "$MIN_VERSION" > "$FAKE_INSTALL_DIR/installs"
 printf '%s\n' "$MIN_VERSION" > "$FAKE_AGENTVM_DIR/version"
 check "the minimum itself is fine"     "0" "$(run_install)"
 
-section "a download that fails or comes out short is never opened"
+section "a download that fails or comes out short is never installed"
 install_reset
 printf 'The requested URL returned error: 404\n' > "$FAKE_INSTALL_DIR/download-fail"
 check "a failed download"              "1" "$(run_install)"
 check "  in curl's words"              "1" "$(cad_has "$(error_line)" "Could not download agent-vm_$NEWEST.pkg: The requested URL returned error: 404")"
-check "  not checked, not opened"      "0 0" "$(asked spctl) $(asked open)"
+check "  not checked, not installed"   "0 0" "$(asked spctl) $(asked "installer -pkg")"
 install_reset
 printf '999\n' > "$FAKE_INSTALL_DIR/package-bytes"
 check "a short download"               "1" "$(run_install)"
 check "  says so"                      "1" "$(cad_has "$(error_line)" "is 999 bytes, and GitHub lists it as 1000")"
-check "  not opened"                   "0" "$(asked open)"
+check "  not installed"                "0" "$(asked "installer -pkg")"
 check "the temporary folders are gone after failures too" "$temps_before" "$(temp_folders)"
 
-section "a package that is not notarized, or not AgentVM's, is never opened"
+section "a package that is not notarized, or not AgentVM's, is never installed"
 install_reset
 printf 'agent-vm.pkg: rejected\nsource=no usable signature\n' > "$FAKE_INSTALL_DIR/spctl.out"
 printf '3\n' > "$FAKE_INSTALL_DIR/spctl-status"
 check "rejected by Gatekeeper"         "1" "$(run_install)"
 check "  says why"                     "1" "$(cad_has "$(error_line)" "is not notarized Developer ID software, so Cadabra does not install it (agent-vm.pkg: rejected source=no usable signature)")"
-check "  not opened"                   "0" "$(asked open)"
+check "  not installed"                "0" "$(asked "installer -pkg")"
 install_reset
 printf 'agent-vm.pkg: accepted\nsource=Developer ID\n' > "$FAKE_INSTALL_DIR/spctl.out"
 check "accepted but not notarized"     "1" "$(run_install)"
-check "  not opened"                   "0" "$(asked open)"
+check "  not installed"                "0" "$(asked "installer -pkg")"
 install_reset
 printf '   Certificate Chain:\n    1. Developer ID Installer: Someone Else (ABCDE12345)\n    2. Developer ID Certification Authority\n' > "$FAKE_INSTALL_DIR/pkgutil.out"
 check "another team's package"         "1" "$(run_install)"
 check "  names both teams"             "1" "$(cad_has "$(error_line)" "signed by the Developer ID team ABCDE12345, not AgentVM's (T9NM2ZLDTY)")"
-check "  not opened"                   "0" "$(asked open)"
+check "  not installed"                "0" "$(asked "installer -pkg")"
 install_reset
 printf '   Certificate Chain:\n    1. Developer ID Installer: Mallory (T9NM2ZLDTY) (ABCDE12345)\n' > "$FAKE_INSTALL_DIR/pkgutil.out"
 check "a name that quotes AgentVM's team is another team" "1" "$(run_install)"
@@ -238,22 +243,48 @@ check "  the real one named"           "1" "$(cad_has "$(error_line)" "team ABCD
 install_reset
 printf '   Certificate Chain:\n    1. Developer ID Application: Tomasz Kukielka (T9NM2ZLDTY)\n' > "$FAKE_INSTALL_DIR/pkgutil.out"
 check "an Application certificate is not an Installer one" "1" "$(run_install)"
-check "  not opened"                   "0" "$(asked open)"
+check "  not installed"                "0" "$(asked "installer -pkg")"
 
-section "Installer closed without installing it"
+section "a package whose parts are not agent-vm's"
+install_reset
+printf 'com_abracode_pkg_agent_vm_choice\ncom_abracode_pkg_agent_vm_path_choice\ncom_abracode_pkg_agent_vm_extra_choice\n' > "$FAKE_INSTALL_DIR/parts"
+check "a part added later"             "0" "$(run_install)"
+check "  is left out until named"      "1" "$(/usr/bin/grep -c '^choice com_abracode_pkg_agent_vm_extra_choice 0$' "$FAKE_INSTALL_DIR/log")"
+install_reset
+printf 'com_example_other_choice\ncom_abracode_pkg_agent_vm_path_choice\n' > "$FAKE_INSTALL_DIR/parts"
+check "no agent-vm part is refused"    "1" "$(run_install)"
+check "  naming the part"              "1" "$(cad_has "$(error_line)" "has no agent-vm part (com_abracode_pkg_agent_vm_choice)")"
+check "  not installed"                "0" "$(asked "installer -pkg")"
+install_reset
+printf 'com_abracode_pkg_agent_vm_path_choice\n' > "$FAKE_INSTALL_DIR/sticky"
+check "a PATH part that stays selected is refused" "1" "$(run_install)"
+check "  naming it"                     "1" "$(cad_has "$(error_line)" "does not let Cadabra install only its agent-vm part (com_abracode_pkg_agent_vm_path_choice)")"
+check "  not installed"                "0" "$(asked "installer -pkg")"
+install_reset
+printf '1\n' > "$FAKE_INSTALL_DIR/parts-status"
+check "parts installer cannot list"    "1" "$(run_install)"
+check "  in its words"                 "1" "$(cad_has "$(error_line)" "installer could not list the parts of agent-vm_$NEWEST.pkg: installer: Error trying to locate CurrentUserHomeDirectory domain")"
+check "  not installed"                "0" "$(asked "installer -pkg")"
+
+section "installing did not install it"
 install_reset
 printf 'nothing\n' > "$FAKE_INSTALL_DIR/installs"
 check "a failure"                      "1" "$(run_install)"
-check "  that says what probably happened" "1" "$(cad_has "$(error_line)" "Installer closed, and AgentVM $NEWEST is not installed: the installation was canceled, or it failed")"
+check "  that says so"                 "1" "$(cad_has "$(error_line)" "The installation ended, and AgentVM $NEWEST is not installed")"
 install_reset
 printf '0.0.2\n' > "$FAKE_INSTALL_DIR/installs"
 printf '0.0.2\n' > "$FAKE_AGENTVM_DIR/version"
 check "another version at the link"   "1" "$(run_install)"
 check "  names what it reports"        "1" "$(cad_has "$(error_line)" "$LINK reports 0.0.2")"
 install_reset
-printf '1\n' > "$FAKE_INSTALL_DIR/open-status"
-check "Installer could not be opened"  "1" "$(run_install)"
-check "  in open's words"              "1" "$(cad_has "$(error_line)" "Could not open agent-vm_$NEWEST.pkg in Installer: LSOpenURLsWithRole() failed")"
+printf '1\n' > "$FAKE_INSTALL_DIR/installer-status"
+check "installer failed"               "1" "$(run_install)"
+check "  in its words"                 "1" "$(cad_has "$(error_line)" "Could not install agent-vm_$NEWEST.pkg: installer: Error - The Installer encountered an error")"
+check "  without its progress lines"   "0" "$(cad_has "$(error_line)" "installer:%")"
+install_reset
+printf '5\n' > "$FAKE_INSTALL_DIR/installer-sleep"
+check "installing that stalls is stopped" "1" "$(CADABRA_INSTALL_TIMEOUT=1 run_install)"
+check "  saying so"                     "1" "$(cad_has "$(error_line)" "did not finish within")"
 
 section "arguments the script refuses"
 out=$("$PY" "$INSTALL_PY" install --api x --min 1.x --team T --link "$LINK" 2>&1); rc=$?
@@ -287,15 +318,15 @@ check "  kind, target, title"          "agentvm-install${TAB}agentvm:AgentVM${TA
 check "  its last step"                "done" "$(printf '%s\n' "$row" | col 9)"
 check "agent-vm can be used now"       "0" "$(lib agentvm_available >/dev/null; echo $?)"
 install_reset
-printf '2\n' > "$FAKE_INSTALL_DIR/open-sleep"
+printf '2\n' > "$FAKE_INSTALL_DIR/installer-sleep"
 job=$(lib agentvm_install_job update)
-wait_logged open
+wait_logged "installer -pkg"
 second=$(lib agentvm_install_job install); rc=$?
 check "a second install while one runs is refused" "3" "$rc"
 check "  saying which"                 "1" "$(cad_has "$(lib agentvm_last_error "$rc")" "Update AgentVM is still running for AgentVM")"
 check "while it runs, agentvm_installing says so" "0" "$(lib agentvm_installing; echo $?)"
 lib agentvm_job_cancel "$job" >/dev/null
-check "a cancel while Installer is open is only noted" "done" "$(wait_state "$job" done)"
+check "a cancel while installing is only noted" "done" "$(wait_state "$job" done)"
 check "  and AgentVM is installed"     "$NEWEST" "$("$LINK" --version)"
 install_reset
 printf '5\n' > "$FAKE_INSTALL_DIR/download-sleep"
@@ -303,7 +334,7 @@ job=$(lib agentvm_install_job install)
 wait_logged "curl .*--output .*agent-vm_"
 lib agentvm_job_cancel "$job" >/dev/null
 check "a cancel during the download stops it" "canceled" "$(wait_state "$job" canceled)"
-check "  before anything was opened"   "0" "$(asked open)"
+check "  before anything was installed"   "0" "$(asked "installer -pkg")"
 check "  and its temporary folder is gone" "$temps_before" "$(temp_folders)"
 check "nothing runs now"               "1" "$(lib agentvm_installing; echo $?)"
 
@@ -344,9 +375,10 @@ open_window
 alerts_reset
 alert_answer 1
 omc_run aichat.boxes.agentvm.install
-check "it asks first"                  "1" "$(alerts_mention "opens it in Installer")"
+check "it asks first"                  "1" "$(alerts_mention "installs it for your user account only")"
+check "  saying the shell is not changed" "1" "$(alerts_mention "Your shell settings are not changed")"
 check "  declined: no job"             "0" "$(/bin/ls "$JOBS" 2>/dev/null | /usr/bin/wc -l | /usr/bin/tr -d ' ')"
-printf '1\n' > "$FAKE_INSTALL_DIR/open-sleep"
+printf '1\n' > "$FAKE_INSTALL_DIR/installer-sleep"
 alert_answer 0
 omc_run aichat.boxes.agentvm.install
 check "  accepted: the header says it is installing" "Installing AgentVM..." "$(ui_value "$BOXES_HEADER_ID")"
@@ -358,7 +390,7 @@ omc_table_cell "$BOXES_JOBS_ID" 4 "$inst_job"
 alerts_reset
 alert_answer 1
 omc_run aichat.boxes.job.cancel
-check "Cancel Job says an open Installer is canceled there" "1" "$(alerts_mention 'cancel the installation in Installer itself')"
+check "Cancel Job says an install under way finishes" "1" "$(alerts_mention 'Cadabra lets it finish')"
 wait_jobs_done
 omc_run aichat.boxes.poll
 check "once it is done, the header names agent-vm" "1" "$(cad_has "$(ui_value "$BOXES_HEADER_ID")" "(installed)")"
@@ -371,7 +403,7 @@ section "Box Manager: installed meanwhile from elsewhere"
 install_reset
 open_window
 printf '%s\n' "$NEWEST" > "$FAKE_INSTALL_DIR/installs"
-"$CADABRA_OPEN" -W -b com.apple.installer "$OMCTEST_WORK/by-hand.pkg"
+"$CADABRA_INSTALLER" -pkg "$OMCTEST_WORK/by-hand.pkg" -target CurrentUserHomeDirectory >/dev/null
 alerts_reset
 omc_run aichat.boxes.agentvm.install
 check "nothing is asked"               "0" "$(alerts_count)"
@@ -400,12 +432,12 @@ check "  the offer names the fix"      "1" "$(alerts_mention "Install AgentVM")"
 check "  declined: no job"             "0" "$(/bin/ls "$JOBS" 2>/dev/null | /usr/bin/wc -l | /usr/bin/tr -d ' ')"
 check "  and no window opened"         "0" "$(chain_asked aichat.boxes.open)"
 alerts_reset
-printf '2\n' > "$FAKE_INSTALL_DIR/open-sleep"
+printf '2\n' > "$FAKE_INSTALL_DIR/installer-sleep"
 alert_answer 0
 check "accepted: still not started now" "1" "$(engine chat_engine_box_transport w1 "claude-agent-acp" claude-code-acp new:dev false)"
 check "  the install job runs"         "1" "$(lib agentvm_jobs | /usr/bin/awk -F'\t' '$2 == "agentvm-install"' | /usr/bin/wc -l | /usr/bin/tr -d ' ')"
 check "  and the AgentVM window opens to show it" "1" "$(chain_asked aichat.boxes.open)"
-wait_logged open
+wait_logged "installer -pkg"
 alerts_reset
 alert_answer 0
 engine chat_engine_box_transport w1 "claude-agent-acp" claude-code-acp new:dev false >/dev/null

@@ -1,11 +1,11 @@
 #!/bin/sh
-# Tests/helpers/fake_install_tools.sh - curl, spctl, pkgutil and open for agentvm_install.py,
+# Tests/helpers/fake_install_tools.sh - curl, spctl, pkgutil and installer for agentvm_install.py,
 # answered from files.
 #
 # agentvm_install.py names these programs through CADABRA_CURL, CADABRA_SPCTL, CADABRA_PKGUTIL
-# and CADABRA_OPEN. The test points each at a link to this script named after the tool, and
+# and CADABRA_INSTALLER. The test points each at a link to this script named after the tool, and
 # this script acts by the name it was started as. Nothing reaches the network, Gatekeeper or
-# Installer.
+# the real installer.
 #
 # -- The state directory ($FAKE_INSTALL_DIR) -------------------------------------
 #   log              APPENDED to, one line per call: the tool's name and its arguments.
@@ -18,14 +18,23 @@
 #   spctl.out        spctl's words (default: accepted, as notarized Developer ID software).
 #   spctl-status     spctl's status (default 0).
 #   pkgutil.out      pkgutil's words (default: signed by the team T9NM2ZLDTY).
-#   open-status      open's status (default 0); when it is not 0, nothing is installed.
-#   open-sleep       seconds "Installer" stays open (default 0), for a cancel during it.
-#   installs         the version the package installs, or "nothing" for an installation
-#                    canceled in Installer (default: none, which also installs nothing).
-#                    open makes $HOME/.local/share/agent-vm/versions/<version>/agent-vm and
-#                    links $HOME/.local/bin/agent-vm to it, as agent-vm's package does. That
-#                    agent-vm is $FAKE_AGENTVM when set (fake_agent_vm.sh, whose version is its
-#                    own "version" file), otherwise a script printing <version>.
+#   parts            the package's choice identifiers, one per line, that installer
+#                    -showChoiceChangesXML lists (default: agent-vm's two, the agent-vm part
+#                    and the PATH part).
+#   parts-status     when present, listing the parts fails with this status.
+#   sticky           a choice identifier that -showChoicesAfterApplyingChangesXML reports
+#                    selected whatever the changes file says, as one part tied to another.
+#   installer-status installer's status when installing (default 0); when it is not 0, it
+#                    prints an error and nothing is installed.
+#   installer-sleep  seconds installing takes (default 0), for a cancel during it.
+#   installs         the version the package installs, or "nothing" for an installation that
+#                    reports success and installs nothing (default: none, the same).
+#                    installer makes $HOME/.local/share/agent-vm/versions/<version>/agent-vm
+#                    and links $HOME/.local/bin/agent-vm to it, as agent-vm's package does.
+#                    That agent-vm is $FAKE_AGENTVM when set (fake_agent_vm.sh, whose version
+#                    is its own "version" file), otherwise a script printing <version>.
+#   The log also gets "package-present yes|no" for each install, and "choice <id> <setting>"
+#   for each entry of the -applyChoiceChangesXML file.
 #
 # POSIX sh only. Validate with "sh -n", never "bash -n".
 
@@ -106,19 +115,54 @@ case "$tool" in
             printf '    3. Apple Root CA\n'
         fi
         exit 0 ;;
-    open)
-        # The package must still be there while "Installer" has it.
-        package="$(last_argument "$@")"
+    installer)
+        package="$(option_value -pkg "$@")"
+        if [ "$1" = "-showChoiceChangesXML" ] && [ -f "$dir/parts-status" ]; then
+            printf 'installer: Error trying to locate CurrentUserHomeDirectory domain\n' >&2
+            exit "$(/bin/cat "$dir/parts-status")"
+        fi
+        if [ "$1" = "-showChoicesAfterApplyingChangesXML" ]; then
+            # The changes file applied, except that a part named in "sticky" stays selected.
+            printf '<?xml version="1.0" encoding="UTF-8"?>\n<plist version="1.0">\n<array>\n'
+            /usr/bin/plutil -convert json -o - "$2" \
+                | /usr/bin/jq -r '.[] | "\(.choiceIdentifier) \(.attributeSetting)"' \
+                | while read -r part setting; do
+                    [ -f "$dir/sticky" ] && [ "$part" = "$(/bin/cat "$dir/sticky")" ] && setting=1
+                    printf '<dict><key>attributeSetting</key><integer>%s</integer><key>choiceAttribute</key><string>selected</string><key>choiceIdentifier</key><string>%s</string></dict>\n' "$setting" "$part"
+                done
+            printf '</array>\n</plist>\n'
+            exit 0
+        fi
+        if [ "$1" = "-showChoiceChangesXML" ]; then
+            parts="$(printf 'com_abracode_pkg_agent_vm_choice\ncom_abracode_pkg_agent_vm_path_choice\n')"
+            [ -f "$dir/parts" ] && parts="$(/bin/cat "$dir/parts")"
+            printf '<?xml version="1.0" encoding="UTF-8"?>\n<plist version="1.0">\n<array>\n'
+            printf '%s\n' "$parts" | while read -r part; do
+                [ -n "$part" ] || continue
+                printf '<dict><key>attributeSetting</key><true/><key>choiceAttribute</key><string>visible</string><key>choiceIdentifier</key><string>%s</string></dict>\n' "$part"
+                printf '<dict><key>attributeSetting</key><integer>1</integer><key>choiceAttribute</key><string>selected</string><key>choiceIdentifier</key><string>%s</string></dict>\n' "$part"
+            done
+            printf '</array>\n</plist>\n'
+            exit 0
+        fi
+        # The package must still be there while it is installed.
         printf 'package-present %s\n' "$([ -f "$package" ] && echo yes || echo no)" >> "$dir/log"
-        if [ -f "$dir/open-sleep" ]; then
-            /bin/sleep "$(/bin/cat "$dir/open-sleep")"
+        changes="$(option_value -applyChoiceChangesXML "$@")"
+        if [ -n "$changes" ]; then
+            /usr/bin/plutil -convert json -o - "$changes" \
+                | /usr/bin/jq -r '.[] | "choice \(.choiceIdentifier) \(.attributeSetting)"' >> "$dir/log"
+        fi
+        printf 'installer:PHASE:Preparing for installation...\ninstaller:%%10.000000\n'
+        if [ -f "$dir/installer-sleep" ]; then
+            /bin/sleep "$(/bin/cat "$dir/installer-sleep")"
         fi
         status=0
-        [ -f "$dir/open-status" ] && status="$(/bin/cat "$dir/open-status")"
+        [ -f "$dir/installer-status" ] && status="$(/bin/cat "$dir/installer-status")"
         if [ "$status" -ne 0 ]; then
-            printf 'LSOpenURLsWithRole() failed with error -10810\n' >&2
+            printf 'installer: Error - The Installer encountered an error that caused the installation to fail.\n'
             exit "$status"
         fi
+        printf 'installer:%%50.000000\ninstaller:STATUS:Running package scripts...\ninstaller:%%100.000000\n'
         version=""
         [ -f "$dir/installs" ] && version="$(/bin/cat "$dir/installs")"
         case "$version" in

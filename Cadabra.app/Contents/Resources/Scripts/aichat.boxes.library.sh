@@ -1225,7 +1225,7 @@ boxes_install_agentvm() {
         _running=" Boxes that are running keep their version until they are stopped."
     fi
     "$alert" --level caution --title "$_title" --ok "$_ok" --cancel "Cancel" \
-        "Cadabra downloads the newest AgentVM release from $agentvm_releases_page, checks that Apple notarized it and AgentVM's developer signed it, and opens it in Installer. It installs for your user account only, in the .local folder of your home folder, with no administrator password. Under Customize, Installer also offers to add ~/.local/bin to your shell's PATH, for agent-vm and avm in Terminal.$_running"
+        "Cadabra downloads the newest AgentVM release from $agentvm_releases_page, checks that Apple notarized it and AgentVM's developer signed it, and installs it for your user account only, in the .local folder of your home folder, with no administrator password. Your shell settings are not changed: to use agent-vm and avm in Terminal, add ~/.local/bin to your PATH.$_running"
     if [ $? -ne 0 ]; then
         return 0
     fi

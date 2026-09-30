@@ -160,7 +160,7 @@ $unavailable"
 
 $unavailable
 
-$verb AgentVM downloads its newest release from GitHub, checks that Apple notarized it and AgentVM's developer signed it, and opens it in Installer, which installs it for your user account with no administrator password. The AgentVM window shows the progress. Start the conversation again when it is done."
+$verb AgentVM downloads its newest release from GitHub, checks that Apple notarized it and AgentVM's developer signed it, and installs it for your user account, with no administrator password. The AgentVM window shows the progress. Start the conversation again when it is done."
 		if [ $? -eq 0 ]; then
 			source "$OMC_APP_BUNDLE_PATH/Contents/Resources/Scripts/aichat.boxes.library.sh"
 			boxes_install_agentvm_elsewhere "$mode"
