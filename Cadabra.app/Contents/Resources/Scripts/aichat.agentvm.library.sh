@@ -388,6 +388,31 @@ agentvm_boxes() {
     agentvm_rows boxes box list
 }
 
+# agentvm_running_boxes_bytes [except box]  ->  the memory of the boxes running now, in bytes (from
+# agent-vm's whole GB), for the memory warnings; 0 when none run, when boxes cannot be used here,
+# or when agent-vm cannot list them (the warning then counts models only, as it did before boxes).
+# A box starting or not answering holds its memory too; one stopping is about to free it. <except>
+# is left out: a window's own disposable box, which goes when the window starts another.
+agentvm_running_boxes_bytes() {
+    agentvm_available >/dev/null 2>&1
+    local _available=$?
+    if [ "$_available" -ne 0 ]; then
+        echo 0
+        return 0
+    fi
+    local _rows
+    _rows="$(agentvm_boxes)"
+    local _status=$?
+    if [ "$_status" -ne 0 ]; then
+        agentvm_last_error "$_status" >/dev/null
+        echo 0
+        return 0
+    fi
+    printf '%s\n' "$_rows" | /usr/bin/awk -F'\t' -v except="${1:-}" '
+        $1 != except && ($2 == "running" || $2 == "starting" || $2 == "unresponsive") && $6 ~ /^[0-9]+$/ { gb += $6 }
+        END { printf "%.0f\n", gb * 1073741824 }'
+}
+
 # agentvm_packs  ->  one row per network pack: name, hosts (comma-joined), problem ("-" unless
 # agent-vm cannot use the pack).
 agentvm_packs() {

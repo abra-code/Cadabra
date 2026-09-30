@@ -374,6 +374,18 @@ _boxsession_prompt_notice() {
     else
         _outcome="Nobody can answer that prompt inside the box, so the program may wait until it is answered on the box's screen (Tools > AgentVM, Boxes, View and Control)."
     fi
+    # Found by the quiet watch (boxsession_watch): a program left waiting on the prompt may be why
+    # the turn stalled. One that agent-vm stopped is not what the agent waits for.
+    case "$_stopped:$boxsession_line_quiet" in
+        yes:*) ;;
+        *:|*:*[!0123456789]*) ;;
+        *)
+            if [ "$boxsession_line_quiet" -lt 90 ]; then
+                _outcome="$_outcome The agent has added nothing to the conversation for $boxsession_line_quiet seconds, and this may be why."
+            else
+                _outcome="$_outcome The agent has added nothing to the conversation for about $(( (boxsession_line_quiet + 30) / 60 )) minutes, and this may be why."
+            fi ;;
+    esac
     # The advice agent-vm itself gives: a Keychain dialog is avoided by logging in with the program
     # inside the box, so the item is its own; any other prompt by Full Disk Access for the image.
     local _kinds="$(printf '%s\n' "$_new" | /usr/bin/awk -F'\t' '$1 == "a Keychain item" { k = 1; next } { o = 1 } END { print (k ? "k" : "") (o ? "o" : "") }')"
@@ -478,6 +490,107 @@ boxsession_line_focus() {
             fi ;;
     esac
     boxsession_line_refresh "$1"
+}
+
+# THE QUIET WATCH. Nothing tells Cadabra that a turn runs or has stalled: the chat element sends
+# the prompt and streams the reply itself, and aichat.chat.entry.sh sees only finalized entries
+# (messages, thoughts, tool calls). A turn that goes quiet may be a program in the box waiting on a
+# macOS permission prompt that nobody can answer there, which the line would tell only after the
+# next message. So every finalized entry of a box window marks the time (boxsession_watch_mark),
+# and one watch per window (boxsession_watch) refreshes the line once the conversation has been
+# quiet for boxsession_watch_quiet seconds, and again each time the quiet doubles, until
+# boxsession_watch_for seconds after the last entry: with the defaults at 30 seconds, then 1, 2,
+# 4 and 8 minutes. A prompt found then is told with a sentence saying it may be why the agent has
+# gone quiet (boxsession_line_quiet). The watch holds aichatv2_boxwatch_<window> (its pid) and
+# ends when another watch took the key, when the line is gone (the window released its box), or
+# when the time is up. CADABRA_BOXWATCH_EVERY, _QUIET and _FOR are test seams, in seconds.
+boxsession_watch_every="${CADABRA_BOXWATCH_EVERY:-5}"
+boxsession_watch_quiet="${CADABRA_BOXWATCH_QUIET:-30}"
+boxsession_watch_for="${CADABRA_BOXWATCH_FOR:-600}"
+# How long the conversation has been quiet, while the watch refreshes the line; empty otherwise.
+boxsession_line_quiet=""
+
+# boxsession_watch_mark_file <window>  ->  the file whose modification time is the window's last
+# finalized entry. A file, not a pasteboard key: the entry handler writes it with the shell alone.
+boxsession_watch_mark_file() {
+    printf '%s\n' "${TMPDIR:-/tmp}/cadabra-boxwatch.$1"
+}
+
+# boxsession_watch_mark <window>  ->  0. A finalized entry: marks the time, and starts the
+# window's watch unless one runs.
+boxsession_watch_mark() {
+    # printf, not ":": a redirection that fails on a special builtin ends a POSIX-mode shell,
+    # and with it the entry handler's refresh.
+    printf '' 2>/dev/null > "$(boxsession_watch_mark_file "$1")"
+    local _pid="$(pb_get "aichatv2_boxwatch_$1")"
+    case "$_pid" in
+        ''|*[!0123456789]*) ;;
+        *)
+            # Signal 0 only asks whether that process is there.
+            kill -0 "$_pid" 2>/dev/null
+            if [ $? -eq 0 ]; then
+                return 0
+            fi ;;
+    esac
+    ( boxsession_watch "$1" ) >/dev/null 2>&1 &
+    pb_set "aichatv2_boxwatch_$1" "$!"
+    return 0
+}
+
+# boxsession_watch <window>  ->  0 when it ends (see THE QUIET WATCH). Runs in the background.
+boxsession_watch() {
+    local _key="aichatv2_boxwatch_$1"
+    # This subshell's own pid, which boxsession_watch_mark stored as $!: the parent of a shell
+    # that replaces the command substitution's own process.
+    local _me="$(exec /bin/sh -c 'echo $PPID')"
+    local _mark="$(boxsession_watch_mark_file "$1")"
+    # Cadabra's pid. A quit releases the line, but after a crash the line stays on the pasteboard
+    # until the next launch, and the watch would read agent-vm's logs and raise alerts for nobody.
+    local _app="$(_agentvm_owner_pid)"
+    local _holder _line _last _now _quiet _at
+    while :; do
+        /bin/sleep "$boxsession_watch_every"
+        _holder="$(pb_get "$_key")"
+        if [ "$_holder" != "$_me" ]; then
+            return 0
+        fi
+        if [ -n "$_app" ]; then
+            kill -0 "$_app" 2>/dev/null
+            if [ $? -ne 0 ]; then
+                break
+            fi
+        fi
+        _line="$(pb_get "aichatv2_boxline_$1")"
+        if [ -z "$_line" ]; then
+            break
+        fi
+        _last="$(/usr/bin/stat -f %m "$_mark" 2>/dev/null)"
+        case "$_last" in
+            ''|*[!0123456789]*) break ;;
+        esac
+        _now="$(/bin/date +%s)"
+        _quiet=$((_now - _last))
+        if [ "$_quiet" -ge "$boxsession_watch_for" ]; then
+            break
+        fi
+        if [ "$_quiet" -lt "$boxsession_watch_quiet" ]; then
+            continue
+        fi
+        # Due when the line is at least half as old as the quiet: each refresh doubles the wait.
+        _at="$(pb_get "aichatv2_boxline_at_$1")"
+        case "$_at" in
+            ''|0?*|*[!0123456789]*) _at=0 ;;
+        esac
+        if [ $(( (_now - _at) * 2 )) -lt "$_quiet" ]; then
+            continue
+        fi
+        boxsession_line_quiet="$_quiet"
+        boxsession_line_refresh "$1"
+        boxsession_line_quiet=""
+    done
+    _holder="$(pb_get "$_key")"
+    [ "$_holder" = "$_me" ] && pb_set "$_key" ""
+    return 0
 }
 
 # _boxsession_net_text <box> <boxsession_net_counts row>  ->  sets _tail and _help, the caller's
@@ -707,6 +820,8 @@ boxsession_release() {
     pb_set "aichatv2_boxline_at_$1" ""
     pb_set "aichatv2_boxprompts_$1" ""
     pb_set "aichatv2_boxagent_$1" ""
+    # The quiet watch finds no line and ends at its next look.
+    /bin/rm -f "$(boxsession_watch_mark_file "$1")"
     local _box="$(printf '%s\n' "$_row" | /usr/bin/cut -f2)"
     local _disposable="$(printf '%s\n' "$_row" | /usr/bin/cut -f3)"
     if [ "$_disposable" != "yes" ]; then

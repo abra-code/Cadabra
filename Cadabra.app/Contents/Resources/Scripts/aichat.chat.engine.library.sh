@@ -114,6 +114,40 @@ chat_engine_remember_recent() {
 	esac
 }
 
+# chat_engine_box_memory_check <run-in> [window]  ->  0 to go on, 1 when the user canceled the
+# memory warning (warn_ram_pressure_for_new_box): the memory of the box <run-in> is about to start,
+# with the models and boxes already running. A new box has its image's memory; a kept box that
+# runs adds nothing. The window's own disposable box, if it has one from an earlier start, is not
+# counted: the new start releases it, and a disposable box nobody uses goes. Nothing is asked
+# when the size cannot be read.
+chat_engine_box_memory_check() {
+	local run_in="$1" win="${2:-}" gb="" label="" rows=""
+	local status
+	case "$run_in" in
+		new:*)
+			rows="$(agentvm_images)"
+			status=$?
+			[ "$status" -eq 0 ] || { agentvm_last_error "$status" >/dev/null; rows=""; }
+			gb="$(printf '%s\n' "$rows" | /usr/bin/awk -F'\t' -v name="${run_in#new:}" '$1 == name { print $12; exit }')"
+			label="a new AgentVM box from ${run_in#new:}" ;;
+		box:*)
+			rows="$(agentvm_boxes)"
+			status=$?
+			[ "$status" -eq 0 ] || { agentvm_last_error "$status" >/dev/null; rows=""; }
+			# A kept box that runs already holds its memory, and is counted among the running ones.
+			gb="$(printf '%s\n' "$rows" | /usr/bin/awk -F'\t' -v name="${run_in#box:}" '$1 == name && $2 != "running" { print $6; exit }')"
+			label="the AgentVM box ${run_in#box:}" ;;
+	esac
+	case "$gb" in
+		''|*[!0123456789]*|0*) return 0 ;;
+	esac
+	local own=""
+	if [ -n "$win" ]; then
+		own="$(boxsession_registry_row "$win" | /usr/bin/awk -F'\t' '$3 == "yes" { print $2 }')"
+	fi
+	warn_ram_pressure_for_new_box "$(( gb * 1073741824 ))" "$label" "$own"
+}
+
 # chat_engine_box_transport <win> <command> <agent id> <run-in> <use-tools>
 #   The external agent in an agent-vm box: 0 with CHAT_ENGINE_CONFIG set, or 1 after an alert.
 #   A plain command like chat_engine_transport_config, for the same reasons.
@@ -219,6 +253,14 @@ Whether its project is shared read-only cannot be read from Cadabra's settings. 
 $why"
 			return 1
 		fi
+	fi
+
+	# Memory: the box's, with the models and boxes already running, before it starts, rather
+	# than found in the middle of a turn. Cancel leaves nothing to release.
+	chat_engine_box_memory_check "$run_in" "$win"
+	if [ $? -ne 0 ]; then
+		echo "box: not started, the memory warning was canceled ($run_in)"
+		return 1
 	fi
 
 	chat_loading_overlay_note "$win" "Starting the AgentVM box..."

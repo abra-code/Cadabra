@@ -711,44 +711,106 @@ calculate_total_server_ram() {
     echo "$total"
 }
 
+# ram_total_bytes  ->  this Mac's unified memory in bytes, or nothing when it cannot be read.
+# CADABRA_RAM_BYTES is the test seam: the checks below are about the Mac they run on.
+ram_total_bytes() {
+    if [ -n "${CADABRA_RAM_BYTES:-}" ]; then
+        printf '%s\n' "$CADABRA_RAM_BYTES"
+        return 0
+    fi
+    /usr/sbin/sysctl -n hw.memsize 2>/dev/null
+}
+
+# running_boxes_ram [except box]  ->  the memory of the AgentVM boxes running now, in bytes; 0 when
+# there are none or boxes cannot be used on this Mac. A box's virtual machine holds its memory for
+# as long as it runs, whichever app or Terminal started it. <except> is not counted.
+running_boxes_ram() {
+    source "$OMC_APP_BUNDLE_PATH/Contents/Resources/Scripts/aichat.agentvm.library.sh"
+    agentvm_running_boxes_bytes "${1:-}"
+}
+
 # warn_ram_pressure_for_new_model <model_bytes> <model_label>
-# Warns if adding this model would push total server RAM past 75% of unified memory.
-# When other models are already running, the combined load is shown.
+# Warns if adding this model would push the memory in use past 75% of unified memory: the
+# running models (calculate_total_server_ram) and the running AgentVM boxes (running_boxes_ram).
+# When either is running, the combined load is shown.
 # Returns 0 to proceed, 1 if the user chose Cancel.
 warn_ram_pressure_for_new_model() {
-    local model_bytes="$1"
-    local model_label="$2"
+    _warn_ram_pressure model "$1" "$2"
+}
 
-    [ -n "$model_bytes" ] && [ "$model_bytes" -gt 0 ] 2>/dev/null || return 0
+# warn_ram_pressure_for_new_box <box_bytes> <box_label> [except box]
+# The same check for an AgentVM box about to start for a chat, before it starts: its memory,
+# with the models and boxes already running, except <except> (the window's own disposable box,
+# which goes when this one starts). Returns 0 to proceed, 1 if the user chose Cancel.
+warn_ram_pressure_for_new_box() {
+    _warn_ram_pressure box "$1" "$2" "${3:-}"
+}
 
-    local ram_bytes=$(/usr/sbin/sysctl -n hw.memsize 2>/dev/null)
+# _warn_ram_pressure <model|box> <bytes> <label> [except box]  ->  the two checks above.
+_warn_ram_pressure() {
+    local kind="$1"
+    local new_bytes="$2"
+    local new_label="$3"
+    local except_box="${4:-}"
+
+    [ -n "$new_bytes" ] && [ "$new_bytes" -gt 0 ] 2>/dev/null || return 0
+
+    local ram_bytes=$(ram_total_bytes)
     [ -n "$ram_bytes" ] && [ "$ram_bytes" -gt 0 ] 2>/dev/null || return 0
 
     local ram_threshold=$(( ram_bytes * 3 / 4 ))
-    local current_load=$(calculate_total_server_ram)
-    local new_total=$(( current_load + model_bytes ))
+    local model_load=$(calculate_total_server_ram)
+    # Boxes are counted only when this alone does not already fit: listing them runs agent-vm.
+    local box_load=0
+    if [ $(( model_load + new_bytes )) -le "$ram_threshold" ] 2>/dev/null; then
+        box_load=$(running_boxes_ram "$except_box")
+        [ -n "$box_load" ] && [ "$box_load" -ge 0 ] 2>/dev/null || box_load=0
+    fi
+    local current_load=$(( model_load + box_load ))
+    local new_total=$(( current_load + new_bytes ))
 
     [ "$new_total" -le "$ram_threshold" ] 2>/dev/null && return 0
 
     local ram_fmt=$(format_bytes "$ram_bytes")
-    local model_fmt=$(format_bytes "$model_bytes")
+    local new_fmt=$(format_bytes "$new_bytes")
     local threshold_fmt=$(format_bytes "$ram_threshold")
-    local new_fmt=$(format_bytes "$new_total")
+    local total_fmt=$(format_bytes "$new_total")
+
+    local what="Loading \"${new_label}\"" new_row="New model:      " ok="Load Anyway"
+    local advice="Consider closing another model session first."
+    if [ "$kind" = "box" ]; then
+        what="Starting ${new_label}"
+        new_row="New box:        "
+        ok="Start Anyway"
+        advice="Consider closing a model session or stopping another AgentVM box first."
+    elif [ "$box_load" -gt 0 ] 2>/dev/null; then
+        advice="Consider closing another model session or stopping an AgentVM box first."
+    fi
 
     local message
     if [ "$current_load" -gt 0 ] 2>/dev/null; then
-        local current_fmt=$(format_bytes "$current_load")
-        message="Loading \"${model_label}\" (${model_fmt}) will likely cause high memory pressure.
+        local rows=""
+        [ "$model_load" -gt 0 ] 2>/dev/null && rows="Running models:  $(format_bytes "$model_load")
+"
+        [ "$box_load" -gt 0 ] 2>/dev/null && rows="${rows}Running boxes:   $(format_bytes "$box_load")
+"
+        message="${what} (${new_fmt}) will likely cause high memory pressure.
 
-Running models:  ${current_fmt}
-New model:       ${model_fmt}
-Combined total:  ${new_fmt}
+${rows}${new_row} ${new_fmt}
+Combined total:  ${total_fmt}
 75% of RAM:      ${threshold_fmt}
 Unified memory:  ${ram_fmt}
 
-This may cause slowdowns or instability. Consider closing another model session first."
+This may cause slowdowns or instability. ${advice}"
+    elif [ "$kind" = "box" ]; then
+        message="The memory of ${new_label} (${new_fmt}) is likely more than your Mac can spare.
+
+Unified memory:  ${ram_fmt}
+Recommended max: ${threshold_fmt}
+
+Give the box less memory: make a box with a smaller memory size in Tools > AgentVM, and choose it in Runs in."
     else
-        message="\"${model_label}\" (${model_fmt}) likely exceeds what your Mac can load.
+        message="\"${new_label}\" (${new_fmt}) likely exceeds what your Mac can load.
 
 Unified memory:  ${ram_fmt}
 Recommended max: ${threshold_fmt}
@@ -759,7 +821,7 @@ Models larger than 75% of unified memory may fail to load or cause severe memory
     "$alert" \
         --level caution \
         --title "High Memory Usage" \
-        --ok "Load Anyway" \
+        --ok "$ok" \
         --cancel "Cancel" \
         "$message"
 

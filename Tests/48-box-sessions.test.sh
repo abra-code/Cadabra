@@ -20,6 +20,11 @@ TAB=$(printf '\t')
 /bin/mkdir -p "$PROJECT"
 
 unset CADABRA_AGENT_VM AGENT_VM_HOME
+# A quiet watch that an entry starts ends at its first look, a second later, so none outlives the
+# section that started it; the section on the watch sets its own.
+CADABRA_BOXWATCH_EVERY=1
+CADABRA_BOXWATCH_FOR=1
+export CADABRA_BOXWATCH_EVERY CADABRA_BOXWATCH_FOR
 
 with_fake() {
     ( CADABRA_AGENT_VM="$FAKE"; export CADABRA_AGENT_VM; cad_call_lib "$LIB" "$@" )
@@ -744,6 +749,7 @@ entry() {
 entry usage
 /bin/sleep 1
 check "an entry that is not a message does not read the log" "" "$(logged 'box netlog' 2>/dev/null)"
+check "  but marks the time for the quiet watch" "1" "$([ -f "${TMPDIR:-/tmp}/cadabra-boxwatch.$win" ] && echo 1)"
 entry message
 w_left=50
 # The tooltip is the refresh's last write: waiting for it leaves no child writing after this file ends.
@@ -897,6 +903,98 @@ check "a new line forgets the prompts told" "" "$(cad_pb_get aichatv2_boxprompts
 cad_pb_set aichatv2_boxprompts_w1 "2"
 with_fake boxsession_release w1
 check "  and so does a release"          "" "$(cad_pb_get aichatv2_boxprompts_w1)"
+/bin/rm -f "$REGISTRY"
+
+
+section "the quiet watch looks at the line when the conversation goes quiet"
+# watch_mark [for]  ->  boxsession_watch_mark for w1, as the entry handler runs it for each entry:
+# a watch that looks every second, is due after 2 quiet seconds, and ends <for> (6) seconds
+# after the last entry.
+watch_mark() {
+    ( CADABRA_AGENT_VM="$FAKE" CADABRA_BOXWATCH_EVERY=1 CADABRA_BOXWATCH_QUIET=2 CADABRA_BOXWATCH_FOR="${1:-6}"
+      export CADABRA_AGENT_VM CADABRA_BOXWATCH_EVERY CADABRA_BOXWATCH_QUIET CADABRA_BOXWATCH_FOR
+      cad_call_lib "$LIB" boxsession_watch_mark w1 )
+}
+# wait_key <value> [tenths]  ->  once aichatv2_boxwatch_w1 is <value> (10 s at most).
+wait_key() {
+    w_left="${2:-100}"
+    while [ "$(cad_pb_get aichatv2_boxwatch_w1)" != "$1" ] && [ "$w_left" -gt 0 ]; do
+        w_left=$((w_left - 1))
+        /bin/sleep 0.1
+    done
+}
+alive() { kill -0 "$1" 2>/dev/null && echo yes || echo no; }
+MARK="${TMPDIR:-/tmp}/cadabra-boxwatch.w1"
+fake_reset
+/bin/cp "$FIXTURES/box-status-running.json" "$FAKE_AGENTVM_DIR/box-$PBOX.json"
+netlog_fixture
+execlog_fixture false
+printf 'w1\t%s\tno\t%s\tno\t1\n' "$PBOX" "$PROJECT" > "$REGISTRY"
+cad_pb_set aichatv2_boxline_w1 "$PBOX${TAB}$since${TAB}AgentVM box $PBOX"
+cad_pb_set aichatv2_boxline_at_w1 "$(/bin/date +%s)"
+cad_pb_set aichatv2_boxprompts_w1 ""
+cad_pb_set aichatv2_boxwatch_w1 ""
+cad_journal_reset
+alerts_reset
+watch_mark
+wpid=$(cad_pb_get aichatv2_boxwatch_w1)
+check "an entry starts a watch"          "yes" "$(alive "$wpid")"
+check "  and marks the time"             "1" "$([ -f "$MARK" ] && echo 1)"
+watch_mark
+check "a second entry keeps the same watch" "$wpid" "$(cad_pb_get aichatv2_boxwatch_w1)"
+# Past the watch's first look, a second in: still under the 2 quiet seconds.
+/bin/sleep 1.3
+check "  which reads nothing while the conversation is not quiet" "" "$(logged 'box execlog' 2>/dev/null)"
+w_left=60
+while [ "$(alerts_count)" = "0" ] && [ "$w_left" -gt 0 ]; do w_left=$((w_left - 1)); /bin/sleep 0.1; done
+check "once it is quiet, a prompt that waits is told" "1" "$(alerts_count)"
+check "  saying it may be why the agent went quiet" "1" "$(alerts_mention 'seconds, and this may be why')"
+check "  and the line counts it"         "1" "$(cad_has "$(line_title)" 'permission prompts')"
+wait_key ""
+check "the watch ends when its time is up" "" "$(cad_pb_get aichatv2_boxwatch_w1)"
+/bin/sleep 0.2
+check "  and its process is gone"        "no" "$(alive "$wpid")"
+check "  having told the prompt once"    "1" "$(alerts_count)"
+watch_mark 30
+wpid=$(cad_pb_get aichatv2_boxwatch_w1)
+cad_pb_set aichatv2_boxline_w1 ""
+wait_key "" 30
+check "a released line ends the watch within a second" "" "$(cad_pb_get aichatv2_boxwatch_w1)"
+cad_pb_set aichatv2_boxline_w1 "$PBOX${TAB}$since${TAB}AgentVM box $PBOX"
+watch_mark 30
+wpid=$(cad_pb_get aichatv2_boxwatch_w1)
+cad_pb_set aichatv2_boxwatch_w1 999999
+/bin/sleep 2
+check "a watch whose key another holds ends" "no" "$(alive "$wpid")"
+check "  leaving the key to the other"   "999999" "$(cad_pb_get aichatv2_boxwatch_w1)"
+cad_pb_set aichatv2_boxwatch_w1 ""
+# A Cadabra that is gone (a crash leaves the line on the pasteboard): the pid of a finished shell.
+gone_pid=$(/bin/sh -c 'echo $$')
+( OMC_APP_PROCESS_ID="$gone_pid"; export OMC_APP_PROCESS_ID; watch_mark 30 )
+wpid=$(cad_pb_get aichatv2_boxwatch_w1)
+wait_key "" 30
+check "a watch whose Cadabra is gone ends" "" "$(cad_pb_get aichatv2_boxwatch_w1)"
+/bin/sleep 0.2
+check "  and its process with it"        "no" "$(alive "$wpid")"
+( TMPDIR="$OMCTEST_WORK/no-such-dir"; export TMPDIR; watch_mark 30 )
+check "a mark that cannot be written still starts a watch" "yes" "$(alive "$(cad_pb_get aichatv2_boxwatch_w1)")"
+wait_key "" 30
+check "  which ends at its first look, finding no mark" "" "$(cad_pb_get aichatv2_boxwatch_w1)"
+with_fake boxsession_release w1
+check "a release removes the mark"       "" "$([ -f "$MARK" ] && echo 1)"
+execlog_fixture true
+cad_pb_set aichatv2_boxline_w1 "$PBOX${TAB}$since${TAB}AgentVM box $PBOX"
+cad_pb_set aichatv2_boxprompts_w1 ""
+alerts_reset
+with_fake eval 'boxsession_line_quiet=45; boxsession_line_refresh w1'
+check "a prompt the watch finds for a program agent-vm stopped" "1" "$(alerts_mention 'so agent-vm stopped the program')"
+check "  is not said to be why the agent went quiet" "0" "$(alerts_mention 'may be why')"
+execlog_fixture false
+cad_pb_set aichatv2_boxprompts_w1 ""
+alerts_reset
+with_fake eval 'boxsession_line_quiet=150; boxsession_line_refresh w1'
+check "one left waiting is, in minutes after a while" "1" "$(alerts_mention 'for about 3 minutes, and this may be why')"
+cad_pb_set aichatv2_boxline_w1 ""
 /bin/rm -f "$REGISTRY"
 
 omctest_end
