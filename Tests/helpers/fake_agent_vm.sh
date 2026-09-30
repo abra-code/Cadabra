@@ -15,7 +15,8 @@
 #              prints "Error: " and the file's text to stderr and exits 1, or with the status in
 #              fail-<a>-<b>-status when that is present (75 for agent-vm's "no free VM slot").
 #   version    what --version prints (default: AGENTVM_MIN_VERSION from the library, the oldest
-#              version Cadabra accepts, so raising it needs no change here).
+#              version Cadabra accepts, so raising it needs no change here), and then also the
+#              version in version --json's answer, unless version.json overrides that.
 #   delay      seconds between the progress events of a long command (default 0).
 #   <key>.json the answer to one query, overriding the fixture of that name:
 #              version, doctor, image-list, box-list, packs, execlog, netlog, box-create,
@@ -123,7 +124,12 @@ case "$1 $2" in
             /usr/bin/sed -n 's/^AGENTVM_MIN_VERSION="\(.*\)"$/\1/p' "$agentvm_library"
         fi ;;
     "version --json")
-        answer version ;;
+        # The same version --version prints, when the "version" file sets it, as agent-vm would.
+        if [ -f "$state/version" ] && [ ! -f "$state/version.json" ]; then
+            /usr/bin/jq --arg v "$(/bin/cat "$state/version")" '.version = $v' "$fixtures/version.json"
+        else
+            answer version
+        fi ;;
     "doctor --json")
         answer doctor ;;
     "image list")

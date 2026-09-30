@@ -8,12 +8,17 @@ survives the window and shows its progress in the jobs table.
 
 Usage:
     agentvm_install.py install --api URL --min VERSION --team TEAM --link PATH
+    agentvm_install.py newest --api URL [--max-time SECONDS]
 
     --api   the GitHub API address of the newest release
             (https://api.github.com/repos/abra-code/agent-vm/releases/latest)
     --min   the oldest agent-vm version Cadabra accepts; an older release is refused
     --team  the Developer ID team the package must be signed by
     --link  where the package puts the link to agent-vm, checked after the install
+
+newest prints the newest release's version on stdout and nothing else: the release step alone,
+for the Box Manager's daily look at whether an update exists. --max-time (default 60) limits
+the request, so a Mac without a network is not held up for long.
 
 Steps, each announced as a progress event on stderr (the JSON lines agent-vm writes, which
 agentvm_job.py list reads): release, download, verify, install, check.
@@ -123,13 +128,13 @@ def run(argv):
 
 # -- release -------------------------------------------------------------------------------
 
-def read_release(api, folder):
+def read_release(api, folder, max_time=60):
     """(version, asset name, download address, size or None) of the newest release."""
     event("release", "Looking for the newest AgentVM release")
     answer = os.path.join(folder, "release.json")
     child = subprocess.Popen(
         [CURL, "--silent", "--show-error", "--location", "--proto", "=https",
-         "--proto-redir", "=https", "--max-time", "60",
+         "--proto-redir", "=https", "--max-time", str(max_time),
          "--header", "Accept: application/vnd.github+json",
          "--output", answer, "--write-out", "%{http_code}", api],
         stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
@@ -402,6 +407,15 @@ def install_newest(args):
     print(f"Installed AgentVM {version}: {args.link}")
 
 
+def print_newest(args):
+    folder = tempfile.mkdtemp(prefix="cadabra-agentvm-newest.")
+    try:
+        version = read_release(args.api, folder, args.max_time)[0]
+    finally:
+        shutil.rmtree(folder, ignore_errors=True)
+    print(version)
+
+
 def terminated(_signum, _frame):
     # A system shutdown (SIGTERM, which the job runner passes on): leave through the finally
     # clauses, so the temporary folder with the package goes too.
@@ -416,8 +430,21 @@ def main(argv):
     command.add_argument("--min", required=True)
     command.add_argument("--team", required=True)
     command.add_argument("--link", required=True)
+    command = commands.add_parser("newest")
+    command.add_argument("--api", required=True)
+    command.add_argument("--max-time", type=int, default=60)
     args = parser.parse_args(argv)
     signal.signal(signal.SIGTERM, terminated)
+    if args.command == "newest":
+        try:
+            print_newest(args)
+        except (Canceled, KeyboardInterrupt):
+            sys.stderr.write("Error: Canceled.\n")
+            return 130
+        except Failure as problem:
+            sys.stderr.write(f"Error: {problem}\n")
+            return 1
+        return 0
     if not VERSION_PATTERN.fullmatch(args.min):
         sys.stderr.write(f"Error: --min {args.min!r} is not a version.\n")
         return 2

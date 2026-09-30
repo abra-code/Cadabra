@@ -642,6 +642,79 @@ agentvm_install_job() {
     _agentvm_job_result $? start
 }
 
+# -- Is a newer release out? ---------------------------------------------------------------
+#
+# The Box Manager says when the newest release is newer than the installed agent-vm. GitHub is
+# asked at most once a day (agentvm_newest_every), with a short limit on the request, and the
+# answer is kept in agentvm_newest_file as "<when asked, epoch seconds> TAB <version>". A failed
+# lookup renews the date and keeps the version found before (none when there was none), so a
+# Mac without a network asks once a day, not at every look, and an update already known stays
+# offered. Only the installed origin is compared: a developer build or a test double is not
+# something the release would replace.
+agentvm_newest_every=86400
+agentvm_newest_max_time=5
+
+# agentvm_newest_file  ->  where the last lookup is kept.
+agentvm_newest_file() {
+    printf '%s\n' "$mcp_app_support/agentvm-newest.tsv"
+}
+
+# agentvm_newest  ->  the newest release's version from the last lookup, or nothing.
+agentvm_newest() {
+    local _file="$(agentvm_newest_file)"
+    [ -f "$_file" ] || return 0
+    /usr/bin/awk -F'\t' 'NR == 1 && $2 ~ /^[0-9]+(\.[0-9]+)*$/ { print $2 }' "$_file"
+}
+
+# agentvm_newest_check  ->  asks GitHub for the newest release when the last lookup is older than
+# agentvm_newest_every, or in the future (a clock set back), or missing. Never fails: the Box
+# Manager only loses its notice.
+agentvm_newest_check() {
+    local _file="$(agentvm_newest_file)"
+    local _now="$(/bin/date +%s)"
+    local _last=""
+    [ -f "$_file" ] && _last="$(/usr/bin/awk -F'\t' 'NR == 1 { print $1 }' "$_file")"
+    # A leading zero too: $(( )) would read the rest as octal, and "08" ends the handler.
+    case "$_last" in
+        ''|0?*|*[!0123456789]*) _last=0 ;;
+    esac
+    if [ "$_last" -le "$_now" ] && [ $((_now - _last)) -lt "$agentvm_newest_every" ]; then
+        return 0
+    fi
+    local _version
+    _version="$("$agentvm_python" "$agentvm_install_py" newest --api "$agentvm_releases_api" \
+        --max-time "$agentvm_newest_max_time" 2>/dev/null)"
+    local _status=$?
+    if [ "$_status" -ne 0 ]; then
+        _version="$(agentvm_newest)"
+    fi
+    /bin/mkdir -p "$mcp_app_support" 2>/dev/null
+    # Braces, so that a redirection that fails is silenced too.
+    { printf '%s\t%s\n' "$_now" "$_version" > "$_file.$$"; } 2>/dev/null
+    _status=$?
+    if [ "$_status" -eq 0 ]; then
+        /bin/mv -f "$_file.$$" "$_file" 2>/dev/null
+        _status=$?
+    fi
+    [ "$_status" -eq 0 ] || /bin/rm -f "$_file.$$"
+    return 0
+}
+
+# agentvm_update_available <installed version>  ->  the newest release's version when it is
+# newer than the installed one, after agentvm_newest_check; nothing otherwise, and nothing for
+# a developer build or a test double.
+agentvm_update_available() {
+    [ -n "$1" ] || return 0
+    [ "$(agentvm_origin)" = "installed" ] || return 0
+    agentvm_newest_check
+    local _newest="$(agentvm_newest)"
+    [ -n "$1" ] && [ -n "$_newest" ] && [ "$_newest" != "$1" ] || return 0
+    agentvm_version_at_least "$1" "$_newest"
+    local _current=$?
+    [ "$_current" -eq 0 ] || printf '%s\n' "$_newest"
+    return 0
+}
+
 # agentvm_installing  ->  0 while an install job runs.
 agentvm_installing() {
     local _title="$(agentvm_job_busy "$agentvm_install_target")"

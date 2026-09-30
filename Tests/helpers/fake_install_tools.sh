@@ -32,7 +32,8 @@
 #                    installer makes $HOME/.local/share/agent-vm/versions/<version>/agent-vm
 #                    and links $HOME/.local/bin/agent-vm to it, as agent-vm's package does.
 #                    That agent-vm is $FAKE_AGENTVM when set (fake_agent_vm.sh, whose version
-#                    is its own "version" file), otherwise a script printing <version>.
+#                    is its own "version" file, which installer then sets to <version>),
+#                    otherwise a script printing <version>.
 #   The log also gets "package-present yes|no" for each install, and "choice <id> <setting>"
 #   for each entry of the -applyChoiceChangesXML file.
 #
@@ -173,6 +174,8 @@ case "$tool" in
         /bin/rm -f "$folder/agent-vm"
         if [ -n "${FAKE_AGENTVM:-}" ]; then
             /bin/ln -s "$FAKE_AGENTVM" "$folder/agent-vm"
+            # The fake agent-vm reports the version it was installed as.
+            [ -n "${FAKE_AGENTVM_DIR:-}" ] && printf '%s\n' "$version" > "$FAKE_AGENTVM_DIR/version"
         else
             printf '#!/bin/sh\necho %s\n' "$version" > "$folder/agent-vm"
             /bin/chmod +x "$folder/agent-vm"

@@ -142,7 +142,9 @@ boxes_alert_error() {
 # otherwise the header says why, the controls are disabled, and it returns agentvm_available's
 # status. When AgentVM is missing or too old, Install AgentVM... or Update AgentVM... is shown
 # beside the reason, disabled while an install job runs. Refresh stays enabled either way, so
-# an AgentVM installed from elsewhere (Terminal, AgentVM.app) is found without reopening.
+# an AgentVM installed from elsewhere (Terminal, AgentVM.app) is found without reopening. When
+# agent-vm can be used and a newer release is out (agentvm_update_available, which asks GitHub
+# at most once a day), Update AgentVM... is shown beside the version, with a note.
 boxes_show_header() {
     local _uuid="$1"
     local _reason
@@ -175,7 +177,6 @@ boxes_show_header() {
         done
         return "$_status"
     fi
-    "$dialog" "$_uuid" "$BOXES_INSTALL_ID" omc_hide
     for _id in $BOXES_KIND_ID $BOXES_NEW_BOX_ID $BOXES_HEADER_NEW_IMAGE_ID; do
         "$dialog" "$_uuid" "$_id" omc_enable
     done
@@ -187,9 +188,33 @@ boxes_show_header() {
         test)      _where="test double" ;;
     esac
     "$dialog" "$_uuid" "$BOXES_HEADER_ID" "agent-vm ${_version:-?} ($_where)"
+    # A newer release than the installed one (looked up at most once a day): Update AgentVM...
+    # beside the version, and a first note saying so.
+    local _newer="$(agentvm_update_available "$_version")"
+    local _notes=""
+    if [ -n "$_newer" ]; then
+        _notes="AgentVM $_newer is available; this Mac has $_version. Boxes that are running keep their version until they are stopped."
+        "$dialog" "$_uuid" "$BOXES_INSTALL_ID" omc_set_property title "Update AgentVM..."
+        "$dialog" "$_uuid" "$BOXES_INSTALL_ID" omc_show
+        agentvm_installing
+        if [ $? -eq 0 ]; then
+            _notes="Installing AgentVM $_newer..."
+            "$dialog" "$_uuid" "$BOXES_INSTALL_ID" omc_disable
+        else
+            "$dialog" "$_uuid" "$BOXES_INSTALL_ID" omc_enable
+        fi
+    else
+        "$dialog" "$_uuid" "$BOXES_INSTALL_ID" omc_hide
+    fi
     # Doctor's warnings and failures, as it words them: a full set of VM slots, low disk space,
     # a signature that will not run elsewhere.
-    local _notes="$(agentvm_doctor | /usr/bin/awk -F'\t' '$2 == "warning" || $2 == "failure" { printf "%s%s: %s", sep, $1, $3; sep = "\n" }')"
+    local _doctor="$(agentvm_doctor | /usr/bin/awk -F'\t' '$2 == "warning" || $2 == "failure" { printf "%s%s: %s", sep, $1, $3; sep = "\n" }')"
+    if [ -n "$_notes" ] && [ -n "$_doctor" ]; then
+        _notes="$_notes
+$_doctor"
+    else
+        _notes="$_notes$_doctor"
+    fi
     "$dialog" "$_uuid" "$BOXES_NOTES_ID" "$_notes"
     return 0
 }
@@ -1202,16 +1227,30 @@ boxes_show_jobs_only() {
 
 # boxes_install_agentvm <uuid>  ->  asks, then starts the install job (agentvm_install_job) and
 # polls it; 0 when started or declined, otherwise the refusal is shown in an alert. Install or
-# Update follows from what agentvm_available says now, and nothing is started when agent-vm can
-# be used after all (installed meanwhile from Terminal, say): the header is shown again instead.
+# Update follows from what agentvm_available says now (Update also for a usable agent-vm older
+# than the newest release), and nothing is started when agent-vm can be used and is current
+# (installed meanwhile from Terminal, say): the header is shown again instead.
 boxes_install_agentvm() {
     local _uuid="$1"
     agentvm_available >/dev/null
     local _status=$?
     local _verb
+    local _newer=""
+    if [ "$_status" -eq 0 ]; then
+        _newer="$(agentvm_update_available "$(agentvm_version_info | /usr/bin/cut -f1)")"
+    fi
     case "$_status" in
         "$agentvm_not_installed") _verb="install" ;;
         "$agentvm_too_old")       _verb="update" ;;
+        0)  if [ -n "$_newer" ]; then
+                _verb="update"
+            else
+                boxes_show_header "$_uuid"
+                if [ $? -eq 0 ]; then
+                    boxes_populate "$_uuid" images
+                fi
+                return 0
+            fi ;;
         *)  boxes_show_header "$_uuid"
             if [ $? -eq 0 ]; then
                 boxes_populate "$_uuid" images

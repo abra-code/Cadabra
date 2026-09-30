@@ -409,6 +409,88 @@ omc_run aichat.boxes.agentvm.install
 check "nothing is asked"               "0" "$(alerts_count)"
 check "  the window is simply usable"  "1" "$(ui_enabled "$BOXES_KIND_ID")"
 
+# install_by_hand <version> - agent-vm <version> installed, as its package would, before any window.
+install_by_hand() {
+    printf '%s\n' "$1" > "$FAKE_INSTALL_DIR/installs"
+    printf '%s\n' "$1" > "$FAKE_AGENTVM_DIR/version"
+    "$CADABRA_INSTALLER" -pkg "$OMCTEST_WORK/by-hand.pkg" -target CurrentUserHomeDirectory >/dev/null
+    printf '%s\n' "$NEWEST" > "$FAKE_INSTALL_DIR/installs"
+}
+NEWEST_FILE="$HOME/Library/Application Support/Cadabra/agentvm-newest.tsv"
+# newest_asked  ->  how many times GitHub was asked for the newest release with the short limit.
+newest_asked() { asked "curl .*--max-time 5 .*releases/latest"; }
+
+section "Box Manager: a newer release than the installed agent-vm"
+install_reset
+/bin/rm -f "$NEWEST_FILE"
+install_by_hand "$MIN_VERSION"
+open_window
+check "the header names the installed version" "agent-vm $MIN_VERSION (installed)" "$(ui_value "$BOXES_HEADER_ID")"
+check "  GitHub was asked once, with a short limit" "1" "$(newest_asked)"
+check "Update AgentVM... is shown"     "1" "$(ui_visible "$BOXES_INSTALL_ID")"
+check "  by that name"                 "Update AgentVM..." "$(ui_prop "$BOXES_INSTALL_ID" title)"
+check "  and can be clicked"           "1" "$(ui_enabled "$BOXES_INSTALL_ID")"
+check "  the note names both versions" "1" "$(cad_has "$(ui_value "$BOXES_NOTES_ID")" "AgentVM $NEWEST is available; this Mac has $MIN_VERSION.")"
+check "the window stays usable"        "1" "$(ui_enabled "$BOXES_NEW_BOX_ID")"
+open_window
+check "a second look the same day does not ask again" "1" "$(newest_asked)"
+check "  and still shows the update"   "1" "$(ui_visible "$BOXES_INSTALL_ID")"
+printf '%s\t%s\n' "$(( $(/bin/date +%s) - 86401 ))" "$NEWEST" > "$NEWEST_FILE"
+open_window
+check "a day later it asks again"      "2" "$(newest_asked)"
+printf '%s\t%s\n' "$(( $(/bin/date +%s) + 86400 ))" "$NEWEST" > "$NEWEST_FILE"
+open_window
+check "a lookup dated in the future is redone" "3" "$(newest_asked)"
+
+section "Box Manager: the newer release installed with Update AgentVM..."
+alerts_reset
+alert_answer 0
+omc_run aichat.boxes.agentvm.install
+check "it asks first"                  "1" "$(alerts_mention "Boxes that are running keep their version")"
+upd_job=$(lib agentvm_jobs | /usr/bin/awk -F'\t' '$2 == "agentvm-install" { print $1 }' | /usr/bin/tail -1)
+check "  an update job"                "Update AgentVM" "$(lib agentvm_jobs | /usr/bin/awk -F'\t' -v id="$upd_job" '$1 == id { print $4 }')"
+check "  that ends done"               "done" "$(wait_state "$upd_job" done)"
+check "  the newer version is installed" "$NEWEST" "$("$LINK" --version)"
+omc_run aichat.boxes.poll
+check "then the header names it"       "agent-vm $NEWEST (installed)" "$(ui_value "$BOXES_HEADER_ID")"
+check "  and Update AgentVM... is gone" "0" "$(ui_visible "$BOXES_INSTALL_ID")"
+check "  with no note about it"        "0" "$(cad_has "$(ui_value "$BOXES_NOTES_ID")" "is available")"
+
+section "Box Manager: no notice without a newer release"
+install_reset
+/bin/rm -f "$NEWEST_FILE"
+install_by_hand "$NEWEST"
+open_window
+check "the installed one is the newest: no Update" "0" "$(ui_visible "$BOXES_INSTALL_ID")"
+install_reset
+/bin/rm -f "$NEWEST_FILE"
+install_by_hand "$MIN_VERSION"
+printf 'Could not resolve host: api.github.com\n' > "$FAKE_INSTALL_DIR/curl-fail"
+open_window
+check "no network: no Update"          "0" "$(ui_visible "$BOXES_INSTALL_ID")"
+check "  and no words about it"        "0" "$(cad_has "$(ui_value "$BOXES_NOTES_ID")" "is available")"
+check "  the failure is kept, with no version" "" "$(/usr/bin/cut -f2 "$NEWEST_FILE")"
+/bin/rm -f "$FAKE_INSTALL_DIR/curl-fail"
+open_window
+check "  so it is not asked again that day" "1" "$(newest_asked)"
+install_reset
+printf '%s\t%s\n' "$(/bin/date +%s)" "$NEWEST" > "$NEWEST_FILE"
+check "a test double is never compared" "" "$( ( CADABRA_AGENT_VM="$FAKE_AGENTVM"; export CADABRA_AGENT_VM; lib agentvm_update_available 0.0.1 ) )"
+check "  an installed one is"          "$NEWEST" "$(lib agentvm_update_available 0.0.1)"
+check "  and a newer installed one is not" "" "$(lib agentvm_update_available 999.0)"
+printf '08\t%s\n' "$NEWEST" > "$NEWEST_FILE"
+check "a damaged lookup date is redone" "$NEWEST" "$(lib agentvm_update_available 0.0.1)"
+printf '%s\t%s\n' "$(( $(/bin/date +%s) - 86401 ))" "$NEWEST" > "$NEWEST_FILE"
+printf 'Could not resolve host: api.github.com\n' > "$FAKE_INSTALL_DIR/curl-fail"
+check "an update already known outlives a failed lookup" "$NEWEST" "$(lib agentvm_update_available 0.0.1)"
+check "  whose date is renewed"        "1" "$(( $(/bin/date +%s) - $(/usr/bin/cut -f1 "$NEWEST_FILE") < 60 ))"
+/bin/rm -f "$FAKE_INSTALL_DIR/curl-fail"
+asked_before=$(newest_asked)
+/bin/rm -f "$NEWEST_FILE"
+lib agentvm_update_available "" >/dev/null
+check "an unknown installed version asks nothing" "$asked_before" "$(newest_asked)"
+/bin/rm -f "$NEWEST_FILE"
+
 # -----------------------------------------------------------------------------------------
 # engine <function> [args...]  ->  its status, then CHAT_ENGINE_CONFIG (48-box-sessions.test.sh's).
 engine() {
