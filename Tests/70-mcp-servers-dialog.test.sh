@@ -518,6 +518,86 @@ omc_run aichat.mcp.servers.start
 check "  whose Save stores no share mode" "yes" "$(cad_call acp_agent_read_only claude-code-acp)"
 check "  and opens nothing"              "0" "$(chain_asked aichat.chat)"
 
+section "where a local model's tools run: offered only where boxes can be used"
+cad_reset
+fresh_window
+arm_launch "/models/tiny.gguf" "true"
+omc_run aichat.mcp.servers.init
+check "no agent-vm: the row stays hidden" "no" "$([ "$(ui_visible "$MCP_TOOLS_RUNIN_ROW_ID")" = 1 ] && echo yes || echo no)"
+check "  and Start has nothing to store"  "" "$(cad_pb_get "aichatv2_toolsrunin_$OMC_ACTIONUI_WINDOW_UUID")"
+omc_run aichat.mcp.servers.cancel
+cad_call launch_queue_clear
+cad_call_lib aichat.mcp.servers.library.sh mcp_tools_set_run_in new:dev
+fresh_window
+arm_launch "/models/tiny.gguf" "true"
+omc_run aichat.mcp.servers.init
+check "no agent-vm, but a box stored: the row offers the way back" "1|1|1" \
+    "$(ui_visible "$MCP_TOOLS_RUNIN_ROW_ID")|$(cad_has "$(ui_prop "$MCP_TOOLS_RUNIN_PICKER_ID" options)" '"tag":"mac"')|$(cad_has "$(ui_prop "$MCP_TOOLS_RUNIN_PICKER_ID" options)" '"dev (not found)"')"
+omc_control "$MCP_TOOLS_RUNIN_PICKER_ID" mac
+chains_reset
+omc_run aichat.mcp.servers.start
+check "  and Start stores This Mac"       "mac" "$(cad_call_lib aichat.mcp.servers.library.sh mcp_tools_run_in)"
+queue_settle "/models/tiny.gguf|true|"
+cad_call launch_queue_clear
+
+section "where a local model's tools run: This Mac, a kept box, or a new disposable box"
+FAKE_AGENTVM_DIR="$OMCTEST_WORK/fakevm"
+/bin/rm -rf "$FAKE_AGENTVM_DIR"; /bin/mkdir -p "$FAKE_AGENTVM_DIR"
+CADABRA_AGENT_VM="$OMCTEST_TESTS/helpers/fake_agent_vm.sh"
+export FAKE_AGENTVM_DIR CADABRA_AGENT_VM
+# tools_options  ->  the Where tools run picker's option tags, space-joined.
+tools_options() {
+    ui_prop "$MCP_TOOLS_RUNIN_PICKER_ID" options | "$OMC_APP_BUNDLE_PATH/Contents/Library/Python/bin/python3" -c \
+        'import json, sys; print(" ".join(o.get("tag", "|" + o.get("section", "-")) for o in json.load(sys.stdin)))' 2>&1
+}
+cad_reset
+fresh_window
+arm_launch "/models/tiny.gguf" "true"
+omc_run aichat.mcp.servers.init
+check "a local model's launch shows the row" "1" "$(ui_visible "$MCP_TOOLS_RUNIN_ROW_ID")"
+check "  offering the places" \
+    "mac |Kept AgentVM boxes box:cadabra-spike box:try1 |New disposable AgentVM box from new:dev new:dev-agents new:dev-node new:dev-xcode new:dev-xcode-ios" \
+    "$(tools_options)"
+check "  on this Mac by default, with the sandbox paths" "mac|1" "$(ui_value "$MCP_TOOLS_RUNIN_PICKER_ID")|$(ui_visible "$MCP_SANDBOX_PATHS_ID")"
+omc_control "$MCP_TOOLS_RUNIN_PICKER_ID" new:dev
+omc_run aichat.mcp.servers.runin.changed
+check "choosing a box swaps the paths for the box panel" "0|1" "$(ui_visible "$MCP_SANDBOX_PATHS_ID")|$(ui_visible "$MCP_TOOLS_BOX_PANEL_ID")"
+check "  saying which box"                "1" "$(cad_has "$(ui_value "$MCP_TOOLS_BOX_WHERE_TEXT_ID")" 'new disposable AgentVM box from dev')"
+check "  the servers stay"                "shown" "$([ "$(ui_visible "$MCP_SERVERS_AREA_ID")" = 0 ] && echo hidden || echo shown)"
+omc_control "$MCP_TOOLS_BOX_READ_ONLY_TOGGLE_ID" true
+chains_reset
+omc_run aichat.mcp.servers.start
+check "Start stores the place and the share mode" "new:dev|yes" \
+    "$(cad_call_lib aichat.mcp.servers.library.sh mcp_tools_run_in)|$(cad_call_lib aichat.mcp.servers.library.sh mcp_tools_read_only)"
+check "  and opens the chat"              "1" "$(chain_asked aichat.chat)"
+queue_settle "/models/tiny.gguf|true|"
+cad_call launch_queue_clear
+fresh_window
+arm_launch "/models/tiny.gguf" "true"
+omc_run aichat.mcp.servers.init
+check "the next launch shows the stored choice" "new:dev|true|0|1" \
+    "$(ui_value "$MCP_TOOLS_RUNIN_PICKER_ID")|$(ui_value "$MCP_TOOLS_BOX_READ_ONLY_TOGGLE_ID")|$(ui_visible "$MCP_SANDBOX_PATHS_ID")|$(ui_visible "$MCP_TOOLS_BOX_PANEL_ID")"
+omc_control "$MCP_TOOLS_RUNIN_PICKER_ID" mac
+omc_run aichat.mcp.servers.runin.changed
+check "back to this Mac brings the paths back" "1|0" "$(ui_visible "$MCP_SANDBOX_PATHS_ID")|$(ui_visible "$MCP_TOOLS_BOX_PANEL_ID")"
+omc_control "$MCP_TOOLS_RUNIN_PICKER_ID" damaged
+chains_reset
+alerts_reset
+omc_run aichat.mcp.servers.start
+check "an unreadable choice keeps the dialog open" "0|1" "$(chain_asked aichat.chat)|$(alerts_mention 'Where the tools run cannot be read')"
+check "  and stores nothing"              "new:dev" "$(cad_call_lib aichat.mcp.servers.library.sh mcp_tools_run_in)"
+omc_run aichat.mcp.servers.cancel
+cad_call launch_queue_clear
+cad_call acp_agent_store claude-code-acp "claude-agent-acp"
+fresh_window
+arm_launch "" "true"
+omc_run aichat.mcp.servers.init
+check "an external agent's launch has no such row" "no|" \
+    "$([ "$(ui_visible "$MCP_TOOLS_RUNIN_ROW_ID")" = 1 ] && echo yes || echo no)|$(cad_pb_get "aichatv2_toolsrunin_$OMC_ACTIONUI_WINDOW_UUID")"
+omc_run aichat.mcp.servers.cancel
+cad_call launch_queue_clear
+CADABRA_AGENT_VM="$OMCTEST_WORK/no-agent-vm-in-tests"
+
 # Leave the shared key as this file found it, before the trap restores the snapshot. Anything
 # this file armed is finished with by here, and letting it survive is what makes a lost race
 # sticky across runs.

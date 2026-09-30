@@ -123,3 +123,51 @@ if [ -n "$box_agent" ]; then
     "$dialog" "$window_uuid" $BOX_READ_ONLY_TOGGLE_ID "$read_only"
     "$dialog" "$window_uuid" $BOX_PANEL_ID omc_show
 fi
+
+# WHERE A LOCAL MODEL'S TOOLS RUN (mcp_tools_run_in): This Mac, a kept AgentVM box, or a new
+# disposable box from a ready image, offered where boxes can be used. Shown for a local model's
+# launch and for the Tools menu (nothing queued: the choice applies to the next load), never for
+# an external agent, which runs its own tools. In a box the sandbox paths give way to the tools
+# box panel, since the box sees only the project; the server toggles and Allow Network stay.
+# aichatv2_toolsrunin_<window> says the row was offered, so Start stores the picker's choice.
+TOOLS_RUNIN_ROW_ID=290
+TOOLS_RUNIN_PICKER_ID=292
+SANDBOX_PATHS_ID=400
+TOOLS_BOX_PANEL_ID=510
+TOOLS_BOX_WHERE_TEXT_ID=511
+TOOLS_BOX_READ_ONLY_TOGGLE_ID=512
+pb_set "aichatv2_toolsrunin_${window_uuid}" ""
+tools_launch=yes
+if [ -n "$queued" ]; then
+    queued_model="$(launch_queue_model "$queued")"
+    external_on="$(acp_agent_enabled)"
+    # The same test chat init makes: a launch with no model runs the external agent when one is on.
+    if [ -z "$queued_model" ] && [ "$external_on" = "true" ]; then
+        tools_launch=no
+    fi
+fi
+if [ "$tools_launch" = "yes" ]; then
+    source "$OMC_APP_BUNDLE_PATH/Contents/Resources/Scripts/aichat.select.external.agent.library.sh"
+    agent_load_places refresh
+    places_status=$?
+    tools_run_in="$(mcp_tools_run_in)"
+    # Where boxes cannot be used the row still shows while a box is stored, offering This Mac
+    # and the stored choice only: hiding it would leave every tools launch refused with no way
+    # back to This Mac but Reset to Defaults.
+    if [ "$places_status" -ne 0 ] && [ "$tools_run_in" != "mac" ]; then
+        runin_boxes=""
+        runin_images=""
+        places_status=0
+    fi
+    if [ "$places_status" -eq 0 ]; then
+        "$dialog" "$window_uuid" $TOOLS_RUNIN_PICKER_ID omc_set_property options "$(agent_run_in_options "$tools_run_in")"
+        "$dialog" "$window_uuid" $TOOLS_RUNIN_PICKER_ID "$tools_run_in"
+        case "$(mcp_tools_read_only)" in
+            yes) "$dialog" "$window_uuid" $TOOLS_BOX_READ_ONLY_TOGGLE_ID true ;;
+            *)   "$dialog" "$window_uuid" $TOOLS_BOX_READ_ONLY_TOGGLE_ID false ;;
+        esac
+        "$dialog" "$window_uuid" $TOOLS_RUNIN_ROW_ID omc_show
+        mcp_tools_apply_run_in "$window_uuid" "$tools_run_in"
+        pb_set "aichatv2_toolsrunin_${window_uuid}" "yes"
+    fi
+fi

@@ -22,7 +22,11 @@
 #              version, doctor, image-list, box-list, packs, execlog, netlog, box-create,
 #              secret-list, image-info, box-info.
 #   exec-error when present, `exec` prints "Error: " and the file's text and exits 1 (agent-vm's
-#              refusal of a share, say); otherwise exec runs nothing and exits 0.
+#              refusal of a share, say); otherwise exec runs nothing and exits 0, unless:
+#   exec-run   when present, `exec` runs the program after "--" on this Mac, as the box would:
+#              standard input and output pass through, each --env NAME=VALUE is set for it, and
+#              its status is exec's. The box user's home is then the test's $HOME, so Cadabra's
+#              tools copy lands in the scratch home and the MCP servers run from there.
 #   box-<name>.json  <- box status <name> --json. With no such file the box does not exist, and
 #              the commands that name a box answer the way agent-vm does for a missing box.
 #   secrets    the Keychain, once `secret set` or `secret delete` has run: one "<name><TAB>
@@ -166,6 +170,22 @@ case "$1 $2" in
         if [ -f "$state/exec-error" ]; then
             printf 'Error: %s\n' "$(/bin/cat "$state/exec-error")" >&2
             exit 1
+        fi
+        if [ -f "$state/exec-run" ]; then
+            shift 3
+            while [ $# -gt 0 ] && [ "$1" != "--" ]; do
+                if [ "$1" = "--env" ] && [ $# -gt 1 ]; then
+                    export "$2"
+                    shift
+                fi
+                shift
+            done
+            if [ $# -eq 0 ]; then
+                printf 'Error: fake_agent_vm: exec without "--"\n' >&2
+                exit 64
+            fi
+            shift
+            exec "$@"
         fi ;;
     "box status")
         need_box "$3"

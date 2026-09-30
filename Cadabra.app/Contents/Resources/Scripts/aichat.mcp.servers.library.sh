@@ -187,6 +187,129 @@ mcp_prefs_array_remove_value() {
     "$plister" delete "$mcp_prefs" "/$1/$idx"
 }
 
+# WHERE A LOCAL MODEL'S TOOLS RUN, chosen in Agentic Session Tools (plan D6, D11):
+#   /servers/runIn    : string - "mac" (this Mac, the default: the servers under replay's
+#                       sandbox, as always), "box:<name>" (a kept agent-vm box) or "new:<image>"
+#                       (a disposable box made from the image for each chat window)
+#   /servers/readOnly : string - "no" (the default) or "yes": the project is shared with the box
+#                       read-only (`exec --read-only`), so the tools can read it and never change it
+# The model itself always runs on this Mac. External agents keep their own choice
+# (/agents/runIn/<id>), since an agent in a box starts its tools in the box itself.
+
+# _mcp_prefs_choice <key-path> <default>  ->  the stored text, the default when nothing is
+# stored, or "damaged" when something that is not text is stored there (a hand-edited file),
+# which every consumer refuses rather than read as the default: for runIn, this Mac.
+_mcp_prefs_choice() {
+    local kind="$("$plister" get type "$mcp_prefs" "/$1" 2>/dev/null)"
+    case "$kind" in
+        '')     printf '%s\n' "$2" ;;
+        string) local val
+                val=$(mcp_prefs_get_string "$1")
+                printf '%s\n' "${val:-$2}" ;;
+        *)      printf 'damaged\n' ;;
+    esac
+}
+
+# mcp_tools_run_in  ->  "mac", "box:<name>", "new:<image>", or "damaged" for anything else.
+mcp_tools_run_in() {
+    local val="$(_mcp_prefs_choice servers/runIn mac)"
+    case "$val" in
+        mac|box:?*|new:?*) printf '%s\n' "$val" ;;
+        *)                 printf 'damaged\n' ;;
+    esac
+}
+
+# mcp_tools_read_only  ->  "yes", "no", or "damaged".
+mcp_tools_read_only() {
+    local val="$(_mcp_prefs_choice servers/readOnly no)"
+    case "$val" in
+        yes|no) printf '%s\n' "$val" ;;
+        *)      printf 'damaged\n' ;;
+    esac
+}
+
+# _mcp_prefs_set_choice <key-path> <value>  ->  0 once stored and read back; 1 when the write
+# did not land (plister exits 0 having written nothing on a read-only file).
+_mcp_prefs_set_choice() {
+    mcp_prefs_init_if_missing
+    local kind="$("$plister" get type "$mcp_prefs" "/$1" 2>/dev/null)"
+    # Something that is not text (a damaged value) is replaced, so choosing again repairs it.
+    if [ -n "$kind" ] && [ "$kind" != "string" ]; then
+        "$plister" remove "$mcp_prefs" "/$1" >/dev/null 2>&1
+        kind=""
+    fi
+    if [ -z "$kind" ]; then
+        "$plister" insert "${1##*/}" string "" "$mcp_prefs" "/${1%/*}" >/dev/null 2>&1
+    fi
+    mcp_prefs_set_string "$1" "$2"
+    local back="$(mcp_prefs_get_string "$1")"
+    [ "$back" = "$2" ]
+}
+
+# mcp_tools_set_run_in <mac|box:NAME|new:IMAGE>  ->  0 once stored; 2 for another value; 1 when
+# the write did not land.
+mcp_tools_set_run_in() {
+    case "$1" in
+        mac|box:?*|new:?*) ;;
+        *) return 2 ;;
+    esac
+    _mcp_prefs_set_choice servers/runIn "$1"
+}
+
+# mcp_tools_set_read_only <yes|no>  ->  0 once stored; 2 for another value; 1 when the write did
+# not land.
+mcp_tools_set_read_only() {
+    case "$1" in
+        yes|no) ;;
+        *) return 2 ;;
+    esac
+    _mcp_prefs_set_choice servers/readOnly "$1"
+}
+
+# mcp_tools_apply_run_in <window_uuid> <run-in>  ->  Agentic Session Tools follows where the tools
+# run: on this Mac the sandbox paths (GroupBox 400), in a box the tools box panel (510) saying
+# which box. The ids are aichat.mcp.servers.init.sh's SANDBOX_PATHS_ID, TOOLS_BOX_PANEL_ID and
+# TOOLS_BOX_WHERE_TEXT_ID.
+mcp_sandbox_paths_view=400
+mcp_tools_box_panel_view=510
+mcp_tools_box_where_view=511
+mcp_tools_apply_run_in() {
+    local where=""
+    case "$2" in
+        mac|'') ;;
+        box:?*)   where="In the kept AgentVM box ${2#box:}" ;;
+        new:?*)   where="In a new disposable AgentVM box from ${2#new:}, made for each chat window" ;;
+        *)        where="In an AgentVM box whose setting cannot be read. Choose where the tools run again." ;;
+    esac
+    if [ -z "$where" ]; then
+        "$dialog" "$1" $mcp_tools_box_panel_view omc_hide
+        "$dialog" "$1" $mcp_sandbox_paths_view omc_show
+        return 0
+    fi
+    "$dialog" "$1" $mcp_tools_box_where_view "$where"
+    "$dialog" "$1" $mcp_sandbox_paths_view omc_hide
+    "$dialog" "$1" $mcp_tools_box_panel_view omc_show
+}
+
+# A CHAT WINDOW'S TOOLS IN A BOX. Once a local model's box runs with Cadabra's tools copied in
+# (boxsession_start_tools), the window's pasteboard key aichatv2_boxtools_<window> holds, tab
+# separated: box, project, read-only (yes or no), the tools' folder in the box, and the bytecode
+# cache folder there. aichat_acp_transport_json generates the window's MCP config in box mode
+# while it is set - at the first load and at every in-place model switch after it, so a switch
+# keeps the tools in the same box. boxsession_release clears it with the window's registry row.
+mcp_box_tools_set() {
+    local tab="$(printf '\t')"
+    pb_set "aichatv2_boxtools_$1" "$2$tab$3$tab$4$tab$5$tab$6"
+}
+
+mcp_box_tools_get() {
+    pb_get "aichatv2_boxtools_$1"
+}
+
+mcp_box_tools_clear() {
+    pb_set "aichatv2_boxtools_$1" ""
+}
+
 # mcp_refresh_path_table <window_uuid> <table_id> <prefs_key>
 # Repopulates a single-column path table from the prefs array.
 mcp_refresh_path_table() {
@@ -249,6 +372,7 @@ aichat_session_config_dir() {
 # user disabled everything), non-zero if the bundled Python or the generator is missing.
 generate_stdio_mcp_config() {
     local out_json="$1"
+    shift
     local python3="$OMC_APP_BUNDLE_PATH/Contents/Library/Python/bin/python3"
     local script="$OMC_APP_BUNDLE_PATH/Contents/Resources/Scripts/generate_mcp_configs.py"
     if [ ! -f "$python3" ] || [ ! -f "$script" ]; then
@@ -267,8 +391,45 @@ generate_stdio_mcp_config() {
     /bin/mkdir -p "$out_dir" 2>/dev/null
 
     # The generator writes the mlx-agent config to <out_json> and the replay sandbox
-    # profile beside it in the same session dir.
-    "$python3" "$script" "$out_json" "$OMC_APP_BUNDLE_PATH" "$tz" "$mcp_prefs"
+    # profile beside it in the same session dir. Named options after these (--box ...) select
+    # its box mode.
+    "$python3" "$script" "$out_json" "$OMC_APP_BUNDLE_PATH" "$tz" "$mcp_prefs" "$@"
+}
+
+# _mcp_box_config_args <window_uuid>  ->  sets mcp_box_args (generate_mcp_configs.py's box
+# options, one per line) and mcp_box_project from the window's tools record; both empty when
+# its tools run on this Mac. 1 when the record is unusable, which the caller refuses rather
+# than generate a config that would run the tools on this Mac under a box window's name.
+mcp_box_args=""
+mcp_box_project=""
+_mcp_box_config_args() {
+    mcp_box_args=""
+    mcp_box_project=""
+    local record="$(mcp_box_tools_get "$1")"
+    if [ -z "$record" ]; then
+        return 0
+    fi
+    local box project read_only guest cache
+    IFS="$(printf '\t')" read -r box project read_only guest cache <<EOF
+$record
+EOF
+    case "$box:$project:$read_only:$guest:$cache" in
+        ?*:/?*:yes:/?*:/?*|?*:/?*:no:/?*:/?*) ;;
+        *) return 1 ;;
+    esac
+    source "$OMC_APP_BUNDLE_PATH/Contents/Resources/Scripts/aichat.agentvm.library.sh"
+    local nl="
+"
+    mcp_box_args="--box${nl}$box${nl}--agent-vm${nl}$(agentvm_bin)${nl}--project${nl}$project${nl}--guest-tools${nl}$guest${nl}--guest-pycache${nl}$cache"
+    local home="$(agentvm_setting agent-vm-home)"
+    if [ -n "$home" ]; then
+        mcp_box_args="$mcp_box_args${nl}--agent-vm-home${nl}$home"
+    fi
+    if [ "$read_only" = "yes" ]; then
+        mcp_box_args="$mcp_box_args${nl}--read-only"
+    fi
+    mcp_box_project="$project"
+    return 0
 }
 
 # aichat_acp_transport_json <agent_bin> <engine> <target> <window_uuid> [use_tools]
@@ -321,13 +482,41 @@ aichat_acp_transport_json() {
         *)  cwd="$HOME" ;;
     esac
 
+    # TOOLS IN A BOX: the window's tools record (mcp_box_tools_get) names the box its servers run
+    # in, and the project shared there, which is then also the agent's cwd - the project the box
+    # was started with, not whatever the settings say now (an in-place switch rebuilds this
+    # transport long after the dialog). An unusable record refuses the transport: the caller
+    # alerts, rather than the window's tools quietly moving to this Mac.
+    _mcp_box_config_args "$window_uuid"
+    local box_record_status=$?
+    if [ "$box_record_status" -ne 0 ]; then
+        echo "aichat_acp_transport_json: this window's AgentVM box record is unreadable" 1>&2
+        return 1
+    fi
+    if [ -n "$mcp_box_project" ]; then
+        cwd="$mcp_box_project"
+    fi
+
     case "$use_tools" in
         true|readonly)
             # Generate the config; its diagnostics go to stderr so stdout stays pure JSON.
             # "readonly" generates the FULL config on purpose: the gatedTools lists inside it
             # are exactly what the builder reads to decide which servers qualify, so filtering
             # here instead would throw away the evidence the filter needs.
-            generate_stdio_mcp_config "$cfg" 1>&2
+            if [ -n "$mcp_box_args" ]; then
+                # The box options become the generator's arguments, one per line. A here-document
+                # rather than a pipe, so the loop runs in this shell and its `set` stays.
+                local arg
+                set --
+                while IFS= read -r arg; do
+                    set -- "$@" "$arg"
+                done <<EOF
+$mcp_box_args
+EOF
+                generate_stdio_mcp_config "$cfg" "$@" 1>&2
+            else
+                generate_stdio_mcp_config "$cfg" 1>&2
+            fi
             ;;
         *)
             # Tools off for this session: no config, and drop a stale one from a previous

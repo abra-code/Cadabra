@@ -51,6 +51,42 @@ if [ -n "$box_agent" ]; then
 fi
 pb_set "aichatv2_toolsbox_${window_uuid}" ""
 
+# Where a local model's tools run, when init offered the choice. A choice that cannot be stored
+# keeps the dialog open rather than start the tools somewhere other than where the user chose.
+tools_runin_offered="$(pb_get "aichatv2_toolsrunin_${window_uuid}")"
+if [ "$tools_runin_offered" = "yes" ]; then
+    tools_run_in="${OMC_ACTIONUI_VIEW_292_VALUE:-}"
+    case "$tools_run_in" in
+        mac|box:?*|new:?*) ;;
+        *)
+            "$alert" --level "stop" --title "$APPLET_NAME" --ok "OK" \
+                "Where the tools run cannot be read from Cadabra's settings. Choose This Mac or an AgentVM box in Where tools run."
+            exit 0 ;;
+    esac
+    mcp_tools_set_run_in "$tools_run_in"
+    status=$?
+    # A toggle with no value keeps the stored choice: falling back to "no" would turn a
+    # read-only share into a read-write one.
+    tools_read_only=""
+    case "${OMC_ACTIONUI_VIEW_512_VALUE:-}" in
+        true)  tools_read_only=yes ;;
+        false) tools_read_only=no ;;
+    esac
+    if [ "$status" -eq 0 ] && [ -n "$tools_read_only" ]; then
+        mcp_tools_set_read_only "$tools_read_only"
+        status=$?
+    fi
+    if [ "$status" -ne 0 ]; then
+        "$alert" --level "stop" --title "$APPLET_NAME" --ok "OK" \
+            "Could not save where the tools run. Check that ~/Library/Application Support/Cadabra is writable."
+        exit 0
+    fi
+    echo "tools run in: $tools_run_in read-only=$tools_read_only"
+fi
+pb_set "aichatv2_toolsrunin_${window_uuid}" ""
+# The boxes and images listed for Where tools run (agent_load_places).
+/bin/rm -f "${TMPDIR:-/tmp}/cadabra-runin-places.${window_uuid}"
+
 mcp_prefs_set_bool   allow-network          "${OMC_ACTIONUI_VIEW_240_VALUE:-true}"
 mcp_prefs_set_bool   servers/time/enabled   "${OMC_ACTIONUI_VIEW_210_VALUE:-true}"
 mcp_prefs_set_bool   servers/search/enabled "${OMC_ACTIONUI_VIEW_220_VALUE:-true}"

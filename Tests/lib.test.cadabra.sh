@@ -54,6 +54,16 @@ esac
 # shows up as a failing test rather than as a test asserting about a file nobody writes.
 cad_settings="$HOME/Library/Application Support/Cadabra/settings.plist"
 
+# NO REAL agent-vm UNLESS A SUITE ASKS FOR ONE. agent-vm is a Swift tool, and Foundation takes its
+# home folder from the account, not from $HOME, so the scratch home does not isolate it: a
+# handler that runs the installed ~/.local/bin/agent-vm reads the developer's real store of
+# images and boxes. Handlers that merely open a window run it (Agentic Session Tools lists the
+# boxes for Where tools run), so by default every suite sees an agent-vm that is not installed.
+# Suites about boxes point CADABRA_AGENT_VM at Tests/helpers/fake_agent_vm.sh, or unset it on
+# purpose where they test the library's own choice of binary.
+CADABRA_AGENT_VM="${CADABRA_AGENT_VM:-$OMCTEST_WORK/no-agent-vm-in-tests}"
+export CADABRA_AGENT_VM
+
 # The view ids, IMPORTED from the applet rather than restated. A second list here is a list
 # that can disagree with the first, and the disagreement is silent: omc_control would write a
 # perfectly valid variable for a view the window does not have.

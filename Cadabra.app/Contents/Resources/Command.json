@@ -451,6 +451,11 @@
       "NAME" : "Cadabra"
     },
     {
+      "COMMAND_ID" : "aichat.mcp.servers.runin.changed",
+      "EXECUTION_MODE" : "exe_script_file",
+      "NAME" : "Cadabra"
+    },
+    {
       "COMMAND_ID" : "aichat.mcp.servers.toggle.network",
       "EXECUTION_MODE" : "exe_script_file",
       "NAME" : "Cadabra"

@@ -8,6 +8,25 @@
 #
 # Usage: python3 generate_mcp_configs.py \
 #            <out_json> <app_bundle> <tz> [<mcp_prefs_plist>]
+#            [--box NAME --agent-vm PATH [--agent-vm-home DIR] --project DIR [--read-only]
+#             --guest-tools DIR --guest-pycache DIR]
+#
+# BOX MODE (--box): the servers run in an agent-vm box while the model stays on this Mac. Each
+# server's command becomes `agent-vm exec --box NAME --project DIR [--read-only] [--env N=V ...]
+# -- <server in the box> <args>`, so mlx-agent starts it in the box and talks to it over the
+# exec's standard input and output. --guest-tools is where Cadabra's tools were copied in the
+# box, in the layout of Cadabra.app/Contents (boxsession_tools_copy), and --guest-pycache the
+# bytecode cache there. The project is the only folder of this Mac the box sees, so the
+# sandbox paths of the settings do not apply there:
+#   - replay gets --allow-write <project> and the box profile copied with it
+#     (Resources/replay-box-sandbox.json), and --deny-network when the network is off;
+#   - pdfutil's roots are the project and the box's /private/tmp, and it is not --writable when
+#     the project is shared read-only (its outputs could not be written anyway);
+#   - the Python servers get PYTHONPATH and PYTHONPYCACHEPREFIX for the copy, through --env, so
+#     they reach the program in the box rather than agent-vm on this Mac.
+# --agent-vm-home, agent-vm's store when Cadabra uses another one, goes into each server's env,
+# for agent-vm itself. Every exec of a window shares one project and mode, as agent-vm requires.
+# The probe below runs each server exactly this way, so the box must be running.
 #
 # Almost all sandbox paths come from <mcp_prefs_plist>: the allow-network master
 # gate, per-server enabled flags, the prominent project workspace, and the
@@ -29,6 +48,7 @@
 # would go stale if stored, so only the on/off decision lives in the plist
 # (servers/local/include-session-tmpdir, default on); the path itself is recomputed.
 
+import argparse
 import concurrent.futures
 import fcntl
 import json
@@ -43,7 +63,10 @@ import time
 out_json        = sys.argv[1]
 app_bundle      = sys.argv[2]
 tz              = sys.argv[3]
-mcp_prefs_plist = sys.argv[4] if len(sys.argv) > 4 else ""
+mcp_prefs_plist = sys.argv[4] if len(sys.argv) > 4 and not sys.argv[4].startswith("--") else ""
+
+# The box options, after the positional arguments; parsed below, once any prior config is gone.
+_box_words = sys.argv[5:] if mcp_prefs_plist else sys.argv[4:]
 
 # Everything (the config and the replay sandbox profile) lands in the session dir.
 session_dir = os.path.dirname(os.path.abspath(out_json))
@@ -60,6 +83,28 @@ out_abs = os.path.abspath(out_json)
 os.makedirs(os.path.dirname(out_abs), exist_ok=True)
 if os.path.exists(out_abs):
     os.remove(out_abs)
+
+# No abbreviations: "--read" must not quietly mean --read-only. Bad options end the script with
+# no config, which the transport builder reads as a chat with no tools - never as tools on this
+# Mac for a window whose tools were meant to run in a box.
+_box_parser = argparse.ArgumentParser(prog="generate_mcp_configs.py", add_help=False, allow_abbrev=False)
+_box_parser.add_argument("--box", default="")
+_box_parser.add_argument("--agent-vm", default="")
+_box_parser.add_argument("--agent-vm-home", default="")
+_box_parser.add_argument("--project", default="")
+_box_parser.add_argument("--read-only", action="store_true")
+_box_parser.add_argument("--guest-tools", default="")
+_box_parser.add_argument("--guest-pycache", default="")
+box = _box_parser.parse_args(_box_words)
+if _box_words and not box.box:
+    sys.exit("generate_mcp_configs: box options need --box")
+if box.box:
+    for _name, _value in (("--agent-vm", box.agent_vm), ("--project", box.project),
+                          ("--guest-tools", box.guest_tools), ("--guest-pycache", box.guest_pycache)):
+        if not _value.startswith("/"):
+            sys.exit(f"generate_mcp_configs: {_name} must be an absolute path in box mode")
+    if box.agent_vm_home and not box.agent_vm_home.startswith("/"):
+        sys.exit("generate_mcp_configs: --agent-vm-home must be an absolute path")
 
 packages_dir = f"{app_bundle}/Contents/Library/Packages"
 python3_bin  = f"{app_bundle}/Contents/Library/Python/bin/python3"
@@ -89,7 +134,7 @@ servers = {}           # short name -> {command, args, env?}
 server_order = []      # short names in launch order
 user_project = ""      # set in the local block; pre-init so it's always defined
 
-if srv_enabled("local"):
+if not box.box and srv_enabled("local"):
     local_prefs = prefs.get("servers", {}).get("local", {})
     # ── replay sandbox paths ──────────────────────────────────────────────────
     # Every extra sandbox path is taken from the user-managed prefs (shown and
@@ -173,7 +218,7 @@ if srv_enabled("local"):
     }
     server_order.append("local")
 
-if srv_enabled("pdf"):
+if not box.box and srv_enabled("pdf"):
     # pdfutil (github.com/abra-code/pdfutil, Apache 2.0): a network-free PDF server
     # exposing pdf_info / pdf_text / pdf_search / pdf_outline / pdf_render / pdf_ocr /
     # pdf_forms_list / pdf_list over MCP stdio, plus the mutating tier below when
@@ -237,7 +282,7 @@ if srv_enabled("pdf"):
     else:
         print("  pdf server enabled but no readable sandbox paths configured; omitting it")
 
-if allow_network and srv_enabled("time"):
+if not box.box and allow_network and srv_enabled("time"):
     servers["time"] = {
         "command": python3_bin,
         "args": ["-m", "mcp_server_time", "--local-timezone", tz],
@@ -245,13 +290,57 @@ if allow_network and srv_enabled("time"):
     }
     server_order.append("time")
 
-if allow_network and srv_enabled("search"):
+if not box.box and allow_network and srv_enabled("search"):
     servers["search"] = {
         "command": python3_bin,
         "args": ["-m", "duckduckgo_mcp_server.server"],
         "env": {"PYTHONPATH": packages_dir},
     }
     server_order.append("search")
+
+# -- Box mode: the same servers, run in the box through agent-vm exec -------------
+# See BOX MODE at the top. The guest paths mirror Cadabra.app/Contents under --guest-tools.
+if box.box:
+    user_project = box.project
+    guest_python = f"{box.guest_tools}/Library/Python/bin/python3"
+    guest_python_env = {"PYTHONPATH": f"{box.guest_tools}/Library/Packages",
+                        "PYTHONPYCACHEPREFIX": box.guest_pycache}
+
+    def boxed(argv, guest_env=None):
+        """One server spec: agent-vm exec into the box, the guest environment through --env."""
+        args = ["exec", "--box", box.box, "--project", box.project]
+        if box.read_only:
+            args.append("--read-only")
+        for name, value in sorted((guest_env or {}).items()):
+            args += ["--env", f"{name}={value}"]
+        spec = {"command": box.agent_vm, "args": args + ["--"] + argv}
+        if box.agent_vm_home:
+            spec["env"] = {"AGENT_VM_HOME": box.agent_vm_home}
+        return spec
+
+    if srv_enabled("local"):
+        replay_argv = [f"{box.guest_tools}/Support/replay", "--mcp-server"]
+        if not allow_network:
+            replay_argv.append("--deny-network")
+        replay_argv += ["--allow-write", box.project,
+                        "--sandbox-profile", f"{box.guest_tools}/Resources/replay-box-sandbox.json"]
+        servers["local"] = boxed(replay_argv)
+        server_order.append("local")
+    if srv_enabled("pdf"):
+        pdf_argv = [f"{box.guest_tools}/Support/pdfutil", "mcp",
+                    "--root", box.project, "--root", "/private/tmp"]
+        if srv_flag("pdf", "writable", True) and not box.read_only:
+            pdf_argv.append("--writable")
+        servers["pdf"] = boxed(pdf_argv)
+        server_order.append("pdf")
+    if allow_network and srv_enabled("time"):
+        servers["time"] = boxed([guest_python, "-m", "mcp_server_time", "--local-timezone", tz],
+                                guest_python_env)
+        server_order.append("time")
+    if allow_network and srv_enabled("search"):
+        servers["search"] = boxed([guest_python, "-m", "duckduckgo_mcp_server.server"],
+                                  guest_python_env)
+        server_order.append("search")
 
 # ── Ask each server which of its tools need a permission prompt ───────────────
 # gatedTools lists the tools that require a session/request_permission round-trip
@@ -281,6 +370,10 @@ if allow_network and srv_enabled("search"):
 probe_project = prefs.get("servers", {}).get("local", {}).get("project") or ""
 probe_cwd = probe_project if (probe_project.startswith("/") and os.path.isdir(probe_project)) \
     else os.path.expanduser("~")
+# In a box the agent's cwd is the box's project (aichat_acp_transport_json), and the servers'
+# own working folder is set in the box by agent-vm, so the probe runs from the same place.
+if box.box and os.path.isdir(box.project):
+    probe_cwd = box.project
 
 # Everything below decides a security policy from a server's own answer, so the
 # parsing is strict on purpose: anything unexpected fails the probe (and drops the

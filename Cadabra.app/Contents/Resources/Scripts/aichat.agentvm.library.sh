@@ -884,6 +884,24 @@ agentvm_box_warmup() {
     return "$_status"
 }
 
+# agentvm_box_exec <box> <program> [args...]  ->  the program's own output and status, run in the
+# running box with no project shared: for work in the box user's own folders, such as copying
+# Cadabra's tools there. Standard input and output pass through; agent-vm's stderr (and the
+# program's) is kept for agentvm_last_error. Status 125 is agent-vm's own failure (the box is
+# not running, say), anything else the program's.
+agentvm_box_exec() {
+    _agentvm_need_name box "$1" || return $?
+    local _box="$1"
+    shift
+    /bin/rm -f "$agentvm_err_file"
+    agentvm_run exec --box "$_box" -- "$@" 2>"$agentvm_err_file"
+    local _status=$?
+    if [ "$_status" -eq 0 ]; then
+        /bin/rm -f "$agentvm_err_file"
+    fi
+    return "$_status"
+}
+
 # agentvm_image_sizes <image> / agentvm_box_sizes <box>  ->  one row: ownSize, totalSize,
 # addedOverBase, addedSize (agentvm_json.py sizes). agent-vm measures space only in
 # `image info` and `box info` (about 0.1 s per disk, 0.3 s more for an image's growth over its

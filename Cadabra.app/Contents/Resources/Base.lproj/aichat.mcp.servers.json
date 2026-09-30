@@ -14,6 +14,41 @@
   },
   "children": [
     {
+      "type": "HStack",
+      "id": 290,
+      "properties": {
+        "spacing": 12,
+        "hidden": true
+      },
+      "children": [
+        {
+          "type": "Picker",
+          "id": 292,
+          "properties": {
+            "title": "Where tools run",
+            "options": [
+              {
+                "title": "This Mac",
+                "tag": "mac"
+              }
+            ],
+            "pickerStyle": "menu",
+            "help": "Where a local model's MCP servers run. The model itself always runs on this Mac. In an AgentVM box the servers work on the project folder only, and reach only the hosts the box allows.",
+            "actionID": "aichat.mcp.servers.runin.changed"
+          }
+        },
+        {
+          "type": "Text",
+          "properties": {
+            "text": "The model runs on this Mac either way.",
+            "foregroundStyle": "secondary",
+            "font": "caption"
+          }
+        },
+        { "type": "Spacer" }
+      ]
+    },
+    {
       "type": "GroupBox",
       "id": 300,
       "properties": {
@@ -282,142 +317,224 @@
               }
             },
             {
-              "type": "GroupBox",
-              "id": 400,
+              "type": "ZStack",
               "properties": {
-                "title": "Additional Local Sandbox Paths",
+                "alignment": "topLeading",
                 "frame": { "minWidth": 380, "maxWidth": "infinity", "maxHeight": "infinity" }
               },
               "children": [
                 {
-                  "type": "VStack",
+                  "type": "GroupBox",
+                  "id": 400,
                   "properties": {
-                    "spacing": 10,
-                    "alignment": "leading",
-                    "frame": { "maxWidth": "infinity", "maxHeight": "infinity", "alignment": "topLeading" }
+                    "title": "Additional Local Sandbox Paths",
+                    "frame": { "minWidth": 380, "maxWidth": "infinity", "maxHeight": "infinity" }
                   },
                   "children": [
                     {
                       "type": "VStack",
                       "properties": {
-                        "spacing": 4,
+                        "spacing": 10,
                         "alignment": "leading",
                         "frame": { "maxWidth": "infinity", "maxHeight": "infinity", "alignment": "topLeading" }
                       },
                       "children": [
                         {
-                          "type": "Text",
-                          "properties": { "text": "Read-write", "font": "subheadline" }
+                          "type": "VStack",
+                          "properties": {
+                            "spacing": 4,
+                            "alignment": "leading",
+                            "frame": { "maxWidth": "infinity", "maxHeight": "infinity", "alignment": "topLeading" }
+                          },
+                          "children": [
+                            {
+                              "type": "Text",
+                              "properties": { "text": "Read-write", "font": "subheadline" }
+                            },
+                            {
+                              "type": "Table",
+                              "id": 320,
+                              "properties": {
+                                "columns": ["Path"],
+                                "actionID": "aichat.mcp.servers.rw.selection.changed",
+                                "frame": { "minHeight": 80, "maxWidth": "infinity", "maxHeight": "infinity" }
+                              }
+                            },
+                            {
+                              "type": "HStack",
+                              "properties": { "spacing": 4 },
+                              "children": [
+                                {
+                                  "type": "Button",
+                                  "id": 321,
+                                  "properties": {
+                                    "systemImage": "plus",
+                                    "buttonStyle": "borderless",
+                                    "actionID": "aichat.mcp.servers.rw.add",
+                                    "help": "Add a folder the agent may read and write",
+                                    "frame": { "width": 24, "height": 22 }
+                                  }
+                                },
+                                {
+                                  "type": "Button",
+                                  "id": 322,
+                                  "properties": {
+                                    "systemImage": "minus",
+                                    "buttonStyle": "borderless",
+                                    "actionID": "aichat.mcp.servers.rw.remove",
+                                    "help": "Remove the selected read-write folder",
+                                    "disabled": true,
+                                    "frame": { "width": 24, "height": 22 }
+                                  }
+                                },
+                                { "type": "Spacer" }
+                              ]
+                            }
+                          ]
                         },
                         {
-                          "type": "Table",
-                          "id": 320,
+                          "type": "VStack",
                           "properties": {
-                            "columns": ["Path"],
-                            "actionID": "aichat.mcp.servers.rw.selection.changed",
-                            "frame": { "minHeight": 80, "maxWidth": "infinity", "maxHeight": "infinity" }
+                            "spacing": 4,
+                            "alignment": "leading",
+                            "frame": { "maxWidth": "infinity", "maxHeight": "infinity", "alignment": "topLeading" }
+                          },
+                          "children": [
+                            {
+                              "type": "Text",
+                              "properties": { "text": "Read-only", "font": "subheadline" }
+                            },
+                            {
+                              "type": "Table",
+                              "id": 330,
+                              "properties": {
+                                "columns": ["Path"],
+                                "actionID": "aichat.mcp.servers.ro.selection.changed",
+                                "frame": { "minHeight": 80, "maxWidth": "infinity", "maxHeight": "infinity" }
+                              }
+                            },
+                            {
+                              "type": "HStack",
+                              "properties": { "spacing": 4 },
+                              "children": [
+                                {
+                                  "type": "Button",
+                                  "id": 331,
+                                  "properties": {
+                                    "systemImage": "plus",
+                                    "buttonStyle": "borderless",
+                                    "actionID": "aichat.mcp.servers.ro.add",
+                                    "help": "Add a folder the agent may only read",
+                                    "frame": { "width": 24, "height": 22 }
+                                  }
+                                },
+                                {
+                                  "type": "Button",
+                                  "id": 332,
+                                  "properties": {
+                                    "systemImage": "minus",
+                                    "buttonStyle": "borderless",
+                                    "actionID": "aichat.mcp.servers.ro.remove",
+                                    "help": "Remove the selected read-only folder",
+                                    "disabled": true,
+                                    "frame": { "width": 24, "height": 22 }
+                                  }
+                                },
+                                { "type": "Spacer" }
+                              ]
+                            }
+                          ]
+                        },
+                        {
+                          "type": "Text",
+                          "properties": {
+                            "markdown": "The session temporary folder ($TMPDIR) is listed as read-write and recomputed each launch (its value changes per login session, so it is not saved). Remove it to deny temp access.",
+                            "foregroundStyle": "secondary",
+                            "font": "caption"
                           }
                         },
                         {
-                          "type": "HStack",
-                          "properties": { "spacing": 4 },
-                          "children": [
-                            {
-                              "type": "Button",
-                              "id": 321,
-                              "properties": {
-                                "systemImage": "plus",
-                                "buttonStyle": "borderless",
-                                "actionID": "aichat.mcp.servers.rw.add",
-                                "help": "Add a folder the agent may read and write",
-                                "frame": { "width": 24, "height": 22 }
-                              }
-                            },
-                            {
-                              "type": "Button",
-                              "id": 322,
-                              "properties": {
-                                "systemImage": "minus",
-                                "buttonStyle": "borderless",
-                                "actionID": "aichat.mcp.servers.rw.remove",
-                                "help": "Remove the selected read-write folder",
-                                "disabled": true,
-                                "frame": { "width": 24, "height": 22 }
-                              }
-                            },
-                            { "type": "Spacer" }
-                          ]
+                          "type": "Text",
+                          "properties": {
+                            "markdown": "Always allowed (read-only): system executables in `/bin`, `/usr/bin`, `/sbin`, `/usr/sbin` and system libraries in `/usr/lib`, `/System/Library` are granted automatically by 'replay' server sandbox.",
+                            "foregroundStyle": "secondary",
+                            "font": "caption"
+                          }
                         }
                       ]
-                    },
+                    }
+                  ]
+                },
+                {
+                  "type": "GroupBox",
+                  "id": 510,
+                  "properties": {
+                    "title": "In the AgentVM Box",
+                    "hidden": true,
+                    "frame": { "minWidth": 380, "maxWidth": "infinity", "maxHeight": "infinity", "alignment": "topLeading" }
+                  },
+                  "children": [
                     {
                       "type": "VStack",
                       "properties": {
-                        "spacing": 4,
+                        "spacing": 10,
                         "alignment": "leading",
                         "frame": { "maxWidth": "infinity", "maxHeight": "infinity", "alignment": "topLeading" }
                       },
                       "children": [
                         {
                           "type": "Text",
-                          "properties": { "text": "Read-only", "font": "subheadline" }
-                        },
-                        {
-                          "type": "Table",
-                          "id": 330,
+                          "id": 511,
                           "properties": {
-                            "columns": ["Path"],
-                            "actionID": "aichat.mcp.servers.ro.selection.changed",
-                            "frame": { "minHeight": 80, "maxWidth": "infinity", "maxHeight": "infinity" }
+                            "text": "",
+                            "font": "headline",
+                            "frame": { "maxWidth": "infinity", "alignment": "leading" }
                           }
                         },
                         {
-                          "type": "HStack",
-                          "properties": { "spacing": 4 },
-                          "children": [
-                            {
-                              "type": "Button",
-                              "id": 331,
-                              "properties": {
-                                "systemImage": "plus",
-                                "buttonStyle": "borderless",
-                                "actionID": "aichat.mcp.servers.ro.add",
-                                "help": "Add a folder the agent may only read",
-                                "frame": { "width": 24, "height": 22 }
-                              }
-                            },
-                            {
-                              "type": "Button",
-                              "id": 332,
-                              "properties": {
-                                "systemImage": "minus",
-                                "buttonStyle": "borderless",
-                                "actionID": "aichat.mcp.servers.ro.remove",
-                                "help": "Remove the selected read-only folder",
-                                "disabled": true,
-                                "frame": { "width": 24, "height": 22 }
-                              }
-                            },
-                            { "type": "Spacer" }
-                          ]
-                        }
+                          "type": "Text",
+                          "properties": {
+                            "text": "The servers run in the AgentVM box. Only the project folder above is shared with it, at the same path; every file in it, .env files included, can be read there. Nothing else on this Mac is visible in the box.",
+                            "foregroundStyle": "secondary",
+                            "frame": { "maxWidth": "infinity", "alignment": "leading" }
+                          }
+                        },
+                        {
+                          "type": "Toggle",
+                          "id": 512,
+                          "properties": {
+                            "title": "Read-only project"
+                          }
+                        },
+                        {
+                          "type": "Text",
+                          "properties": {
+                            "text": "The tools can read the project but cannot change, add or delete anything in it.",
+                            "font": "caption",
+                            "foregroundStyle": "secondary",
+                            "frame": { "maxWidth": "infinity", "alignment": "leading" }
+                          }
+                        },
+                        {
+                          "type": "Text",
+                          "properties": {
+                            "text": "Programs in the box reach only the hosts the box allows. A new box allows the search server's host when Internet and Allow Network are on; other hosts are refused until you allow them with Network... under the model button.",
+                            "font": "caption",
+                            "foregroundStyle": "secondary",
+                            "frame": { "maxWidth": "infinity", "alignment": "leading" }
+                          }
+                        },
+                        {
+                          "type": "Text",
+                          "properties": {
+                            "text": "Cadabra copies its tools into the box when the conversation starts (about 80 MB, a few seconds, once per box and Cadabra version).",
+                            "font": "caption",
+                            "foregroundStyle": "secondary",
+                            "frame": { "maxWidth": "infinity", "alignment": "leading" }
+                          }
+                        },
+                        { "type": "Spacer" }
                       ]
-                    },
-                    {
-                      "type": "Text",
-                      "properties": {
-                        "markdown": "The session temporary folder ($TMPDIR) is listed as read-write and recomputed each launch (its value changes per login session, so it is not saved). Remove it to deny temp access.",
-                        "foregroundStyle": "secondary",
-                        "font": "caption"
-                      }
-                    },
-                    {
-                      "type": "Text",
-                      "properties": {
-                        "markdown": "Always allowed (read-only): system executables in `/bin`, `/usr/bin`, `/sbin`, `/usr/sbin` and system libraries in `/usr/lib`, `/System/Library` are granted automatically by 'replay' server sandbox.",
-                        "foregroundStyle": "secondary",
-                        "font": "caption"
-                      }
                     }
                   ]
                 }

@@ -148,6 +148,139 @@ chat_engine_box_memory_check() {
 	warn_ram_pressure_for_new_box "$(( gb * 1073741824 ))" "$label" "$own"
 }
 
+# chat_engine_agentvm_ready <what>  ->  0 when boxes can be used, else 1 after an alert that
+# starts "<what> set to run in an AgentVM box" ("This agent is", "Cadabra's tools are"). A
+# missing or old AgentVM is one click away: the same install job as the Box Manager's Install
+# AgentVM..., followed there. The conversation still does not start now.
+chat_engine_agentvm_ready() {
+	local what="$1"
+	local unavailable
+	unavailable="$(agentvm_available)"
+	local available_status=$?
+	if [ "$available_status" -eq 0 ]; then
+		return 0
+	fi
+	echo "box: agent-vm unavailable: $unavailable"
+	local mode="" verb=""
+	case "$available_status" in
+		"$agentvm_not_installed") mode="install"; verb="Install" ;;
+		"$agentvm_too_old")       mode="update";  verb="Update" ;;
+	esac
+	if [ -z "$mode" ]; then
+		"$alert" --level "stop" --title "$APPLET_NAME" --ok "OK" \
+			"$what set to run in an AgentVM box, and boxes cannot be used here.
+
+$unavailable"
+		return 1
+	fi
+	"$alert" --level "caution" --title "$APPLET_NAME" --ok "$verb AgentVM" --cancel "Cancel" \
+		"$what set to run in an AgentVM box, and boxes cannot be used yet.
+
+$unavailable
+
+$verb AgentVM downloads its newest release from GitHub, checks that Apple notarized it and AgentVM's developer signed it, and installs it for your user account, with no administrator password. The AgentVM window shows the progress. Start the conversation again when it is done."
+	if [ $? -eq 0 ]; then
+		source "$OMC_APP_BUNDLE_PATH/Contents/Resources/Scripts/aichat.boxes.library.sh"
+		boxes_install_agentvm_elsewhere "$mode"
+		if [ $? -eq 0 ]; then
+			"$next_command" "$OMC_CURRENT_COMMAND_GUID" "aichat.boxes.open"
+		fi
+	fi
+	return 1
+}
+
+# chat_engine_tools_box <win> <use-tools>
+#   A local model whose tools run in an agent-vm box (/servers/runIn, chosen in Agentic Session
+#   Tools): 0 once the box runs with the project shared and Cadabra's tools copied in, and the
+#   window's tools record is set, so the transport built next generates its MCP config in box
+#   mode (aichat_acp_transport_json). Also 0, doing nothing, when tools are off or run on this
+#   Mac. 1 after an alert, with nothing left registered.
+#
+#   The model stays on this Mac: only the MCP servers go into the box, each started by mlx-agent
+#   through `agent-vm exec`. The box is registered for this window first thing, as an agent's box
+#   is, so the window's close releases it (aichat.chat.cancel.sh) and chat_engine_load releases
+#   it when the engine itself then fails.
+chat_engine_tools_box() {
+	local win="$1" use_tools="$2"
+	case "$use_tools" in
+		true|readonly) ;;
+		*) return 0 ;;
+	esac
+	local run_in="$(mcp_tools_run_in)"
+	case "$run_in" in
+		mac) return 0 ;;
+		damaged)
+			echo "tools box: where the tools run is unreadable"
+			"$alert" --level "stop" --title "$APPLET_NAME" --ok "OK" \
+				"Could not start the conversation with its tools.
+
+Where Cadabra's tools run cannot be read from Cadabra's settings. Choose it again in Agentic Session Tools."
+			return 1 ;;
+	esac
+	chat_engine_agentvm_ready "Cadabra's tools are" || return 1
+	local project="$(mcp_prefs_get_string servers/local/project)"
+	case "$project" in
+		/*) ;;
+		*)  project="" ;;
+	esac
+	if [ -z "$project" ] || [ ! -d "$project" ]; then
+		echo "tools box: no usable project folder (${project:-none})"
+		"$alert" --level "stop" --title "$APPLET_NAME" --ok "OK" \
+			"Cadabra's tools run in an AgentVM box, which works on one project folder shared with it.
+
+Choose the Project folder in Agentic Session Tools, then start the conversation again."
+		return 1
+	fi
+	# Refused rather than read as "no", which would let the tools change a project the user may
+	# have asked them only to read.
+	local read_only="$(mcp_tools_read_only)"
+	case "$read_only" in
+		yes|no) ;;
+		*)
+			echo "tools box: read-only setting unreadable ($read_only)"
+			"$alert" --level "stop" --title "$APPLET_NAME" --ok "OK" \
+				"Could not start the conversation with its tools.
+
+Whether the project is shared read-only cannot be read from Cadabra's settings. Choose it again in Agentic Session Tools."
+			return 1 ;;
+	esac
+	chat_engine_box_memory_check "$run_in" "$win"
+	if [ $? -ne 0 ]; then
+		echo "tools box: not started, the memory warning was canceled ($run_in)"
+		return 1
+	fi
+	chat_loading_overlay_note "$win" "Starting the AgentVM box and copying Cadabra's tools into it..."
+	local box
+	box="$(boxsession_start_tools "$win" "$run_in" "$project" "$read_only")"
+	local box_status=$?
+	if [ "$box_status" -ne 0 ]; then
+		local why="$(agentvm_last_error "$box_status")"
+		echo "tools box: start failed ($run_in, status $box_status): $why"
+		boxsession_release "$win"
+		"$alert" --level "stop" --title "$APPLET_NAME" --ok "OK" \
+			"Could not start the AgentVM box for Cadabra's tools.
+
+$why"
+		return 1
+	fi
+	# The window may have closed during the start, as for an agent's box.
+	chat_window_is_open "$win"
+	local still_open=$?
+	if [ "$still_open" -ne 0 ]; then
+		echo "tools box: the window closed while $box started; releasing it"
+		boxsession_close "$win"
+		return 1
+	fi
+	echo "tools box: $box ($run_in, project $project, read-only $read_only)"
+	case "$run_in" in
+		new:?*) boxsession_stamp_image "$win" "$box" "${run_in#new:}" ;;
+	esac
+	# The box line under the model button. No agent id: the Network window then offers only
+	# Allow in This Box.
+	boxsession_line_show "$win" "$box" ""
+	return 0
+}
+
 # chat_engine_box_transport <win> <command> <agent id> <run-in> <use-tools>
 #   The external agent in an agent-vm box: 0 with CHAT_ENGINE_CONFIG set, or 1 after an alert.
 #   A plain command like chat_engine_transport_config, for the same reasons.
@@ -170,40 +303,7 @@ chat_engine_box_memory_check() {
 #   allows one.
 chat_engine_box_transport() {
 	local win="$1" command="$2" agent="$3" run_in="$4" use_tools="$5"
-	local unavailable
-	unavailable="$(agentvm_available)"
-	local available_status=$?
-	if [ "$available_status" -ne 0 ]; then
-		echo "box: agent-vm unavailable: $unavailable"
-		# A missing or old AgentVM is one click away: the same install job as the Box Manager's
-		# Install AgentVM..., followed there. The conversation still does not start now.
-		local mode="" verb=""
-		case "$available_status" in
-			"$agentvm_not_installed") mode="install"; verb="Install" ;;
-			"$agentvm_too_old")       mode="update";  verb="Update" ;;
-		esac
-		if [ -z "$mode" ]; then
-			"$alert" --level "stop" --title "$APPLET_NAME" --ok "OK" \
-				"This agent is set to run in an AgentVM box, and boxes cannot be used here.
-
-$unavailable"
-			return 1
-		fi
-		"$alert" --level "caution" --title "$APPLET_NAME" --ok "$verb AgentVM" --cancel "Cancel" \
-			"This agent is set to run in an AgentVM box, and boxes cannot be used yet.
-
-$unavailable
-
-$verb AgentVM downloads its newest release from GitHub, checks that Apple notarized it and AgentVM's developer signed it, and installs it for your user account, with no administrator password. The AgentVM window shows the progress. Start the conversation again when it is done."
-		if [ $? -eq 0 ]; then
-			source "$OMC_APP_BUNDLE_PATH/Contents/Resources/Scripts/aichat.boxes.library.sh"
-			boxes_install_agentvm_elsewhere "$mode"
-			if [ $? -eq 0 ]; then
-				"$next_command" "$OMC_CURRENT_COMMAND_GUID" "aichat.boxes.open"
-			fi
-		fi
-		return 1
-	fi
+	chat_engine_agentvm_ready "This agent is" || return 1
 	local project="$(mcp_prefs_get_string servers/local/project)"
 	case "$project" in
 		/*) ;;
@@ -703,6 +803,14 @@ chat_engine_load() {
 		fi
 	fi
 
+	# A local model's tools in an AgentVM box: the box first, since the MCP config the transport
+	# generates runs its servers there. Before the llama-server launch, so a box that cannot start
+	# costs no model load.
+	if [ "$engine_ready" = 0 ] && [ "$external_active" != "true" ]; then
+		chat_engine_tools_box "$win" "$use_tools"
+		engine_ready=$?
+	fi
+
 	if [ "$engine_ready" = 0 ]; then
 		chat_engine_transport_config "$win" "$engine" "$model_path" "$use_tools" \
 			"$external_command" "$port_num"
@@ -752,6 +860,12 @@ chat_engine_load() {
 		# launch a second server beside it. Nothing to stop on the other engines (they launch no
 		# server) or when the port claim itself failed, and stop_window_server says so and returns.
 		[ -n "$port_num" ] && stop_window_server "$win" "ENGINE-LOAD-FAILED"
+		# And the box of a local model's tools, when one was started for an engine that then
+		# failed: nothing will use it. An agent's box was released where it failed, and a window
+		# without a box has nothing to release.
+		if [ "$external_active" != "true" ]; then
+			boxsession_release "$win"
+		fi
 		# Un-claim the window next. Nothing was injected, so it is driving nothing, and the
 		# stamps are what every other handler reads to decide what it is driving - leaving them
 		# set describes a model that is not loaded and locks the window out of a second attempt.
@@ -853,6 +967,25 @@ chat_engine_switch() {
 		echo "window $win already runs $model_label; nothing to switch"
 		return 0
 	fi
+
+	# TOOLS TURNED ON BY THE SWITCH, while Where tools run names an AgentVM box. A window whose tools
+	# already run somewhere keeps them there (its tools record, or none for this Mac), but one that
+	# had no tools has no box, and the config built below would run its servers on this Mac. The
+	# box is started by a load, so the switch is refused rather than move the tools to this Mac.
+	case "$use_tools:$prev_tools" in
+		true:true|true:readonly|readonly:true|readonly:readonly|false:*|:*) ;;
+		*)
+			local box_tools_record="$(mcp_box_tools_get "$win")"
+			local tools_run_in="$(mcp_tools_run_in)"
+			if [ -z "$box_tools_record" ] && [ "$tools_run_in" != "mac" ]; then
+				echo "switch refused: tools turned on for window $win, set to run in $tools_run_in, and it has no box"
+				"$alert" --level "stop" --title "$APPLET_NAME" --ok "OK" \
+					"Could not turn on tools for this conversation.
+
+Cadabra's tools are set to run in an AgentVM box, and this conversation started without tools, so it has no box. Start a new conversation with tools on, or choose This Mac under Where tools run in Agentic Session Tools."
+				return 1
+			fi ;;
+	esac
 	echo "switching window $win to $model_label ($target_engine)"
 
 	# A switch in progress shows in the loading overlay, and only there. This handler used to

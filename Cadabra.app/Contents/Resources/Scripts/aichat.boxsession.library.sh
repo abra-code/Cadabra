@@ -657,6 +657,29 @@ boxsession_start() {
         return 2
     fi
     local _window="$1" _run_in="$2" _agent="$3" _project="$4" _read_only="$5"
+    local _rules=""
+    case "$_run_in" in
+        new:?*)
+            _rules="$("$agentvm_python" "$boxsession_catalog_py" box-list "$_agent" allow 2>"$agentvm_err_file")"
+            local _status=$?
+            if [ "$_status" -ne 0 ]; then
+                _agentvm_refuse 1 "The agent catalog could not be read: $(/bin/cat "$agentvm_err_file" 2>/dev/null)"
+                return 1
+            fi
+            # The hosts the user allowed for this agent in earlier boxes (Allow for <agent>),
+            # after the catalog's; a rule in both is passed once.
+            _rules="$(printf '%s\n%s\n' "$_rules" "$(acp_agent_allowed "$_agent")" | /usr/bin/awk 'NF && !seen[$0]++')" ;;
+    esac
+    _boxsession_start_box "$_window" "$_run_in" "$_agent" "$_project" "$_read_only" "$_rules"
+}
+
+# _boxsession_start_box <window> <run-in> <name part> <project> <yes|no read-only> <rules>
+#   ->  boxsession_start's work for any kind of session: the box name once it runs with the
+# project shared. <name part> goes into a disposable box's name (boxsession_disposable_name);
+# <rules> are its network rules, one per line (a rule never holds whitespace), used only when
+# the box is made here.
+_boxsession_start_box() {
+    local _window="$1" _run_in="$2" _slug="$3" _project="$4" _read_only="$5" _rules="$6"
     case "$_project" in
         /*) ;;
         *) _agentvm_refuse 2 "The project must be an absolute path, not \"$_project\"."
@@ -681,21 +704,10 @@ boxsession_start() {
         new:?*)
             local _image="${_run_in#new:}"
             _agentvm_need_name image "$_image" || return $?
-            _box="$(boxsession_disposable_name "$_agent")"
+            _box="$(boxsession_disposable_name "$_slug")"
             _disposable=yes
-            local _rules
-            _rules="$("$agentvm_python" "$boxsession_catalog_py" box-list "$_agent" allow 2>"$agentvm_err_file")"
-            local _status=$?
-            if [ "$_status" -ne 0 ]; then
-                _agentvm_refuse 1 "The agent catalog could not be read: $(/bin/cat "$agentvm_err_file" 2>/dev/null)"
-                return 1
-            fi
-            # The hosts the user allowed for this agent in earlier boxes (Allow for <agent>),
-            # after the catalog's; a rule in both is passed once.
-            _rules="$(printf '%s\n%s\n' "$_rules" "$(acp_agent_allowed "$_agent")" | /usr/bin/awk 'NF && !seen[$0]++')"
-            # The rules become the positional parameters, one per line of the catalog's answer
-            # (a rule never holds whitespace; acp_catalog.py leaves such values out). A here-
-            # document rather than a pipe, so the loop runs in this shell and its `set` stays.
+            # The rules become the positional parameters, one per line. A here-document rather
+            # than a pipe, so the loop runs in this shell and its `set` stays.
             set --
             local _rule
             while IFS= read -r _rule; do
@@ -713,6 +725,212 @@ EOF
     boxsession_registry_add "$_window" "$_box" "$_disposable" "$_project" "$_read_only" || return $?
     agentvm_box_start "$_box" || return $?
     agentvm_box_warmup "$_box" "$_project" "$_read_only" || return $?
+    printf '%s\n' "$_box"
+}
+
+# TOOLS IN A BOX. A local model's MCP servers (replay, pdfutil, and the Python time and search
+# servers) can run in a box while the model runs on this Mac: mlx-agent starts each server as
+# `agent-vm exec --box B --project P -- <server>` (generate_mcp_configs.py's box mode). The
+# servers are Cadabra's own files, so they are copied into the box user's
+#   ~/Library/Application Support/Cadabra/Tools/<version>-<digest>/
+# in the same layout as in Cadabra.app/Contents, once per box and Cadabra build: a tar stream from
+# this Mac into `tar -x` in the box (about 80 MB, under 2 s), then a bytecode compile of the
+# Python files into ~/Library/Caches/Cadabra/pycache there (about 2 s), which each server's first
+# start would otherwise pay. A marker file written last says a copy is complete; copies of other
+# builds are removed when a new one lands. A copy rather than a shared folder: the box has one
+# shared folder, the project's, and Python's many small files are slow over it.
+#
+# The copy includes replay-box-sandbox.json, replay's own Seatbelt profile inside the box: the
+# project stays read-write through --allow-write, the box's temporary folders are writable, and
+# the toolchains and /private/etc/ssl are readable (curl needs its certificates), so a shell
+# command the model runs cannot change the box user's home folder, where a kept box keeps logins.
+#
+# The digest covers the copied files' paths, sizes and modification times (under 0.1 s), so a
+# rebuilt Cadabra copies again even at the same version.
+boxsession_tools_items="Support/replay Support/pdfutil Library/Python Library/Packages Resources/replay-box-sandbox.json"
+# The search server's host: its search reads html.duckduckgo.com. Its fetch tool reads whatever
+# page the model names, and those hosts are refused until the user allows them (Network...).
+boxsession_tools_search_hosts="html.duckduckgo.com"
+# How long a window waits, in tenths of a second, for another window's copy into the same box,
+# and after how many seconds a copy's lock counts as left over from a killed handler. A copy
+# takes 3-5 s, so a minute is ample, and it is well inside the wait (about two minutes with the
+# tools each try runs), so a window finding a killed handler's lock takes it over instead of
+# giving up. CADABRA_BOXTOOLS_LOCK_WAIT is a test seam.
+boxsession_tools_lock_wait="${CADABRA_BOXTOOLS_LOCK_WAIT:-1200}"
+boxsession_tools_lock_stale=60
+
+# boxsession_tools_id  ->  "<Cadabra version>-<12 hex digits>", the copy's folder name.
+boxsession_tools_id() {
+    local _contents="$OMC_APP_BUNDLE_PATH/Contents"
+    # Cadabra's Info.plist has CFBundleVersion only.
+    local _version="$("$plister" get string "$_contents/Info.plist" /CFBundleVersion 2>/dev/null)"
+    set --
+    local _item
+    for _item in $boxsession_tools_items; do
+        set -- "$@" "$_contents/$_item"
+    done
+    # Paths relative to Contents, so moving Cadabra.app copies nothing again.
+    local _digest="$(/usr/bin/find "$@" -type f -exec /usr/bin/stat -f '%N %z %m' {} + 2>/dev/null \
+        | _contents="$_contents/" /usr/bin/awk '{ if (index($0, ENVIRON["_contents"]) == 1) $0 = substr($0, length(ENVIRON["_contents"]) + 1); print }' \
+        | /usr/bin/shasum -a 256 | /usr/bin/cut -c1-12)"
+    printf '%s-%s\n' "${_version:-0}" "$_digest"
+}
+
+# _boxsession_tools_lock <box> / _boxsession_tools_unlock <box> - one copy into a box at a time,
+# across Cadabra's windows (a directory; mkdir is atomic). Waits for another window's copy; a
+# lock older than boxsession_tools_lock_stale seconds is taken over. 1 when the wait ran out.
+_boxsession_tools_lock() {
+    local _lock="$mcp_app_support/box-tools-$1.lock"
+    local _left="$boxsession_tools_lock_wait" _made _mtime _now
+    /bin/mkdir -p "$mcp_app_support" 2>/dev/null
+    while [ "$_left" -gt 0 ]; do
+        /bin/mkdir "$_lock" 2>/dev/null
+        _made=$?
+        if [ "$_made" -eq 0 ]; then
+            return 0
+        fi
+        _left=$((_left - 1))
+        _mtime="$(/usr/bin/stat -f%m "$_lock" 2>/dev/null)"
+        _now="$(/bin/date +%s)"
+        if [ -n "$_mtime" ] && [ $((_now - _mtime)) -gt "$boxsession_tools_lock_stale" ]; then
+            /bin/mv "$_lock" "$_lock.stale.$$" 2>/dev/null
+            /bin/rm -rf "$_lock.stale.$$"
+            continue
+        fi
+        /bin/sleep 0.1
+    done
+    return 1
+}
+
+_boxsession_tools_unlock() {
+    /bin/rmdir "$mcp_app_support/box-tools-$1.lock" 2>/dev/null
+}
+
+# The two programs run in the box by /bin/sh. The first says whether the copy <id> is complete
+# and where it and the bytecode cache are; the second, reading the tar stream on its standard
+# input, puts a copy there, checks that each item arrived, compiles it, removes copies of other
+# builds with their bytecode, and marks it complete.
+# A failed compile costs only speed, so it is not an error.
+_boxsession_tools_where='dir="$HOME/Library/Application Support/Cadabra/Tools/$1"
+state=missing
+if [ -f "$dir/.cadabra-tools-complete" ]; then state=ready; fi
+printf "%s\t%s\t%s\n" "$state" "$dir" "$HOME/Library/Caches/Cadabra/pycache"'
+_boxsession_tools_install='dir="$1"; cache="$2"; base="${dir%/*}"
+shift 2
+/bin/rm -rf "$dir" || exit 1
+/bin/mkdir -p "$dir" || exit 1
+/usr/bin/tar -xf - -C "$dir" || exit 1
+for item in "$@"; do
+    if [ ! -e "$dir/$item" ]; then printf "Error: %s did not arrive in the box.\n" "$item" >&2; exit 1; fi
+done
+PYTHONPYCACHEPREFIX="$cache" "$dir/Library/Python/bin/python3" -m compileall -q "$dir/Library/Packages" "$dir/Library/Python/lib" >/dev/null 2>&1
+for old in "$base"/*; do
+    if [ "$old" != "$dir" ]; then /bin/rm -rf "$old" "$cache$old"; fi
+done
+: > "$dir/.cadabra-tools-complete" || exit 1'
+
+# boxsession_tools_copy <box>  ->  one row, the copy's folder in the box TAB the bytecode cache
+# folder there, once Cadabra's tools are in the running box (copied now, or found from before).
+# A failure's message is left for agentvm_last_error.
+boxsession_tools_copy() {
+    _agentvm_need_name box "$1" || return $?
+    local _box="$1"
+    local _contents="$OMC_APP_BUNDLE_PATH/Contents"
+    local _item
+    for _item in $boxsession_tools_items; do
+        if [ ! -e "$_contents/$_item" ]; then
+            _agentvm_refuse 1 "Cadabra's tools cannot be copied into the AgentVM box: $_item is missing from Cadabra.app."
+            return 1
+        fi
+    done
+    local _id="$(boxsession_tools_id)"
+    _boxsession_tools_lock "$_box"
+    local _locked=$?
+    if [ "$_locked" -ne 0 ]; then
+        _agentvm_refuse 1 "Another Cadabra window is still copying Cadabra's tools into the AgentVM box $_box. Try again in a minute."
+        return 1
+    fi
+    local _where
+    _where="$(agentvm_box_exec "$_box" /bin/sh -c "$_boxsession_tools_where" sh "$_id" </dev/null)"
+    local _status=$?
+    if [ "$_status" -ne 0 ]; then
+        _boxsession_tools_unlock "$_box"
+        return "$_status"
+    fi
+    local _state _dir _cache
+    IFS="$boxsession_tab" read -r _state _dir _cache <<EOF
+$_where
+EOF
+    case "$_state:$_dir:$_cache" in
+        ready:/?*:/?*|missing:/?*:/?*) ;;
+        *)
+            _boxsession_tools_unlock "$_box"
+            _agentvm_refuse 1 "The AgentVM box $_box did not say where Cadabra's tools go (it answered \"$_where\")."
+            return 1 ;;
+    esac
+    if [ "$_state" = "missing" ]; then
+        set --
+        for _item in $boxsession_tools_items; do
+            set -- "$@" "$_item"
+        done
+        # The items follow as the script's arguments: the box's tar takes an empty stream (a tar
+        # here that could not run) as an empty archive, so the script checks that each arrived.
+        /usr/bin/tar -cf - -C "$_contents" "$@" 2>/dev/null \
+            | agentvm_box_exec "$_box" /bin/sh -c "$_boxsession_tools_install" sh "$_dir" "$_cache" "$@"
+        _status=$?
+        if [ "$_status" -ne 0 ]; then
+            _boxsession_tools_unlock "$_box"
+            local _why="$(agentvm_last_error "$_status")"
+            _agentvm_refuse "$_status" "Cadabra's tools could not be copied into the AgentVM box $_box: $_why"
+            return "$_status"
+        fi
+    fi
+    _boxsession_tools_unlock "$_box"
+    printf '%s\t%s\n' "$_dir" "$_cache"
+}
+
+# boxsession_tools_rules  ->  the network rules a new box needs for the enabled servers, one per
+# line: the search server's host when it and the network are on, else none. The time server
+# needs none (the box's clock is set from this Mac), nor do the others.
+boxsession_tools_rules() {
+    local _network="$(mcp_prefs_get_bool allow-network)"
+    local _search="$(mcp_prefs_get_bool servers/search/enabled)"
+    if [ "$_network" = "true" ] && [ "$_search" = "true" ]; then
+        printf '%s\n' $boxsession_tools_search_hosts
+    fi
+}
+
+# boxsession_start_tools <window> <run-in> <project> <yes|no read-only>  ->  the box name once
+# the box runs, the project is shared in it and Cadabra's tools are copied there, with the
+# window's tools record set (mcp_box_tools_set) for generate_mcp_configs.py's box mode. A new
+# disposable box is named cadabra-tools-<6 hex digits> and allows the hosts of the enabled
+# servers. The window's registry row is written as soon as the box is known, like
+# boxsession_start's. A failure's message is left for agentvm_last_error.
+boxsession_start_tools() {
+    if [ $# -ne 4 ]; then
+        _agentvm_refuse 2 "boxsession_start_tools needs a window, where the tools run, a project and yes or no."
+        return 2
+    fi
+    local _window="$1" _run_in="$2" _project="$3" _read_only="$4"
+    local _box
+    _box="$(_boxsession_start_box "$_window" "$_run_in" tools "$_project" "$_read_only" "$(boxsession_tools_rules)")"
+    local _status=$?
+    if [ "$_status" -ne 0 ]; then
+        return "$_status"
+    fi
+    local _copy
+    _copy="$(boxsession_tools_copy "$_box")"
+    _status=$?
+    if [ "$_status" -ne 0 ]; then
+        return "$_status"
+    fi
+    mcp_box_tools_set "$_window" "$_box" "$_project" "$_read_only" "${_copy%%"$boxsession_tab"*}" "${_copy#*"$boxsession_tab"}"
+    # Read back: without the record the transport would build a config for this Mac.
+    local _record="$(mcp_box_tools_get "$_window")"
+    if [ "${_record%%"$boxsession_tab"*}" != "$_box" ]; then
+        _agentvm_refuse 1 "Cadabra could not remember that this window's tools run in the AgentVM box $_box."
+        return 1
+    fi
     printf '%s\n' "$_box"
 }
 
@@ -820,6 +1038,9 @@ boxsession_release() {
     pb_set "aichatv2_boxline_at_$1" ""
     pb_set "aichatv2_boxprompts_$1" ""
     pb_set "aichatv2_boxagent_$1" ""
+    # A local model's tools no longer run in the box: a later config (an in-place model switch)
+    # is made for this Mac.
+    mcp_box_tools_clear "$1"
     # The quiet watch finds no line and ends at its next look.
     /bin/rm -f "$(boxsession_watch_mark_file "$1")"
     local _box="$(printf '%s\n' "$_row" | /usr/bin/cut -f2)"

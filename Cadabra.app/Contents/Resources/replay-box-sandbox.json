@@ -1,0 +1,14 @@
+{
+  "read_only": [
+    "/opt/homebrew",
+    "/usr/local",
+    "/Library/Developer/CommandLineTools",
+    "/private/etc/ssl",
+    "/usr/libexec",
+    "/usr/share"
+  ],
+  "read_write": [
+    "/private/tmp",
+    "/private/var/folders"
+  ]
+}
