@@ -762,6 +762,91 @@ acp_agent_set_secret() {
     _acp_agent_set_per_agent secret "$1" "$2"
 }
 
+# HOSTS AN AGENT'S NEW BOXES ALLOW, besides its catalog's. Added with "Allow for <agent>" in the
+# AgentVM Box Network window, one list per agent id:
+#   /agents/allow/<id> : string - network rules, separated by spaces ("" or missing: none)
+# A rule is what agent-vm's --allow takes: a host, "*.domain", "host:port" or "pack:<name>", so it
+# never holds whitespace. Chat init adds them to every disposable box it makes for the agent.
+# Not for "custom", the id of a command typed with no record: it stands for whatever command is
+# typed next, so a host allowed for one would reach the next.
+
+# acp_agent_valid_rule <rule>  ->  0 for a rule that can be stored and passed after --allow:
+# letters, digits, ".", "-", "_", ":" and "*", not starting with "-". The letters are spelled
+# out: a range such as [a-z] matches upper-case letters too in a UTF-8 locale.
+acp_agent_valid_rule() {
+    case "$1" in
+        ''|-*|*[!ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789.:*_-]*) return 1 ;;
+    esac
+    return 0
+}
+
+# acp_agent_allowed <id>  ->  the agent's saved rules, one per line, in the order added; stored
+# words that are not rules (a hand-edited file) are left out. Nothing for "custom" or a damaged
+# value.
+acp_agent_allowed() {
+    case "$1" in
+        ''|custom|*/*) return 0 ;;
+    esac
+    local stored="$(_acp_agent_per_agent allow "$1" "")"
+    [ "$stored" = "damaged" ] && return 0
+    local rule
+    # One word per line with tr, never through the shell's word splitting, which would expand a
+    # "*.domain" rule as a file name pattern.
+    printf '%s\n' "$stored" | /usr/bin/tr -s ' \t' '\n\n' | while IFS= read -r rule; do
+        if acp_agent_valid_rule "$rule"; then
+            printf '%s\n' "$rule"
+        fi
+    done
+}
+
+# acp_agent_allow_add <id> <rule>  ->  0 once the rule is among the agent's saved rules (already
+# there counts); 2 for an id that cannot hold rules or a value that is not a rule; 1 when the
+# write did not land.
+acp_agent_allow_add() {
+    case "$1" in
+        ''|custom|*/*) return 2 ;;
+    esac
+    acp_agent_valid_rule "$2" || return 2
+    local rules="$(acp_agent_allowed "$1")"
+    local present="$(printf '%s\n' "$rules" | /usr/bin/awk -v want="$2" '$0 == want { print "yes"; exit }')"
+    if [ "$present" = "yes" ]; then
+        return 0
+    fi
+    local joined="$(printf '%s\n%s\n' "$rules" "$2" | /usr/bin/awk 'NF { printf "%s%s", sep, $0; sep = " " }')"
+    _acp_agent_set_per_agent allow "$1" "$joined"
+}
+
+# acp_agent_allow_remove <id> <rule>  ->  0 once the rule is not among the agent's saved rules;
+# 2 for an id that cannot hold rules; 1 when the write did not land.
+acp_agent_allow_remove() {
+    case "$1" in
+        ''|custom|*/*) return 2 ;;
+    esac
+    local joined="$(acp_agent_allowed "$1" | /usr/bin/awk -v drop="$2" 'NF && $0 != drop { printf "%s%s", sep, $0; sep = " " }')"
+    _acp_agent_set_per_agent allow "$1" "$joined"
+}
+
+# acp_agent_label_for <id>  ->  what the user calls the agent: a saved agent's name, the catalog's
+# label, or nothing (for "custom", or an id neither knows).
+acp_agent_label_for() {
+    local cat_id cat_label rest saved
+    case "$1" in
+        ''|custom) return 0 ;;
+        custom:*)  saved=$(acp_custom_get "$1" label)
+                   [ -n "$saved" ] && printf '%s\n' "$saved"
+                   return 0 ;;
+    esac
+    while IFS='	' read -r cat_id cat_label rest; do
+        if [ "$cat_id" = "$1" ]; then
+            printf '%s\n' "$cat_label"
+            return 0
+        fi
+    done <<EOF
+$(acp_agent_catalog)
+EOF
+    return 0
+}
+
 # acp_agent_record_verified <command-line> <name> <version>
 #
 # Remembers what the agent CALLED ITSELF the last time Test actually spoke to it. This is the

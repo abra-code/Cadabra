@@ -4,7 +4,7 @@
     "spacing": 12,
     "alignment": "leading",
     "padding": "default",
-    "frame": { "minWidth": 680, "idealWidth": 760, "minHeight": 380, "idealHeight": 460 }
+    "frame": { "minWidth": 680, "idealWidth": 760, "minHeight": 460, "idealHeight": 560 }
   },
   "children": [
     {
@@ -40,6 +40,17 @@
             "actionID": "aichat.box.network.allow"
           }
         },
+        {
+          "type": "Button",
+          "id": 803,
+          "properties": {
+            "title": "Allow for This Agent...",
+            "disabled": true,
+            "hidden": true,
+            "help": "Allow the selected refused host in this box now, and in every new disposable AgentVM box made for this agent",
+            "actionID": "aichat.box.network.allow.agent"
+          }
+        },
         { "type": "Spacer" },
         {
           "type": "Button",
@@ -71,6 +82,43 @@
         "foregroundStyle": "secondary",
         "frame": { "maxWidth": "infinity", "alignment": "leading" }
       }
+    },
+    {
+      "type": "Text",
+      "id": 807,
+      "properties": {
+        "text": "",
+        "hidden": true,
+        "frame": { "maxWidth": "infinity", "alignment": "leading" }
+      }
+    },
+    {
+      "type": "HStack",
+      "id": 810,
+      "properties": { "spacing": 8, "alignment": "top", "hidden": true, "frame": { "maxWidth": "infinity" } },
+      "children": [
+        {
+          "type": "Table",
+          "id": 808,
+          "properties": {
+            "columns": ["Rule"],
+            "widths": [400],
+            "minWidths": [160],
+            "actionID": "aichat.box.network.saved.selection.changed",
+            "frame": { "maxWidth": "infinity", "minHeight": 60, "idealHeight": 80, "maxHeight": 120 }
+          }
+        },
+        {
+          "type": "Button",
+          "id": 809,
+          "properties": {
+            "title": "Remove...",
+            "disabled": true,
+            "help": "Stop allowing the selected host in new disposable AgentVM boxes made for this agent; boxes that have it keep it",
+            "actionID": "aichat.box.network.saved.remove"
+          }
+        }
+      ]
     }
   ]
 }

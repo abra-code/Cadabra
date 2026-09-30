@@ -243,9 +243,11 @@ _boxsession_kept_note() {
     fi
 }
 
-# boxsession_line_show <window> <box>  ->  puts the line in the window, and remembers the box,
-# this moment and the line's first part for the refreshes. Called once the agent's box runs, so
-# the connections macOS makes while the box boots are not counted as the agent's.
+# boxsession_line_show <window> <box> [agent id]  ->  puts the line in the window, and remembers
+# the box, this moment and the line's first part for the refreshes, and the agent id for the
+# Network window's Allow for <agent> (aichatv2_boxagent_<window>).
+# Called once the agent's box runs, so the connections macOS makes while the box boots are
+# not counted as the agent's.
 boxsession_line_show() {
     local _since="$(/bin/date -u +%Y-%m-%dT%H:%M:%SZ)"
     local _head="$(boxsession_line_head "$1")"
@@ -253,6 +255,7 @@ boxsession_line_show() {
         _head="AgentVM box $2"
     fi
     pb_set "aichatv2_boxline_$1" "$2$boxsession_tab$_since$boxsession_tab$_head"
+    pb_set "aichatv2_boxagent_$1" "${3:-}"
     pb_set "aichatv2_boxprompts_$1" ""
     "$dialog" "$1" "$boxsession_line_row_id" omc_remove_element 2>/dev/null
     "$dialog" "$1" "$boxsession_line_slot_id" omc_insert_element "{\"type\":\"HStack\",\"id\":$boxsession_line_row_id,\"properties\":{\"spacing\":8,\"padding\":{\"top\":0,\"leading\":14,\"bottom\":6,\"trailing\":14},\"frame\":{\"maxWidth\":\"infinity\",\"alignment\":\"leading\"}},\"children\":[{\"type\":\"Label\",\"id\":$boxsession_line_id,\"properties\":{\"title\":\"\",\"systemImage\":\"shippingbox\",\"font\":\"footnote\",\"foregroundStyle\":\"secondary\",\"frame\":{\"maxWidth\":\"infinity\",\"alignment\":\"leading\"}}},{\"type\":\"Button\",\"id\":$boxsession_line_network_id,\"properties\":{\"title\":\"Network...\",\"buttonStyle\":\"bordered\",\"controlSize\":\"small\",\"help\":\"The hosts programs in the AgentVM box reached and were refused, and allowing a refused one\",\"actionID\":\"aichat.chat.box.network\"}}]}"
@@ -574,6 +577,9 @@ boxsession_start() {
                 _agentvm_refuse 1 "The agent catalog could not be read: $(/bin/cat "$agentvm_err_file" 2>/dev/null)"
                 return 1
             fi
+            # The hosts the user allowed for this agent in earlier boxes (Allow for <agent>),
+            # after the catalog's; a rule in both is passed once.
+            _rules="$(printf '%s\n%s\n' "$_rules" "$(acp_agent_allowed "$_agent")" | /usr/bin/awk 'NF && !seen[$0]++')"
             # The rules become the positional parameters, one per line of the catalog's answer
             # (a rule never holds whitespace; acp_catalog.py leaves such values out). A here-
             # document rather than a pipe, so the loop runs in this shell and its `set` stays.
@@ -700,6 +706,7 @@ boxsession_release() {
     pb_set "aichatv2_boxline_$1" ""
     pb_set "aichatv2_boxline_at_$1" ""
     pb_set "aichatv2_boxprompts_$1" ""
+    pb_set "aichatv2_boxagent_$1" ""
     local _box="$(printf '%s\n' "$_row" | /usr/bin/cut -f2)"
     local _disposable="$(printf '%s\n' "$_row" | /usr/bin/cut -f3)"
     if [ "$_disposable" != "yes" ]; then

@@ -106,6 +106,22 @@ case "$box" in cadabra-custom-3-??????) named=yes ;; *) named="no: $box" ;; esac
 check "its id made into a name agent-vm accepts" "yes" "$named"
 check "  with no rules"                  "box create $box --image dev --net allowlist --disposable --json" "$(logged 'box create')"
 
+section "hosts saved for the agent (Allow for <agent>) join its catalog's rules"
+fake_reset
+cad_reset
+cad_call acp_agent_allow_add claude-code-acp registry.npmjs.org >/dev/null
+cad_call acp_agent_allow_add claude-code-acp pack:anthropic >/dev/null
+cad_call acp_agent_allow_add claude-code-acp '*.example.org' >/dev/null
+box=$(with_fake boxsession_start w1 new:dev claude-code-acp "$PROJECT" no)
+check "after the catalog's, each rule once, a wildcard as it is" \
+    "box create $box --image dev --net allowlist --allow pack:anthropic --allow registry.npmjs.org --allow *.example.org --disposable --json" "$(logged 'box create')"
+fake_reset
+cad_call acp_agent_allow_add custom:3 git.example.org:8443 >/dev/null
+box=$(with_fake boxsession_start w1 new:dev "custom:3" "$PROJECT" no)
+check "a saved agent the catalog does not know gets its saved hosts" \
+    "box create $box --image dev --net allowlist --allow git.example.org:8443 --disposable --json" "$(logged 'box create')"
+cad_reset
+
 section "a kept box: reused as it is, read-only when asked"
 fake_reset
 box=$(with_fake boxsession_start w1 box:b1 claude-code-acp "$PROJECT" yes)

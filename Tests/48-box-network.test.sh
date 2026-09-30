@@ -66,6 +66,16 @@ select_host() {
 
 row() { ui_rows "$BOXNET_TABLE_ID" | /usr/bin/awk -F'\t' -v host="$1" '$1 == host { print; exit }'; }
 rule_of() { cad_call_lib "$LIB" boxnet_rule "$@"; }
+# saved_deselects  ->  how many times this window's saved-hosts table was deselected (the harness
+# journal: uuid, target, arguments), since the last ui_reset.
+saved_deselects() {
+    /usr/bin/awk -F'\t' -v u="$OMC_ACTIONUI_WINDOW_UUID" -v t="$BOXNET_SAVED_TABLE_ID" '$1 == u && $2 == t && index($3, "omc_deselect") == 1 { n++ } END { print n + 0 }' "$OMCTEST_UI/journal.tsv"
+}
+
+# table_deselects  ->  the same for the connections table.
+table_deselects() {
+    /usr/bin/awk -F'\t' -v u="$OMC_ACTIONUI_WINDOW_UUID" -v t="$BOXNET_TABLE_ID" '$1 == u && $2 == t && index($3, "omc_deselect") == 1 { n++ } END { print n + 0 }' "$OMCTEST_UI/journal.tsv"
+}
 
 section "the ids this file drives are the ones the window declares"
 check "header, table, allow, refresh, status" "800 801 802 804 806" \
@@ -171,6 +181,99 @@ alert_answer 0
 omc_run aichat.box.network.allow
 check "the rule is added"                  "box network b1 --allow registry.npmjs.org --json" "$(fake_log | /usr/bin/grep '^box network')"
 check "  and the status says the network is off" "1" "$(cad_has "$(ui_value "$BOXNET_STATUS_ID")" "the box's network is off")"
+
+section "Allow for <agent>: shown for an agent that can have hosts saved for it"
+fake_reset
+cad_reset
+cad_pb_set aichatv2_boxagent_chat1 claude-code-acp
+open_network agent1
+check "the button, named for the agent"    "Allow for Claude Code (ACP adapter)..." "$(ui_prop "$BOXNET_ALLOW_AGENT_ID" title)"
+check "  shown"                            "1" "$(ui_visible "$BOXNET_ALLOW_AGENT_ID")"
+check "  and off until a refused host is selected" "0" "$(ui_enabled "$BOXNET_ALLOW_AGENT_ID")"
+check "the saved hosts: none yet"          "1" "$(cad_has "$(ui_value "$BOXNET_SAVED_TEXT_ID")" 'No hosts allowed for Claude Code (ACP adapter) in every new disposable AgentVM box yet')"
+check "  their table shown, empty"         "1|0" "$(ui_visible "$BOXNET_SAVED_ROW_ID")|$(ui_row_count "$BOXNET_SAVED_TABLE_ID")"
+select_host registry.npmjs.org
+check "a refused host turns it on"         "1" "$(ui_enabled "$BOXNET_ALLOW_AGENT_ID")"
+select_host api.anthropic.com
+check "  a reached one off"                "0" "$(ui_enabled "$BOXNET_ALLOW_AGENT_ID")"
+
+section "Allow for <agent> adds the rule to the box and saves it for new boxes"
+select_host registry.npmjs.org
+alerts_reset
+alert_answer 1
+omc_run aichat.box.network.allow.agent
+check "it asks first"                      "1" "$(alerts_mention 'Allow registry.npmjs.org for Claude Code (ACP adapter)?')"
+check "  a No changes nothing"             "|" "$(fake_log | /usr/bin/grep '^box network')|$(cad_call acp_agent_allowed claude-code-acp)"
+alert_answer 0
+omc_run aichat.box.network.allow.agent
+check "a Yes adds it to this box"          "box network b1 --allow registry.npmjs.org --json" "$(fake_log | /usr/bin/grep '^box network')"
+check "  and lets go of the row, so the other Allow is one click away" "1" "$(table_deselects)"
+check "  and saves it for the agent"       "registry.npmjs.org" "$(cad_call acp_agent_allowed claude-code-acp)"
+check "  listed below"                     "registry.npmjs.org" "$(ui_rows "$BOXNET_SAVED_TABLE_ID")"
+check "  and says both"                    "1" "$(cad_has "$(ui_value "$BOXNET_STATUS_ID")" 'Allowed registry.npmjs.org in AgentVM box b1. The agent'"'"'s next try gets through; earlier refusals stay listed. Saved for Claude Code (ACP adapter): new boxes allow it too.')"
+select_host Git.Example.org
+alert_answer 0
+omc_run aichat.box.network.allow.agent
+check "a second host joins the list"       "registry.npmjs.org git.example.org:8443" "$(cad_call acp_agent_allowed claude-code-acp | /usr/bin/tr '\n' ' ' | /usr/bin/sed 's/ $//')"
+select_host registry.npmjs.org
+alert_answer 0
+omc_run aichat.box.network.allow.agent
+check "the same one again is saved once"   "2" "$(cad_call acp_agent_allowed claude-code-acp | /usr/bin/wc -l | /usr/bin/tr -d ' ')"
+
+section "Allow for <agent> keeps what it saved when agent-vm refuses the box's rule"
+select_host plain.example
+printf 'the box is being deleted\n' > "$FAKE_AGENTVM_DIR/fail-box-network"
+alert_answer 0
+omc_run aichat.box.network.allow.agent
+/bin/rm -f "$FAKE_AGENTVM_DIR/fail-box-network"
+check "agent-vm's refusal is shown"        "1" "$(cad_has "$(ui_value "$BOXNET_STATUS_ID")" 'Could not allow plain.example: the box is being deleted')"
+check "  and the saved list has the host"  "1" "$(ui_rows "$BOXNET_SAVED_TABLE_ID" | /usr/bin/grep -c '^plain.example$')"
+alert_answers_reset
+
+section "Remove stops saving a host, after a confirmation"
+omc_table_cell "$BOXNET_SAVED_TABLE_ID" 1 "git.example.org:8443"
+omc_run aichat.box.network.saved.selection.changed
+check "a selected host turns Remove on"    "1" "$(ui_enabled "$BOXNET_SAVED_REMOVE_ID")"
+alerts_reset
+alert_answer 1
+omc_run aichat.box.network.saved.remove
+check "it asks first"                      "1" "$(alerts_mention 'Stop allowing git.example.org:8443 for Claude Code (ACP adapter)?')"
+check "  a No keeps it"                    "1" "$(cad_call acp_agent_allowed claude-code-acp | /usr/bin/grep -c '^git.example.org:8443$')"
+alert_answer 0
+deselected="$(saved_deselects)"
+omc_run aichat.box.network.saved.remove
+check "a Yes removes only that one"       "registry.npmjs.org plain.example" "$(cad_call acp_agent_allowed claude-code-acp | /usr/bin/tr '\n' ' ' | /usr/bin/sed 's/ $//')"
+check "  from the table too"               "0" "$(ui_rows "$BOXNET_SAVED_TABLE_ID" | /usr/bin/grep -c '^git.example.org:8443$')"
+check "  Remove is off again"              "0" "$(ui_enabled "$BOXNET_SAVED_REMOVE_ID")"
+check "  the list lets go of its selection" "$((deselected + 1))" "$(saved_deselects)"
+check "  and the box keeps its rule"       "" "$(fake_log | /usr/bin/grep -- '--disallow')"
+alert_answers_reset
+
+section "no Allow for <agent> for a typed command, or with no agent recorded"
+cad_pb_set aichatv2_boxagent_chat1 custom
+open_network agent2
+check "a typed command: hidden"            "0|0|0" "$(ui_visible "$BOXNET_ALLOW_AGENT_ID")|$(ui_visible "$BOXNET_SAVED_TEXT_ID")|$(ui_visible "$BOXNET_SAVED_ROW_ID")"
+cad_pb_set aichatv2_boxagent_chat1 ""
+open_network agent3
+check "no agent recorded: hidden"          "0" "$(ui_visible "$BOXNET_ALLOW_AGENT_ID")"
+cad_pb_set aichatv2_boxagent_chat1 claude-code-acp
+cad_pb_set aichatv2_boxline_chat1 ""
+omc_window_switch agent4
+ui_reset
+cad_pb_set cadabra_box_network_request chat1
+omc_run aichat.box.network.init
+check "a released box: hidden too"         "0" "$(ui_visible "$BOXNET_ALLOW_AGENT_ID")"
+cad_pb_set aichatv2_boxagent_chat1 ""
+cad_reset
+
+section "the saved rules: stored as one line, and only rules come back"
+check "not for a typed command"            "2" "$(cad_call acp_agent_allow_add custom example.com >/dev/null; echo $?)"
+check "not a rule starting with a dash"    "2" "$(cad_call acp_agent_allow_add opencode --net >/dev/null; echo $?)"
+check "not a rule with a space"            "2" "$(cad_call acp_agent_allow_add opencode 'a b' >/dev/null; echo $?)"
+check "a wildcard is kept as it is"        "0|*.example.com" "$(cad_call acp_agent_allow_add opencode '*.example.com' >/dev/null; echo $?)|$(cad_call acp_agent_allowed opencode)"
+"$cad_plister" set string "a.example -rm pack:npm b.example" "$cad_settings" /agents/allow/opencode >/dev/null 2>&1
+check "a hand-edited word that is no rule is left out" "a.example pack:npm b.example" "$(cad_call acp_agent_allowed opencode | /usr/bin/tr '\n' ' ' | /usr/bin/sed 's/ $//')"
+cad_reset
 
 section "a chat window that has released its box leaves nothing to show"
 fake_reset
