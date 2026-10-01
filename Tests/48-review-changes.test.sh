@@ -157,7 +157,25 @@ check "  the diff shows, snapshot copy against the project" "1|1|1" \
 check "  and it can be undone"            "1" "$(ui_enabled 930)"
 select_row README.md
 check "a deleted file: the project side is empty" "1|1" \
-    "$(cad_has "$(ui_prop 922 oldFile)" 'snapshot/README.md')|$(cad_has "$(ui_prop 922 newFile)" 'cadabra-review-empty')"
+    "$(cad_has "$(ui_prop 922 oldFile)" 'snapshot/README.md')|$(cad_has "$(ui_prop 922 newFile)" '/Cadabra/Run/review-empty')"
+# The agent may put a link where the report saw a file: the diff must not show a file from
+# elsewhere on this Mac as the project's.
+printf 'a private file\n' > "$OMCTEST_WORK/outside.txt"
+/bin/mv "$PROJECT/src/main.c" "$OMCTEST_WORK/main.c.kept"
+/bin/ln -s "$OMCTEST_WORK/outside.txt" "$PROJECT/src/main.c"
+select_row src/main.c
+check "a file replaced by a link out of the project since the report: its side is empty" "1|1" \
+    "$(cad_has "$(ui_prop 922 oldFile)" "/Sessions/$session/snapshot/src/main.c")|$(cad_has "$(ui_prop 922 newFile)" '/Cadabra/Run/review-empty')"
+/bin/rm -f "$PROJECT/src/main.c"
+/bin/mv "$PROJECT/src" "$OMCTEST_WORK/src.kept"
+/bin/mkdir -p "$OMCTEST_WORK/elsewhere"
+printf 'not the project\n' > "$OMCTEST_WORK/elsewhere/main.c"
+/bin/ln -s "$OMCTEST_WORK/elsewhere" "$PROJECT/src"
+select_row src/main.c
+check "  and so is a file under a folder replaced by such a link" "1" "$(cad_has "$(ui_prop 922 newFile)" '/Cadabra/Run/review-empty')"
+/bin/rm -f "$PROJECT/src"
+/bin/mv "$OMCTEST_WORK/src.kept" "$PROJECT/src"
+/bin/mv "$OMCTEST_WORK/main.c.kept" "$PROJECT/src/main.c"
 select_row keys
 check "a link: its target, no diff"       "1|0" "$(cad_has "$(ui_value 921)" "A symbolic link to $HOME/.ssh")|$(ui_visible 923)"
 check "  and why it is flagged"           "1" "$(cad_has "$(ui_value 921)" 'High risk: symlink pointing outside the project')"
@@ -293,6 +311,26 @@ out=$( ( . "$OMC_APP_BUNDLE_PATH/Contents/Resources/Scripts/$LIB" >/dev/null 2>&
       snapshot_release w1; printf '%s|%s' "$snapshot_released_session" "$snapshot_released_high" ))
 check "no changes: discarded, nothing to offer" "|" "$out"
 check "  (the session is gone)"           "discarded" "$(state "$session")"
+# An agent on this Mac can make the report fail: it moves the project folder away and leaves a
+# link in its place. A report that cannot be read must not pass for one with nothing in it.
+start_session
+printf '#!/bin/sh\n' > "$PROJECT/.git/hooks/post-merge"
+/bin/chmod +x "$PROJECT/.git/hooks/post-merge"
+/bin/mv "$PROJECT" "$PROJECT.moved"
+/bin/ln -s "$PROJECT.moved" "$PROJECT"
+alerts_reset
+alert_answers_reset
+alert_answer 0
+chains_reset
+cad_pb_set cadabra_review_request ""
+out=$( ( . "$OMC_APP_BUNDLE_PATH/Contents/Resources/Scripts/$LIB" >/dev/null 2>&1
+      snapshot_release w1; review_offer_at_close; printf '%s|%s|%s' "$snapshot_released_session" "$snapshot_released_high" "$(cad_has "$snapshot_released_error" 'missing or was moved')" ))
+check "changes that cannot be read: the session is kept, and the reason" "$session|unknown|1" "$out"
+check "  (ended, not discarded)"          "ended" "$(state "$session")"
+check "  the user is told, and offered the review" "1|1" \
+    "$(alerts_mention 'could not be read')|$(chain_asked aichat.review)"
+/bin/rm -f "$PROJECT"
+/bin/mv "$PROJECT.moved" "$PROJECT"
 
 /bin/rm -rf "$FAKE_AGENTVM_DIR"
 omctest_end

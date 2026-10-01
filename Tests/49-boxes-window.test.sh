@@ -205,8 +205,8 @@ section "Reveal shows the selected item's folder"
 /bin/rm -f "$OMCTEST_WORK/opened"
 /bin/mkdir -p "$OMCTEST_WORK/boxdir"
 /usr/bin/awk -F'\t' -v OFS='\t' -v p="$OMCTEST_WORK/boxdir" '$1 == "cadabra-spike" { $16 = p } { print }' \
-    "${TMPDIR:-/tmp}/cadabra-boxes.$OMC_ACTIONUI_WINDOW_UUID.boxes" > "$OMCTEST_WORK/boxes.tmp"
-/bin/mv "$OMCTEST_WORK/boxes.tmp" "${TMPDIR:-/tmp}/cadabra-boxes.$OMC_ACTIONUI_WINDOW_UUID.boxes"
+    "$HOME/Library/Application Support/Cadabra/Run/boxes.$OMC_ACTIONUI_WINDOW_UUID.boxes" > "$OMCTEST_WORK/boxes.tmp"
+/bin/mv "$OMCTEST_WORK/boxes.tmp" "$HOME/Library/Application Support/Cadabra/Run/boxes.$OMC_ACTIONUI_WINDOW_UUID.boxes"
 omc_run aichat.boxes.reveal
 check "the Finder is asked"          "-R $OMCTEST_WORK/boxdir" "$(/bin/cat "$OMCTEST_WORK/opened" 2>/dev/null)"
 
@@ -238,7 +238,7 @@ id=$(cad_call_lib aichat.agentvm.library.sh agentvm_box_stop_job try1)
 omc_run aichat.boxes.close
 check "close marks the loop stopped" "closed" "$(cad_pb_get "cadabra_boxes_poll_$OMC_ACTIONUI_WINDOW_UUID")"
 check "  and forgets the manager"    "" "$(cad_pb_get "cadabra_boxes_manager_window_$OMC_APP_PROCESS_ID")"
-check "  and its cache files"        "0" "$(/bin/ls "${TMPDIR:-/tmp}" | /usr/bin/grep -c "cadabra-boxes.$OMC_ACTIONUI_WINDOW_UUID")"
+check "  and its cache files"        "0" "$(/bin/ls "$HOME/Library/Application Support/Cadabra/Run" | /usr/bin/grep -c "boxes.$OMC_ACTIONUI_WINDOW_UUID")"
 check "but the job goes on"          "running" "$(cad_call_lib aichat.agentvm.library.sh agentvm_jobs | /usr/bin/awk -F'\t' -v id="$id" '$1 == id { print $5 }')"
 omc_run aichat.boxes.poll
 check "a loop chained before the close does not start" "closed" "$(cad_pb_get "cadabra_boxes_poll_$OMC_ACTIONUI_WINDOW_UUID")"
@@ -313,7 +313,7 @@ check "removed from the list"        "0" "$(ui_rows "$BOXES_JOBS_ID" | /usr/bin/
 
 section "a failed job shows agent-vm's error"
 fake_reset 0
-printf 'the guest daemon did not answer; run it again' > "$FAKE_AGENTVM_DIR/fail-image-update-guest"
+printf 'the guest daemon did not answer; run it again' > "$FAKE_AGENTVM_DIR/fail-image-update"
 open_window
 select_image dev
 omc_run aichat.boxes.image.update.guest
@@ -658,12 +658,12 @@ alert_answers_reset
 alert_answer 1
 omc_run aichat.boxes.images.update.all
 check "it asks first, naming them"     "1" "$(alerts_mention "dev, dev-agents, dev-node, dev-xcode, dev-xcode-ios")"
-check "  and Cancel means no"          "0" "$(fake_asked "image update-guest")"
+check "  and Cancel means no"          "0" "$(fake_asked "image update ")"
 fake_reset 2
 open_window
 alert_answer 0
 omc_run aichat.boxes.images.update.all
-check "OK: one job, one agent-vm run for all of them" "1" "$(/bin/cat "$FAKE_AGENTVM_DIR/log" 2>/dev/null | /usr/bin/grep -c '^image update-guest dev dev-agents dev-node dev-xcode dev-xcode-ios --json$' | /usr/bin/tr -d ' ')"
+check "OK: one job, one agent-vm run for all of them" "1" "$(/bin/cat "$FAKE_AGENTVM_DIR/log" 2>/dev/null | /usr/bin/grep -c '^image update dev dev-agents dev-node dev-xcode dev-xcode-ios --guest --json$' | /usr/bin/tr -d ' ')"
 check "  each image shows it"          "5" "$(ui_rows "$BOXES_IMAGES_ID" | /usr/bin/grep -c "${TAB}updating...${TAB}")"
 check "  and the banner goes"          "0" "$(ui_visible "$BOXES_UPDATE_ALL_ID")"
 select_image dev-node
@@ -711,7 +711,7 @@ check "  and one setup, not two"             "1" "$(/bin/cat "$FAKE_AGENTVM_DIR/
 section "a guest update that failed partway still gets the offer"
 fake_reset 0
 printf '%s' '[{"name":"dev","state":"ready","needs":[{"kind":"full-disk-access","reason":"not-checked"}]}]' > "$FAKE_AGENTVM_DIR/image-list.json"
-printf 'the guest daemon of dev-node did not answer; dev was updated' > "$FAKE_AGENTVM_DIR/fail-image-update-guest"
+printf 'the guest daemon of dev-node did not answer; dev was updated' > "$FAKE_AGENTVM_DIR/fail-image-update"
 open_window
 alerts_reset
 alert_answers_reset

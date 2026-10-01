@@ -476,7 +476,7 @@ runin_images=""
 #   "image<TAB>name" lines (the rules comma-joined, "-" for none; Agentic Session Tools shows a
 #   kept box's network from them).
 agent_places_file() {
-    printf '%s\n' "${TMPDIR:-/tmp}/cadabra-runin-places.${window_uuid}"
+    cadabra_run_file "runin-places.${window_uuid}"
 }
 
 # agent_load_places <refresh|cached>  ->  0 with runin_boxes (kept boxes) and runin_images (ready

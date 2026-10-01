@@ -6,6 +6,7 @@
 # The actual gating + replay's --deny-network are applied in generate_mcp_configs.py.
 
 source "$OMC_APP_BUNDLE_PATH/Contents/Resources/Scripts/aichat.server.library.sh"
+aichat_window_only
 
 echo "[$(/usr/bin/basename "$0")]"
 

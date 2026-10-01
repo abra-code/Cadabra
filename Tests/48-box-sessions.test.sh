@@ -749,7 +749,7 @@ entry() {
 entry usage
 /bin/sleep 1
 check "an entry that is not a message does not read the log" "" "$(logged 'box netlog' 2>/dev/null)"
-check "  but marks the time for the quiet watch" "1" "$([ -f "${TMPDIR:-/tmp}/cadabra-boxwatch.$win" ] && echo 1)"
+check "  but marks the time for the quiet watch" "1" "$([ -f "$HOME/Library/Application Support/Cadabra/Run/boxwatch.$win" ] && echo 1)"
 entry message
 w_left=50
 # The tooltip is the refresh's last write: waiting for it leaves no child writing after this file ends.
@@ -924,7 +924,7 @@ wait_key() {
     done
 }
 alive() { kill -0 "$1" 2>/dev/null && echo yes || echo no; }
-MARK="${TMPDIR:-/tmp}/cadabra-boxwatch.w1"
+MARK="$HOME/Library/Application Support/Cadabra/Run/boxwatch.w1"
 fake_reset
 /bin/cp "$FIXTURES/box-status-running.json" "$FAKE_AGENTVM_DIR/box-$PBOX.json"
 netlog_fixture
@@ -976,10 +976,14 @@ wait_key "" 30
 check "a watch whose Cadabra is gone ends" "" "$(cad_pb_get aichatv2_boxwatch_w1)"
 /bin/sleep 0.2
 check "  and its process with it"        "no" "$(alive "$wpid")"
-( TMPDIR="$OMCTEST_WORK/no-such-dir"; export TMPDIR; watch_mark 30 )
+# The mark is in Cadabra's own folder (cadabra_run_file), which is made unwritable here.
+/bin/rm -f "$MARK"
+/bin/chmod 555 "${MARK%/*}"
+watch_mark 30
 check "a mark that cannot be written still starts a watch" "yes" "$(alive "$(cad_pb_get aichatv2_boxwatch_w1)")"
 wait_key "" 30
 check "  which ends at its first look, finding no mark" "" "$(cad_pb_get aichatv2_boxwatch_w1)"
+/bin/chmod 755 "${MARK%/*}"
 with_fake boxsession_release w1
 check "a release removes the mark"       "" "$([ -f "$MARK" ] && echo 1)"
 execlog_fixture true

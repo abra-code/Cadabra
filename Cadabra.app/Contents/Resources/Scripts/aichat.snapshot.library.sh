@@ -213,12 +213,17 @@ snapshot_record_meta() {
 # not waited for further: the window is going, and its session must still end.
 # A release that ended a session it kept (the project changed) leaves its id in
 # snapshot_released_session and its count of high-risk changes in snapshot_released_high, for the
-# window's close to offer a review; both are empty otherwise.
+# window's close to offer a review; both are empty otherwise. When what the project changed could
+# not be read, the count is "unknown" and snapshot_released_error says why: the session is kept
+# and the close says so, since a report that fails must not pass for one with nothing in it (an
+# agent on this Mac can make it fail, by moving the project folder and leaving a link in its place).
 snapshot_released_session=""
 snapshot_released_high=""
+snapshot_released_error=""
 snapshot_release() {
     snapshot_released_session=""
     snapshot_released_high=""
+    snapshot_released_error=""
     local _row="$(snapshot_registry_row "$1")"
     if [ -z "$_row" ]; then
         return 0
@@ -264,17 +269,27 @@ _snapshot_session_end() {
 
 # _snapshot_discard_unchanged <session id>  ->  0. The session is discarded when its project did
 # not change, so there is nothing to review. A session ended or undone elsewhere counts the same.
-# A session kept sets snapshot_released_session and snapshot_released_high (see snapshot_release).
+# A session kept sets snapshot_released_session and snapshot_released_high (see snapshot_release),
+# and so does one whose changes cannot be read, which is kept too.
 _snapshot_discard_unchanged() {
     local _status
     local _summary
     _summary="$(agentvm_session_summary "$1")"
     _status=$?
     if [ "$_status" -ne 0 ]; then
-        agentvm_last_error "$_status" >/dev/null
+        snapshot_released_session="$1"
+        snapshot_released_high="unknown"
+        snapshot_released_error="$(agentvm_last_error "$_status")"
         return 0
     fi
     local _changes="$(printf '%s\n' "$_summary" | /usr/bin/cut -f1)"
+    case "$_changes" in
+        ''|*[!0123456789]*)
+            snapshot_released_session="$1"
+            snapshot_released_high="unknown"
+            snapshot_released_error="agent-vm's report on the project could not be read."
+            return 0 ;;
+    esac
     if [ "$_changes" != "0" ]; then
         snapshot_released_session="$1"
         snapshot_released_high="$(printf '%s\n' "$_summary" | /usr/bin/cut -f2)"

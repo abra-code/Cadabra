@@ -406,6 +406,34 @@ prefs="$HOME/Library/Preferences/com.abracode.Cadabra-servers.plist"
 LLAMA_PORT_RANGE_START="8150"
 LLAMA_PORT_RANGE_END="8189"
 mcp_app_support="$HOME/Library/Application Support/Cadabra"
+# Cadabra's own short-lived files (a handler's error text, a window's cached rows, a sheet's
+# JSON) go into a folder of Cadabra's, never into $TMPDIR. The Local server's sandbox may write
+# to $TMPDIR (Agentic Session Tools grants it by default), so a file there under a name Cadabra
+# later writes or reads is the sandboxed tools' to plant: through a symbolic link Cadabra's
+# write lands on any file of the user's, and a file they changed is read back as Cadabra's own.
+# None of the sandbox's default paths reaches this folder. app.did.launch.sh removes what a
+# crash left in it.
+cadabra_run_dir="$mcp_app_support/Run"
+
+# aichat_window_only  ->  ends the handler, status 0, unless a window ran it. OMC runs any command
+# of Command.json by its id for a link (cadabra://exe?commandID=<id>), which any web page or
+# document can hold, with no window and so with none of the window's values: a handler that
+# stores a control's value, or acts on the window that closed, would then store its fallback
+# values or act on no window at all. Called first by such handlers. A handler another one chains
+# to (omc_next_command), or the application itself runs, has no window either and must not call it.
+aichat_window_only() {
+    if [ -z "${OMC_ACTIONUI_WINDOW_UUID:-}" ]; then
+        echo "[$(/usr/bin/basename "$0")] not run by a window; nothing done"
+        exit 0
+    fi
+}
+
+# cadabra_run_file <name>  ->  the path of such a file, its folder made first.
+cadabra_run_file() {
+    [ -d "$cadabra_run_dir" ] || /bin/mkdir -p "$cadabra_run_dir" 2>/dev/null
+    printf '%s/%s\n' "$cadabra_run_dir" "$1"
+}
+
 # Chat history store root (per-session dirs; see aichat.history.library.sh + history_store.py).
 history_root="$mcp_app_support/History"
 

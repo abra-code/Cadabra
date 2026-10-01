@@ -237,7 +237,7 @@ check "pdfutil: the project and the box's temporary folder, writable" \
     "exec --box b1 --project $PROJECT -- $guest/Support/pdfutil mcp --root $PROJECT --root /private/tmp --writable" \
     "$(server "$cfg" pdf '" ".join(s["args"])')"
 check "the Python servers get their paths in the box through --env" \
-    "exec --box b1 --project $PROJECT --env PYTHONPATH=$guest/Library/Packages --env PYTHONPYCACHEPREFIX=$PYCACHE -- $guest/Library/Python/bin/python3 -m duckduckgo_mcp_server.server" \
+    "exec --box b1 --project $PROJECT --env PYTHONPATH=$guest/Library/Packages --env PYTHONPYCACHEPREFIX=$PYCACHE -- $guest/Library/Python/bin/python3 -P -m duckduckgo_mcp_server.server" \
     "$(server "$cfg" search '" ".join(s["args"])')"
 check "  and no environment on this Mac"  "none" "$(server "$cfg" search 's.get("env", "none")')"
 check "no path of this Mac's sandbox reaches the box" "0" "$(cad_has "$(/bin/cat "$cfg")" '/opt/homebrew')"
@@ -509,7 +509,8 @@ check "a kept box and read-only read back" "box:b1|yes" \
     "$(cad_call_lib aichat.mcp.servers.library.sh mcp_tools_run_in)|$(cad_call_lib aichat.mcp.servers.library.sh mcp_tools_read_only)"
 
 section "Network Rules... says what a kept box may reach"
-net_places="${TMPDIR:-/tmp}/cadabra-runin-places.nettest$$"
+/bin/mkdir -p "$HOME/Library/Application Support/Cadabra/Run"
+net_places="$HOME/Library/Application Support/Cadabra/Run/runin-places.nettest$$"
 printf 'available\nbox\tfenced\tallowlist\tpack:npm,opencode.ai\nbox\tbare\tallowlist\t-\nbox\tshut\toff\t-\nbox\twide\topen\t-\nbox\told\t-\t-\n' > "$net_places"
 net_text() { cad_call_lib aichat.mcp.servers.library.sh mcp_tools_box_network_text "nettest$$" "$@" | /usr/bin/paste -sd'|' -; }
 check "an allowlist, its rules a list item each" 'Programs in it reach only these hosts and packs of hosts:||- `pack:npm`|- `opencode.ai`' "$(net_text box:fenced)"
@@ -520,7 +521,38 @@ check "  no mode recorded runs open in agent-vm, and says so" "Its network is **
 check "a new box for tools"               "A new box reaches nothing, or any public host with **Internet** on." "$(net_text new:dev)"
 check "  and for an agent, with the agent's hosts" "1" "$(cad_has "$(net_text new:dev opencode)" 'the hosts the agent needs and those saved for it')"
 check "a box that is not listed: nothing" "" "$(net_text box:gone)"
+# A rule cannot end its code span and go on as Markdown of its own (a link, say).
+printf 'available\nbox\todd\tallowlist\tx`[docs](https://example.invalid)`\n' > "$net_places"
+check "a backtick in a rule stays inside its code span" "0|1" \
+    "$(cad_has "$(net_text box:odd)" '`[docs]')|$(cad_has "$(net_text box:odd)" "- \`x'[docs](https://example.invalid)'\`")"
 /bin/rm -f "$net_places"
+
+section "the Python servers on this Mac never import from the project folder"
+# The servers run with the project as their working folder. A file there named like a module
+# they import must not run on this Mac: it would be code a session left in the project, run
+# outside every sandbox the next time a window starts its tools.
+fake_reset
+prefs_reset
+cad_call mcp_prefs_set_bool allow-network true
+cad_call mcp_prefs_set_bool servers/local/enabled false
+cad_call mcp_prefs_set_bool servers/pdf/enabled false
+HOSTILE="$OMCTEST_WORK/hostile-project"
+/bin/rm -rf "$HOSTILE"
+/bin/mkdir -p "$HOSTILE/mcp_server_time"
+printf 'import os\nopen(os.path.join(os.path.dirname(os.path.abspath(__file__)), "RAN-argparse"), "w").close()\nraise SystemExit(0)\n' > "$HOSTILE/argparse.py"
+printf 'import os\nopen(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "RAN-package"), "w").close()\nraise SystemExit(0)\n' > "$HOSTILE/mcp_server_time/__init__.py"
+cad_call mcp_prefs_set_string servers/local/project "$HOSTILE"
+mac_cfg="$OMCTEST_WORK/mac-config/mcp-config.json"
+# No bytecode: these servers start on this Mac with Cadabra's own Python, which would write
+# __pycache__ folders into the application and break its signature.
+( PYTHONDONTWRITEBYTECODE=1; export PYTHONDONTWRITEBYTECODE
+  cad_call_lib aichat.mcp.servers.library.sh generate_stdio_mcp_config "$mac_cfg" >/dev/null 2>&1 )
+check "the probe ran the real servers, from the project" "present|present" \
+    "$(server "$mac_cfg" time '"present"')|$(server "$mac_cfg" search '"present"')"
+check "  and nothing in the project ran" "" "$(/bin/ls "$HOSTILE" | /usr/bin/grep RAN)"
+check "  both start Python with -P, so the agent's own start does not import from there either" "-P -m mcp_server_time|-P -m duckduckgo_mcp_server.server" \
+    "$(server "$mac_cfg" time '" ".join(s["args"][:3])')|$(server "$mac_cfg" search '" ".join(s["args"])')"
+/bin/rm -rf "$HOSTILE" "$OMCTEST_WORK/mac-config"
 
 /bin/rm -rf "$TOOLS_ROOT" "$PYCACHE"
 omctest_end

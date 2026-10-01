@@ -528,7 +528,7 @@ boxsession_line_quiet=""
 # boxsession_watch_mark_file <window>  ->  the file whose modification time is the window's last
 # finalized entry. A file, not a pasteboard key: the entry handler writes it with the shell alone.
 boxsession_watch_mark_file() {
-    printf '%s\n' "${TMPDIR:-/tmp}/cadabra-boxwatch.$1"
+    cadabra_run_file "boxwatch.$1"
 }
 
 # boxsession_watch_mark <window>  ->  0. A finalized entry: marks the time, and starts the

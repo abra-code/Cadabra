@@ -41,7 +41,7 @@ check "  also with the developer override set"  "yes" "$(swept "$AVM exec --box 
 section "agent-vm: nothing else is, however it looks"
 check "a box supervisor"                "no" "$(swept "$AVM box serve cadabra-opencode-3f2a91")"
 check "an image build"                  "no" "$(swept "$AVM image create dev --ipsw /i.ipsw")"
-check "a guest update"                  "no" "$(swept "$AVM image update-guest dev dev-node")"
+check "a guest update"                  "no" "$(swept "$AVM image update dev dev-node --guest")"
 check "Full Disk Access setup"          "no" "$(swept "$AVM image setup dev")"
 check "a box start"                     "no" "$(swept "$AVM box start b --owner-pid 42")"
 check "a box shell"                     "no" "$(swept "$AVM box shell b")"

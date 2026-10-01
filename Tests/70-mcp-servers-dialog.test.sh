@@ -589,10 +589,10 @@ omc_run aichat.mcp.servers.runin.changed
 check "choosing a box swaps this Mac's servers for the box pane" "0|1" "$(ui_visible "$MCP_MAC_SERVERS_ID")|$(ui_visible "$MCP_TOOLS_BOX_PANE_ID")"
 check "  saying which box"                "1" "$(cad_has "$(ui_value "$MCP_TOOLS_BOX_WHERE_TEXT_ID")" 'new disposable AgentVM box from dev')"
 # sheet  ->  the Markdown of the information sheet last presented on the window.
-sheet() { /usr/bin/jq -r '.children[0].properties.markdown' "${TMPDIR:-/tmp}/cadabra-tools-info.$OMC_ACTIONUI_WINDOW_UUID.json" 2>/dev/null; }
+sheet() { /usr/bin/jq -r '.children[0].properties.markdown' "$HOME/Library/Application Support/Cadabra/Run/tools-info.$OMC_ACTIONUI_WINDOW_UUID.json" 2>/dev/null; }
 cad_journal_reset
 omc_run aichat.mcp.servers.box.network
-check "  Network Rules... presents a sheet" "1" "$(cad_has "$(cad_journal omc_window)" "omc_present_modal ${TMPDIR:-/tmp}/cadabra-tools-info.$OMC_ACTIONUI_WINDOW_UUID.json")"
+check "  Network Rules... presents a sheet" "1" "$(cad_has "$(cad_journal omc_window)" "omc_present_modal $HOME/Library/Application Support/Cadabra/Run/tools-info.$OMC_ACTIONUI_WINDOW_UUID.json")"
 check "  saying what a new box reaches" "1|1" \
     "$(cad_has "$(sheet)" '## Network of a new AgentVM box from dev')|$(cad_has "$(sheet)" 'reaches nothing, or any public host with **Internet** on')"
 omc_control "$MCP_TOOLS_RUNIN_PICKER_ID" box:cadabra-spike
@@ -605,11 +605,11 @@ omc_run aichat.mcp.servers.box.sandbox
 check "Paths... lists what the sandbox lets the tools change and read" "1|1|1|1" \
     "$(cad_has "$(sheet)" '- `/Users/me/src/app` (the project)')|$(cad_has "$(sheet)" '- `/private/tmp`')|$(cad_has "$(sheet)" '- `/opt/homebrew`')|$(cad_has "$(sheet)" 'home folder')"
 check "  the sheet is valid JSON with a Done button" "aichat.mcp.servers.info.done" \
-    "$(/usr/bin/jq -r '.children[1].children[1].properties.actionID' "${TMPDIR:-/tmp}/cadabra-tools-info.$OMC_ACTIONUI_WINDOW_UUID.json")"
+    "$(/usr/bin/jq -r '.children[1].children[1].properties.actionID' "$HOME/Library/Application Support/Cadabra/Run/tools-info.$OMC_ACTIONUI_WINDOW_UUID.json")"
 cad_journal_reset
 omc_run aichat.mcp.servers.info.done
 check "Done dismisses it and removes its file" "1|gone" \
-    "$(cad_has "$(cad_journal omc_window)" 'omc_dismiss_modal')|$([ -f "${TMPDIR:-/tmp}/cadabra-tools-info.$OMC_ACTIONUI_WINDOW_UUID.json" ] && echo there || echo gone)"
+    "$(cad_has "$(cad_journal omc_window)" 'omc_dismiss_modal')|$([ -f "$HOME/Library/Application Support/Cadabra/Run/tools-info.$OMC_ACTIONUI_WINDOW_UUID.json" ] && echo there || echo gone)"
 omc_control "$MCP_TOOLS_RUNIN_PICKER_ID" new:dev
 omc_run aichat.mcp.servers.runin.changed
 omc_control "$MCP_TOOLS_BOX_READ_ONLY_TOGGLE_ID" true
@@ -740,6 +740,29 @@ check "  which Start stores"              "true|false" "$(setting mac)|$(setting
 queue_settle "|true|"
 cad_call launch_queue_clear
 CADABRA_AGENT_VM="$OMCTEST_WORK/no-agent-vm-in-tests"
+
+section "a link cannot run the dialog's handlers"
+# OMC runs any command id for a link, cadabra://exe?commandID=<id>, with no window: the handlers
+# that store the window's values would store their fallbacks (every server on, no project).
+cad_reset
+cad_call mcp_prefs_write_defaults >/dev/null 2>&1
+fresh_window
+cad_call mcp_prefs_set_bool allow-network false
+cad_call mcp_prefs_set_bool servers/pdf/enabled false
+cad_call mcp_prefs_set_bool servers/local/enabled false
+cad_call mcp_prefs_set_string servers/local/project "/Users/me/src/app"
+link_settings() {
+    printf '%s|%s|%s|%s' "$(cad_raw /allow-network)" "$(cad_raw /servers/pdf/enabled)" "$(cad_raw /servers/local/enabled)" "$(cad_raw /servers/local/project)"
+}
+agents_before="$(cad_call acp_custom_list | /usr/bin/awk 'END { print NR }')"
+for link_command in aichat.mcp.servers.reset aichat.mcp.servers.toggle.network aichat.mcp.servers.toggle.pdf aichat.mcp.servers.start aichat.select.external.agent.add; do
+    ( unset OMC_ACTIONUI_WINDOW_UUID ACTIONUI_WINDOW_UUID; omc_run "$link_command" )
+done
+check "reset, the toggles and Start change no setting without a window" "false|false|false|/Users/me/src/app" "$(link_settings)"
+check "  and Add saves no agent"          "$agents_before" "$(cad_call acp_custom_list | /usr/bin/awk 'END { print NR }')"
+omc_control "$MCP_NETWORK_TOGGLE_ID" true
+omc_run aichat.mcp.servers.toggle.network
+check "the window's own toggle still stores" "true" "$(cad_raw /allow-network)"
 
 section "cumulative: no handler wrote to a view id the window does not declare"
 # Cumulative across the whole file, which is what makes one check at the end meaningful.

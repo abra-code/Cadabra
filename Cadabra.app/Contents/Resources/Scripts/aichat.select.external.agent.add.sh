@@ -10,6 +10,7 @@
 source "$OMC_APP_BUNDLE_PATH/Contents/Resources/Scripts/aichat.library.sh"
 source "$OMC_APP_BUNDLE_PATH/Contents/Resources/Scripts/aichat.mcp.servers.library.sh"
 source "$OMC_APP_BUNDLE_PATH/Contents/Resources/Scripts/aichat.select.external.agent.library.sh"
+aichat_window_only
 
 # The default name comes from the catalog, like the rest of the dialog's prose. Made unique
 # first, so pressing + twice gives "New Agent" and "New Agent 2" rather than two rows nobody

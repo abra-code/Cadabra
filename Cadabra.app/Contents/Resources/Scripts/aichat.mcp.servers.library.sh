@@ -438,31 +438,38 @@ mcp_tools_box_network_text() {
         box:?*) ;;
         *) return 0 ;;
     esac
-    local file="${TMPDIR:-/tmp}/cadabra-runin-places.$1"
+    local file="$(cadabra_run_file "runin-places.$1")"
     [ -f "$file" ] || return 0
     /usr/bin/awk -F'\t' -v box="${2#box:}" '$1 == "box" && $2 == box {
         mode = $3; rules = $4
         if (mode == "off") print "Its network is **off**: programs in it reach no host."
         else if (mode == "open" || mode == "-" || mode == "") print "Its network is **open**: programs in it reach any host, also on your local network."
-        else if (mode != "allowlist") print "Its network mode is **" mode "**."
+        else if (mode != "allowlist") { gsub(/[^a-z-]/, "", mode); print "Its network mode is **" mode "**." }
         else if (rules == "" || rules == "-") print "Its network is an **allowlist with no rules**: programs in it reach no host."
         else {
             print "Programs in it reach only these hosts and packs of hosts:"
             print ""
             n = split(rules, list, ",")
-            for (i = 1; i <= n; i++) print "- `" list[i] "`"
+            for (i = 1; i <= n; i++) { gsub(/\140/, "\047", list[i]); print "- `" list[i] "`" }
         }
         exit
     }' "$file"
 }
 
+# mcp_markdown_code <text>  ->  the text for a Markdown code span (between backticks) in an
+# information sheet (mcp_info_sheet), on one line: a backtick in it would end the span, and a line break the paragraph, and
+# what follows would be read as Markdown of its own (a link, a heading). A folder can be named so.
+mcp_markdown_code() {
+    printf '%s' "$1" | /usr/bin/tr '\140\n\r' "'  "
+}
+
 # mcp_info_sheet <window_uuid> <markdown>  ->  0 once a sheet showing the Markdown (a RichText
 # view and a Done button, aichat.mcp.servers.info.done.sh) is presented on the window; 1 when its
-# JSON could not be written. The sheet is a file of the window's own under TMPDIR, written anew
-# each time, since omc_present_modal takes a resource or a path; its two ids (590, 591) are apart
-# from the window's.
+# JSON could not be written. The sheet is a file of the window's own (cadabra_run_file), written
+# anew each time, since omc_present_modal takes a resource or a path; its two ids (590, 591) are
+# apart from the window's.
 mcp_info_sheet_file() {
-    printf '%s\n' "${TMPDIR:-/tmp}/cadabra-tools-info.$1.json"
+    cadabra_run_file "tools-info.$1.json"
 }
 
 mcp_info_sheet() {

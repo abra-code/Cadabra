@@ -9,6 +9,7 @@
 
 source "$OMC_APP_BUNDLE_PATH/Contents/Resources/Scripts/aichat.mcp.servers.library.sh"
 source "$OMC_APP_BUNDLE_PATH/Contents/Resources/Scripts/aichat.acp.agents.library.sh"
+aichat_window_only
 
 echo "[$(/usr/bin/basename "$0")]"
 
@@ -126,7 +127,7 @@ if [ "$tools_runin_offered" = "yes" ]; then
 fi
 pb_set "aichatv2_toolsrunin_${window_uuid}" ""
 # The boxes and images listed for Where tools run (agent_load_places).
-/bin/rm -f "${TMPDIR:-/tmp}/cadabra-runin-places.${window_uuid}"
+/bin/rm -f "$(cadabra_run_file "runin-places.${window_uuid}")"
 # And an information sheet's file, when the window goes with one up (mcp_info_sheet).
 /bin/rm -f "$(mcp_info_sheet_file "$window_uuid")"
 

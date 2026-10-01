@@ -62,7 +62,7 @@ review_context_key() {
 # review_session_file <window>  ->  the file holding the window's session row (agentvm_sessions),
 # as the last paint read it, for the handlers after it.
 review_session_file() {
-    printf '%s\n' "${TMPDIR:-/tmp}/cadabra-review.$1.session"
+    cadabra_run_file "review.$1.session"
 }
 
 # review_session_row <window>  ->  that row, or nothing.
@@ -97,9 +97,28 @@ review_forget() {
 
 # _review_empty_file  ->  an empty file, the side of a diff that does not exist.
 _review_empty_file() {
-    local _file="${TMPDIR:-/tmp}/cadabra-review-empty"
+    local _file="$(cadabra_run_file review-empty)"
     printf '' 2>/dev/null > "$_file"
     printf '%s\n' "$_file"
+}
+
+# _review_plain_file_in <folder> <file>  ->  0 when <file> is a regular file, itself no symbolic
+# link, whose own folder is really inside <folder>. The report said the entry is a file, but the
+# session's agent may have put a link in its place since, or in place of a folder above it, and
+# the diff would then show a file from elsewhere on this Mac as the project's.
+_review_plain_file_in() {
+    if [ -L "$2" ] || [ ! -f "$2" ]; then
+        return 1
+    fi
+    local _root="$(cd "$1" 2>/dev/null && /bin/pwd -P)"
+    local _parent="$(cd "${2%/*}" 2>/dev/null && /bin/pwd -P)"
+    if [ -z "$_root" ] || [ -z "$_parent" ]; then
+        return 1
+    fi
+    case "$_parent/" in
+        "$_root/"*) return 0 ;;
+    esac
+    return 1
 }
 
 # _review_state_text <state>  ->  the session's state, for the summary.
@@ -295,8 +314,8 @@ review_detail() {
     if [ "$_type" = "file" ] && [ -n "$_project" ] && [ -n "$_snapshot" ] && [ "$_snapshot" != "-" ]; then
         local _empty="$(_review_empty_file)"
         local _old="$_snapshot/$_path" _new="$_project/$_path"
-        [ -f "$_old" ] || _old="$_empty"
-        [ -f "$_new" ] || _new="$_empty"
+        _review_plain_file_in "$_snapshot" "$_old" || _old="$_empty"
+        _review_plain_file_in "$_project" "$_new" || _new="$_empty"
         "$dialog" "$_window" "$review_diff_id" omc_set_property oldFile "$_old"
         "$dialog" "$_window" "$review_diff_id" omc_set_property newFile "$_new"
         "$dialog" "$_window" "$review_diff_scroll_id" omc_show
@@ -445,19 +464,28 @@ review_pick_session() {
 }
 
 # review_offer_at_close  ->  0. After a window's snapshot_release: when the session it ended left
-# changes flagged high (able to run code later on this Mac), asks whether to review them now and,
-# when the user says so, chains the review window (omc_next_command opens it after the handler ends).
+# changes flagged high (able to run code later on this Mac), or changes that could not be read at
+# all, asks whether to review them now and, when the user says so, chains the review window
+# (omc_next_command opens it after the handler ends).
 review_offer_at_close() {
+    local _answer
     case "$snapshot_released_high" in
+        unknown)
+            "$alert" --level caution --title "Review the changes in the project?" --ok "Review Changes" --cancel "Later" \
+                "What the session in the closed window changed in the project could not be read, so Cadabra cannot tell whether any of it can run code later on this Mac: ${snapshot_released_error:-agent-vm gave no reason.}
+
+Its snapshot is kept. Review Changes says why again, and shows the changes once they can be read."
+            _answer=$? ;;
         ''|0|*[!0123456789]*) return 0 ;;
+        *)
+            local _what="$snapshot_released_high changes that can"
+            if [ "$snapshot_released_high" = "1" ]; then
+                _what="1 change that can"
+            fi
+            "$alert" --level caution --title "Review the changes in the project?" --ok "Review Changes" --cancel "Later" \
+                "The session in the closed window made $_what run code later on this Mac (a git hook, a script or a link out of the project, say). Its snapshot is kept, so they can be reviewed and undone now, or later from the conversation's row in the history."
+            _answer=$? ;;
     esac
-    local _what="$snapshot_released_high changes that can"
-    if [ "$snapshot_released_high" = "1" ]; then
-        _what="1 change that can"
-    fi
-    "$alert" --level caution --title "Review the changes in the project?" --ok "Review Changes" --cancel "Later" \
-        "The session in the closed window made $_what run code later on this Mac (a git hook, a script or a link out of the project, say). Its snapshot is kept, so they can be reviewed and undone now, or later from the conversation's row in the history."
-    local _answer=$?
     if [ "$_answer" -ne 0 ]; then
         return 0
     fi

@@ -93,7 +93,8 @@ asked() {
     [ -f "$FAKE_INSTALL_DIR/log" ] || { echo 0; return 0; }
     /usr/bin/grep -c "^$1" "$FAKE_INSTALL_DIR/log" | /usr/bin/tr -d ' '
 }
-temp_folders() { /bin/ls -d "${TMPDIR:-/tmp}"/cadabra-agentvm-install.* 2>/dev/null | /usr/bin/wc -l | /usr/bin/tr -d ' '; }
+# In $TMPDIR for a direct run, and in Cadabra's own folder for the job (agentvm_install_job).
+temp_folders() { /bin/ls -d "${TMPDIR:-/tmp}"/cadabra-agentvm-install.* "$HOME/Library/Application Support/Cadabra/Run"/cadabra-agentvm-install.* 2>/dev/null | /usr/bin/wc -l | /usr/bin/tr -d ' '; }
 
 # job_state <id>  ->  the job's state in agentvm_jobs.
 job_state() { lib agentvm_jobs | /usr/bin/awk -F'\t' -v id="$1" '$1 == id { print $5 }'; }
@@ -317,6 +318,10 @@ row=$(lib agentvm_jobs | /usr/bin/awk -F'\t' -v id="$job" '$1 == id')
 check "  kind, target, title"          "agentvm-install${TAB}agentvm:AgentVM${TAB}Install AgentVM" "$(printf '%s\n' "$row" | col 2-4)"
 check "  its last step"                "done" "$(printf '%s\n' "$row" | col 9)"
 check "agent-vm can be used now"       "0" "$(lib agentvm_available >/dev/null; echo $?)"
+# The Local server's sandbox may write to $TMPDIR: a package checked there could be replaced
+# before installer reads it.
+check "the job checked and installed the package in Cadabra's own folder, not \$TMPDIR" "1|1|all" \
+    "$(asked "spctl .*Application Support/Cadabra/Run/cadabra-agentvm-install\.")|$(asked "installer -pkg .*Application Support/Cadabra/Run/cadabra-agentvm-install\.")|$([ "$(asked "installer -pkg ")" = "$(asked "installer -pkg .*Application Support/Cadabra/Run/cadabra-agentvm-install\.")" ] && echo all)"
 install_reset
 printf '2\n' > "$FAKE_INSTALL_DIR/installer-sleep"
 job=$(lib agentvm_install_job update)

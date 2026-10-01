@@ -47,6 +47,12 @@ if [ -f "$mcp_app_support/snapshot-sessions.tsv" ]; then
     ) >/dev/null 2>&1 &
 fi
 
+# Cadabra's short-lived files (cadabra_run_file) that a crash or a force quit left behind: those
+# untouched for a day or more. Not all of them: another Cadabra may be running.
+if [ -d "$cadabra_run_dir" ]; then
+    /usr/bin/find "$cadabra_run_dir" -mindepth 1 -maxdepth 1 -mtime +1 -exec /bin/rm -rf {} + >/dev/null 2>&1 &
+fi
+
 marker="$mcp_app_support/.webui_history_imported"
 consent="$mcp_app_support/.webui_import_consent"
 [ -f "$marker" ] && exit 0   # asked and answered once - never again

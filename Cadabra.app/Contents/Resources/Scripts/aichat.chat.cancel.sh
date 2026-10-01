@@ -3,6 +3,7 @@
 # Called when a chat window is closed. Stops only the server for that window.
 
 source "$OMC_APP_BUNDLE_PATH/Contents/Resources/Scripts/aichat.server.library.sh"
+aichat_window_only
 
 echo "[$(/usr/bin/basename "$0")]"
 echo "OMC_FRONT_PROCESS_ID: $OMC_FRONT_PROCESS_ID"

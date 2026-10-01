@@ -13,7 +13,7 @@ pb_set "aichatv2_loadtarget_${OMC_ACTIONUI_WINDOW_UUID}" ""
 pb_set "aichatv2_toolsbox_${OMC_ACTIONUI_WINDOW_UUID}" ""
 pb_set "aichatv2_toolsrunin_${OMC_ACTIONUI_WINDOW_UUID}" ""
 # The boxes and images listed for Where tools run (agent_load_places).
-/bin/rm -f "${TMPDIR:-/tmp}/cadabra-runin-places.${OMC_ACTIONUI_WINDOW_UUID}"
+/bin/rm -f "$(cadabra_run_file "runin-places.${OMC_ACTIONUI_WINDOW_UUID}")"
 # And an information sheet's file, when the window goes with one up (mcp_info_sheet).
 /bin/rm -f "$(mcp_info_sheet_file "$OMC_ACTIONUI_WINDOW_UUID")"
 pb_set "aichatv2_toolsboxpane_${OMC_ACTIONUI_WINDOW_UUID}" ""

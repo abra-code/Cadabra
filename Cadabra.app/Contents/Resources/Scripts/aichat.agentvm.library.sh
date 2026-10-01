@@ -41,7 +41,7 @@ source "$OMC_APP_BUNDLE_PATH/Contents/Resources/Scripts/aichat.library.sh"
 # pointing at a stale build) is refused rather than guessed at.
 # Raise it with every agent-vm version Cadabra moves to. The tests and the fake agent-vm read it
 # from here, so the number lives only on this line.
-AGENTVM_MIN_VERSION="0.4.3"
+AGENTVM_MIN_VERSION="0.5.2"
 AGENTVM_MIN_MACOS="27"
 
 # Where AgentVM's package puts the link to the newest agent-vm, and where to get the package.
@@ -54,7 +54,9 @@ agentvm_job_py="$OMC_APP_BUNDLE_PATH/Contents/Resources/Scripts/agentvm_job.py"
 # Where agentvm_json leaves agent-vm's stderr for agentvm_last_error. Named after the handler's
 # pid: $$ is the handler's own pid inside every subshell of it too, so a call made in $( ) - the
 # usual way to call it - still leaves the message where the caller can find it afterwards.
-agentvm_err_file="${TMPDIR:-/tmp}/cadabra-agentvm.$$.stderr"
+# In Cadabra's own folder, not $TMPDIR (see cadabra_run_file): the name is predictable, and the
+# file is written and read back without a look at what is there.
+agentvm_err_file="$(cadabra_run_file "agentvm.$$.stderr")"
 
 # agentvm_setting <name>  ->  /developer/<name> from the settings file, or nothing.
 # Reads only: a missing file stays missing.
@@ -318,7 +320,7 @@ agentvm_available() {
 
 # agentvm_version_info  ->  TSV: version, path, guestVersion, guestFeatures, guestDigest,
 # guestError. The guest fields describe the agent-vm-guest next to agent-vm, which is what
-# `image update-guest` would install; guestError says why it could not describe itself.
+# `image update --guest` would install; guestError says why it could not describe itself.
 agentvm_version_info() {
     agentvm_rows version version
 }
@@ -661,7 +663,11 @@ agentvm_install_job() {
     local _title="Install AgentVM"
     [ "$1" = "update" ] && _title="Update AgentVM"
     /bin/rm -f "$agentvm_err_file"
-    "$agentvm_python" "$agentvm_job_py" start "$(agentvm_jobs_dir)" agentvm-install "$agentvm_install_target" "$_title" -- \
+    # TMPDIR for the job is Cadabra's own folder (cadabra_run_file): agentvm_install.py downloads,
+    # checks and installs the package in a folder it makes in its temporary folder, and in the
+    # user's $TMPDIR the Local server's sandbox may write, so tools there could replace the
+    # package between the signature check and the install.
+    TMPDIR="$cadabra_run_dir" "$agentvm_python" "$agentvm_job_py" start "$(agentvm_jobs_dir)" agentvm-install "$agentvm_install_target" "$_title" -- \
         "$agentvm_python" "$agentvm_install_py" install --api "$agentvm_releases_api" \
         --min "$AGENTVM_MIN_VERSION" --team "$agentvm_team_id" --link "$agentvm_installed" 2>"$agentvm_err_file"
     _agentvm_job_result $? start
@@ -707,7 +713,7 @@ agentvm_newest_check() {
         return 0
     fi
     local _version
-    _version="$("$agentvm_python" "$agentvm_install_py" newest --api "$agentvm_releases_api" \
+    _version="$(TMPDIR="$cadabra_run_dir" "$agentvm_python" "$agentvm_install_py" newest --api "$agentvm_releases_api" \
         --max-time "$agentvm_newest_max_time" 2>/dev/null)"
     local _status=$?
     if [ "$_status" -ne 0 ]; then
@@ -968,10 +974,10 @@ agentvm_image_update_guest_job() {
     done
     agentvm_vm_slot_free || return $?
     if [ $# -eq 1 ]; then
-        agentvm_job_start update-guest "image:$1" "Update the guest in $1" image update-guest "$1"
+        agentvm_job_start update-guest "image:$1" "Update the guest in $1" image update "$1" --guest
         return $?
     fi
-    agentvm_job_start update-guest "image:$_names" "Update the guest in $# images" image update-guest "$@"
+    agentvm_job_start update-guest "image:$_names" "Update the guest in $# images" image update "$@" --guest
 }
 
 # agentvm_image_setup_job <image>  ->  the job id. Opens the image in a window where the user

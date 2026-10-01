@@ -7,6 +7,7 @@
 # flag and the gatedTools list - is applied in generate_mcp_configs.py.
 
 source "$OMC_APP_BUNDLE_PATH/Contents/Resources/Scripts/aichat.mcp.servers.library.sh"
+aichat_window_only
 
 echo "[$(/usr/bin/basename "$0")]"
 

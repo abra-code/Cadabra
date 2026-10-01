@@ -103,7 +103,7 @@ check "busy: each image"            "Update the guest in 2 images" "$(with_fake 
 check "  but not a prefix of a name" "" "$(with_fake agentvm_job_busy image:dev-no)"
 check "  nor a box of that name"    "" "$(with_fake agentvm_job_busy box:dev)"
 /bin/sleep 0.3
-check "agent-vm got both, in order" "image update-guest dev dev-node --json" "$(/usr/bin/grep '^image update-guest' "$FAKE_AGENTVM_DIR/log")"
+check "agent-vm got both, in order" "image update dev dev-node --guest --json" "$(/usr/bin/grep '^image update ' "$FAKE_AGENTVM_DIR/log")"
 with_fake agentvm_job_cancel "$multi" >/dev/null
 wait_until "$multi" canceled >/dev/null
 
@@ -140,13 +140,13 @@ check "  saying so"                 "the job is not running" "$(message "$rc")"
 
 section "a failure keeps agent-vm's message"
 fake_reset 0
-printf 'the guest daemon did not answer after the reboot; run `agent-vm image update-guest dev` again' > "$FAKE_AGENTVM_DIR/fail-image-update-guest"
+printf 'the guest daemon did not answer after the reboot; run `agent-vm image update dev --guest` again' > "$FAKE_AGENTVM_DIR/fail-image-update"
 id3=$(with_fake agentvm_image_update_guest_job dev)
 check "ends failed"                 "failed" "$(wait_until "$id3" failed)"
 row=$(job_row "$id3")
 check "  status 1"                  "1" "$(printf '%s\n' "$row" | col 6)"
-check "  its first line in the list" 'the guest daemon did not answer after the reboot; run `agent-vm image update-guest dev` again' "$(printf '%s\n' "$row" | col 13)"
-check "  and all of it on request"  'the guest daemon did not answer after the reboot; run `agent-vm image update-guest dev` again' "$(with_fake agentvm_job_error "$id3")"
+check "  its first line in the list" 'the guest daemon did not answer after the reboot; run `agent-vm image update dev --guest` again' "$(printf '%s\n' "$row" | col 13)"
+check "  and all of it on request"  'the guest daemon did not answer after the reboot; run `agent-vm image update dev --guest` again' "$(with_fake agentvm_job_error "$id3")"
 check "  titled for people"         "Update the guest in dev" "$(printf '%s\n' "$row" | col 4)"
 
 section "forget"

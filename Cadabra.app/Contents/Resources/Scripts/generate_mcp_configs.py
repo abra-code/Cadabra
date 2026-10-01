@@ -303,10 +303,15 @@ if not box.box and srv_enabled("pdf"):
     else:
         print("  pdf server enabled but no readable sandbox paths configured; omitting it")
 
+# -P for both `python3 -m` servers, here and in a box: without it Python puts the working folder
+# first on sys.path, ahead of PYTHONPATH and its own library, and the servers run in the project
+# folder. A file there named like a module they import (argparse.py, a mcp_server_time folder)
+# would then run on this Mac, outside every sandbox, the next time a window starts its tools:
+# code left in the project by an earlier session, or shipped in a folder someone else made.
 if not box.box and srv_enabled("time"):
     servers["time"] = {
         "command": python3_bin,
-        "args": ["-m", "mcp_server_time", "--local-timezone", tz],
+        "args": ["-P", "-m", "mcp_server_time", "--local-timezone", tz],
         "env": {"PYTHONPATH": packages_dir},
     }
     server_order.append("time")
@@ -314,7 +319,7 @@ if not box.box and srv_enabled("time"):
 if not box.box and allow_network and srv_enabled("search"):
     servers["search"] = {
         "command": python3_bin,
-        "args": ["-m", "duckduckgo_mcp_server.server"],
+        "args": ["-P", "-m", "duckduckgo_mcp_server.server"],
         "env": {"PYTHONPATH": packages_dir},
     }
     server_order.append("search")
@@ -358,11 +363,11 @@ if box.box:
         servers["pdf"] = boxed(pdf_argv)
         server_order.append("pdf")
     if box_flag("time"):
-        servers["time"] = boxed([guest_python, "-m", "mcp_server_time", "--local-timezone", tz],
+        servers["time"] = boxed([guest_python, "-P", "-m", "mcp_server_time", "--local-timezone", tz],
                                 guest_python_env)
         server_order.append("time")
     if box_flag("internet"):
-        servers["search"] = boxed([guest_python, "-m", "duckduckgo_mcp_server.server"],
+        servers["search"] = boxed([guest_python, "-P", "-m", "duckduckgo_mcp_server.server"],
                                   guest_python_env)
         server_order.append("search")
 
@@ -381,9 +386,9 @@ if box.box:
 # cost of guessing wrong is an unprompted write.
 # Probe the servers from the working directory they will actually run in. ChatView
 # launches mlx-agent with the Project workspace as cwd (falling back to $HOME for a
-# value that is not absolute-and-existing) and the servers inherit it; for the two
-# `python3 -m` servers cwd lands on sys.path ahead of PYTHONPATH, so a probe run
-# somewhere else could describe a different module than the one that gets served.
+# value that is not absolute-and-existing) and the servers inherit it, so the probe
+# runs where they will. (The two `python3 -m` servers no longer import from that
+# folder: see -P above.)
 #
 # Read the pref directly rather than reusing user_project: that one is only set when
 # the LOCAL server is enabled and is .strip()ed, while the launcher reads this pref

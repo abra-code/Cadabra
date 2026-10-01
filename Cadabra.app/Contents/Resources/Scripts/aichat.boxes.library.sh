@@ -74,7 +74,7 @@ boxes_key() { printf '%s_%s\n' "$1" "$2"; }
 
 # boxes_cache <uuid> <images|boxes|jobs>  ->  the file holding the rows last read.
 boxes_cache() {
-    printf '%s/cadabra-boxes.%s.%s\n' "${TMPDIR:-/tmp}" "$1" "$2"
+    cadabra_run_file "boxes.$1.$2"
 }
 
 boxes_enable() {

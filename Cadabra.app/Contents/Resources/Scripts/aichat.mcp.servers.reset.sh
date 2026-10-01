@@ -8,6 +8,7 @@
 # See mcp_prefs_write_defaults in the library.
 
 source "$OMC_APP_BUNDLE_PATH/Contents/Resources/Scripts/aichat.mcp.servers.library.sh"
+aichat_window_only
 
 echo "[$(/usr/bin/basename "$0")]"
 

@@ -822,7 +822,7 @@ acp_agent_allow_remove() {
     case "$1" in
         ''|custom|*/*) return 2 ;;
     esac
-    local joined="$(acp_agent_allowed "$1" | /usr/bin/awk -v drop="$2" 'NF && $0 != drop { printf "%s%s", sep, $0; sep = " " }')"
+    local joined="$(acp_agent_allowed "$1" | acp_drop="$2" /usr/bin/awk 'NF && $0 != ENVIRON["acp_drop"] { printf "%s%s", sep, $0; sep = " " }')"
     _acp_agent_set_per_agent allow "$1" "$joined"
 }
 
@@ -1137,7 +1137,9 @@ acp_custom_unique_label() {
     base=$(acp_clean_one_line "$1")
     [ -n "$base" ] || base="New Agent"
     candidate="$base"
-    while [ -n "$(acp_custom_list | /usr/bin/awk -F'\t' -v want="$candidate" '$2 == want { print "y"; exit }')" ]; do
+    # The label goes through the environment: awk -v would read a backslash in it as an escape,
+    # and "C:\tools" would never equal the stored "C:\tools".
+    while [ -n "$(acp_custom_list | acp_want="$candidate" /usr/bin/awk -F'\t' '$2 == ENVIRON["acp_want"] { print "y"; exit }')" ]; do
         n=$((n + 1))
         candidate="$base $n"
         # n rises every pass and the labels are finite, so this terminates on its own. The bound

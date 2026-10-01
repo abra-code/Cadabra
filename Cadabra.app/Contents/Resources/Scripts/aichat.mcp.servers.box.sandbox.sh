@@ -11,7 +11,7 @@ echo "[$(/usr/bin/basename "$0")]"
 profile="$OMC_APP_BUNDLE_PATH/Contents/Resources/replay-box-sandbox.json"
 project="${OMC_ACTIONUI_VIEW_310_VALUE:-}"
 if [ -n "$project" ]; then
-    project="\`$project\` (the project)"
+    project="\`$(mcp_markdown_code "$project")\` (the project)"
 else
     project="the project folder"
 fi

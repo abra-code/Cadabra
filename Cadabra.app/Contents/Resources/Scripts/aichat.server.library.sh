@@ -139,7 +139,7 @@ forget_server_host_entry() {
 #   - `box serve` is a box's supervisor, which owns the running virtual machine. agent-vm
 #     detaches it in its own session so it outlives whatever started it; killing it is pulling
 #     the power cord on the box, and its VM slot stays taken until macOS notices;
-#   - `image create`, `image update-guest` and `image setup` run for minutes to an hour, detached
+#   - `image create`, `image update` and `image setup` run for minutes to an hour, detached
 #     on purpose so they survive the window and Cadabra itself;
 #   - any subcommand agent-vm adds later, which is why this is a one-entry allowlist rather than
 #     a list of exclusions.

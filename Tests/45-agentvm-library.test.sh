@@ -25,7 +25,7 @@ export FAKE_AGENTVM_DIR
 TAB=$(printf '\t')
 # Where the library leaves agent-vm's stderr. cad_call_lib sources it in a subshell of this file,
 # so its $$ is this file's pid too.
-ERR_FILE="${TMPDIR:-/tmp}/cadabra-agentvm.$$.stderr"
+ERR_FILE="$HOME/Library/Application Support/Cadabra/Run/agentvm.$$.stderr"
 
 # The developer's own environment must not decide which binary the library picks.
 unset CADABRA_AGENT_VM AGENT_VM_HOME
