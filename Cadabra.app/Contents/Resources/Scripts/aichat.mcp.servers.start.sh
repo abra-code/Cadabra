@@ -30,10 +30,17 @@ if [ "$box_agent_now" != "$box_agent" ]; then
     exit 0
 fi
 if [ -n "$box_agent" ]; then
+    # Which panel the user saw (init): the agent panel (502), or the box pane with Cadabra's tools
+    # (528 for read-only, and the server toggles, stored as the box pane's settings).
+    box_pane="$(pb_get "aichatv2_toolsboxpane_${window_uuid}")"
     # A toggle with no value keeps the stored choice: falling back to "no" would turn a
     # read-only share into a read-write one.
+    read_only_value="${OMC_ACTIONUI_VIEW_502_VALUE:-}"
+    if [ "$box_pane" = "yes" ]; then
+        read_only_value="${OMC_ACTIONUI_VIEW_528_VALUE:-}"
+    fi
     read_only=""
-    case "${OMC_ACTIONUI_VIEW_502_VALUE:-}" in
+    case "$read_only_value" in
         true)  read_only=yes ;;
         false) read_only=no ;;
     esac
@@ -42,14 +49,27 @@ if [ -n "$box_agent" ]; then
         acp_agent_set_read_only "$box_agent" "$read_only"
         status=$?
     fi
+    if [ "$box_pane" = "yes" ]; then
+        for pair in local:522 confineLocal:523 pdf:524 pdfWritable:525 time:526 internet:527; do
+            [ "$status" -eq 0 ] || break
+            name="${pair%%:*}"
+            eval "value=\"\${OMC_ACTIONUI_VIEW_${pair#*:}_VALUE:-}\""
+            case "$value" in
+                true|false)
+                    mcp_box_set_setting "$name" "$value"
+                    status=$? ;;
+            esac
+        done
+    fi
     if [ "$status" -ne 0 ]; then
         "$alert" --level "stop" --title "$APPLET_NAME" --ok "OK" \
-            "Could not save whether the project is shared read-only. Check that ~/Library/Application Support/Cadabra is writable."
+            "Could not save whether the project is shared read-only, or the tools' AgentVM box settings. Check that ~/Library/Application Support/Cadabra is writable."
         exit 0
     fi
     echo "box mode: $box_agent read-only=$read_only"
 fi
 pb_set "aichatv2_toolsbox_${window_uuid}" ""
+pb_set "aichatv2_toolsboxpane_${window_uuid}" ""
 
 # Where a local model's tools run, when init offered the choice. A choice that cannot be stored
 # keeps the dialog open rather than start the tools somewhere other than where the user chose.

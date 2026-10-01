@@ -90,10 +90,11 @@ else
     "$dialog" "$window_uuid" $CONFIRM_BTN_ID omc_set_property "title" "Save"
 fi
 
-# BOX MODE, for a launch that runs the external agent in an agent-vm box. Cadabra's servers and
-# the sandbox paths do not apply there (the agent brings its own tools, and the box sees only the
-# project), so their area gives way to the box panel: where the agent runs, what is shared, and
-# whether the project is shared read-only. The two sit in one ZStack, since a hidden view keeps
+# BOX MODE, for a launch that runs the external agent in an agent-vm box. This Mac's servers and
+# the sandbox paths do not apply there (the box sees only the project), so their area gives way to
+# the box panel: where the agent runs, what is shared, and whether the project is shared
+# read-only. With Cadabra's tools for the agent (Use Tools on), the box pane takes the panel's
+# place instead (see the end of this file). The two sit in one ZStack, since a hidden view keeps
 # its space. Reset to Defaults goes too: it writes the hidden settings at once. The agent is kept
 # for Start, which stores the read-only choice for it.
 SERVERS_AREA_ID=150
@@ -184,4 +185,44 @@ if [ "$tools_launch" = "yes" ]; then
         mcp_tools_apply_run_in "$window_uuid" "$tools_run_in"
         pb_set "aichatv2_toolsrunin_${window_uuid}" "yes"
     fi
+fi
+
+# AN AGENT IN A BOX WITH CADABRA'S TOOLS (Use Tools on in Select ACP Agent): the box pane takes
+# the agent panel's place, since the same servers, copied into the box, are what the agent gets
+# (the agent starts them there itself). Read-only project (528) is the agent's own choice, as in
+# the agent panel; the server toggles are the box pane's settings. Start reads
+# aichatv2_toolsboxpane_<window> to know which panel the user saw.
+pb_set "aichatv2_toolsboxpane_${window_uuid}" ""
+if [ -n "$box_agent" ]; then
+    queued_tools="$(launch_queue_tools "$queued")"
+    case "$queued_tools" in
+        true|readonly)
+            source "$OMC_APP_BUNDLE_PATH/Contents/Resources/Scripts/aichat.select.external.agent.library.sh"
+            # For the kept box's network line; nothing is shown when boxes cannot be listed.
+            agent_load_places refresh
+            "$dialog" "$window_uuid" $TOOLS_BOX_LOCAL_TOGGLE_ID "$(mcp_box_setting local)"
+            "$dialog" "$window_uuid" $TOOLS_BOX_CONFINE_TOGGLE_ID "$(mcp_box_setting confineLocal)"
+            "$dialog" "$window_uuid" $TOOLS_BOX_PDF_TOGGLE_ID "$(mcp_box_setting pdf)"
+            "$dialog" "$window_uuid" $TOOLS_BOX_PDF_WRITABLE_TOGGLE_ID "$(mcp_box_setting pdfWritable)"
+            "$dialog" "$window_uuid" $TOOLS_BOX_TIME_TOGGLE_ID "$(mcp_box_setting time)"
+            "$dialog" "$window_uuid" $TOOLS_BOX_INTERNET_TOGGLE_ID "$(mcp_box_setting internet)"
+            # A share mode that cannot be read shows read-only, as in the local tools' pane: Start
+            # then stores what is shown, never a read-write share nobody chose.
+            case "$(acp_agent_read_only "$box_agent")" in
+                no) "$dialog" "$window_uuid" $TOOLS_BOX_READ_ONLY_TOGGLE_ID false ;;
+                *)  "$dialog" "$window_uuid" $TOOLS_BOX_READ_ONLY_TOGGLE_ID true ;;
+            esac
+            case "$run_in" in
+                box:?*|new:?*) "$dialog" "$window_uuid" $TOOLS_BOX_WHERE_TEXT_ID "$where, with Cadabra's tools" ;;
+                *)             "$dialog" "$window_uuid" $TOOLS_BOX_WHERE_TEXT_ID "$where" ;;
+            esac
+            # A new agent box also gets the agent's own hosts, so the tools-only line would be wrong.
+            case "$run_in" in
+                new:?*) "$dialog" "$window_uuid" $TOOLS_BOX_NETWORK_TEXT_ID "A new box reaches the hosts the agent needs and those saved for it, and any public host with Internet on." ;;
+                *)      "$dialog" "$window_uuid" $TOOLS_BOX_NETWORK_TEXT_ID "$(mcp_tools_box_network_line "$window_uuid" "$run_in")" ;;
+            esac
+            "$dialog" "$window_uuid" $BOX_PANEL_ID omc_hide
+            "$dialog" "$window_uuid" $TOOLS_BOX_PANE_ID omc_show
+            pb_set "aichatv2_toolsboxpane_${window_uuid}" "yes" ;;
+    esac
 fi

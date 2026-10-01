@@ -66,8 +66,9 @@ project shared at the same path:
   so the exec finds the box Cadabra started in that store.
 - cwd is the project, which is also its path in the box. startupTimeoutSeconds is 60: the box is
   started before this transport is used, so the time covers only the agent's own start.
-- No mcpServers yet: Cadabra's servers live at Mac paths, and the copy of them into the box
-  (the plan's D11) is later work. A server list is dropped with a note on stderr.
+- mcpServers, with tools on: the config at <mcp_config_path> lists Cadabra's servers as copied
+  into the box (generate_mcp_configs.py --client in-box), so the agent starts them in the box
+  itself; "readonly" passes only servers with no gated tools, as on this Mac.
 
 Writes one line of JSON to stdout and nothing else, so the caller's stdout stays
 pure JSON.
@@ -331,8 +332,12 @@ def main():
             transport = box_transport(options, argv)
             if transport is None:
                 return
-            if tools != "false" and read_servers(cfg):
-                sys.stderr.write("acp_transport_json: tools are not passed to an agent in a box yet\n")
+            # Cadabra's servers, copied into the box, as the agent starts them there (the config
+            # the caller generated with --client in-box): their box paths, no agent-vm exec.
+            if tools != "false":
+                servers = acp_mcp_servers(read_servers(cfg), readonly_only=(tools != "true"))
+                if servers:
+                    transport["mcpServers"] = servers
             json.dump({"protocol": "acp", "transport": transport}, sys.stdout)
             sys.stdout.write("\n")
             return

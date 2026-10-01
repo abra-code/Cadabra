@@ -67,7 +67,7 @@ ui_reset
 omc_run aichat.select.external.agent.init
 check "the stored place"                 "new:dev-agents" "$(ui_value "$RUN_IN_PICKER_ID")"
 check "the stored level, shown"          "ask|1" "$(ui_value "$LEVEL_PICKER_ID")|$(ui_visible "$LEVEL_PICKER_ID")"
-check "tools off and not offered"        "false|0" "$(ui_value "$USE_TOOLS_PICKER_ID")|$(ui_enabled "$USE_TOOLS_PICKER_ID")"
+check "tools still offered in a box"     "1" "$(ui_enabled "$USE_TOOLS_PICKER_ID")"
 check "Keys... offered"                  "1" "$(ui_visible "$KEYS_BUTTON_ID")"
 
 section "a place that is gone stays shown, never replaced by this Mac"
@@ -109,7 +109,7 @@ omc_control "$PANE_OWNER_ID" claude-code-acp
 omc_control "$RUN_IN_PICKER_ID" box:try1
 omc_run aichat.select.external.agent.runin.changed
 check "a box shows the level picker"     "1" "$(ui_visible "$LEVEL_PICKER_ID")"
-check "  and turns tools off"            "false|0" "$(ui_value "$USE_TOOLS_PICKER_ID")|$(ui_enabled "$USE_TOOLS_PICKER_ID")"
+check "  and leaves tools as chosen, offered" "true|1" "$(ui_value "$USE_TOOLS_PICKER_ID")|$(ui_enabled "$USE_TOOLS_PICKER_ID")"
 check "  with nothing stored yet"        "mac" "$(cad_call acp_agent_run_in claude-code-acp)"
 check "  and Keys... for Claude"         "1" "$(ui_visible "$KEYS_BUTTON_ID")"
 omc_control "$RUN_IN_PICKER_ID" mac
@@ -158,7 +158,7 @@ ui_reset
 continue_with claude-code-acp "claude-agent-acp" new:dev-agents plan
 check "the place is stored for the agent" "new:dev-agents" "$(cad_call acp_agent_run_in claude-code-acp)"
 check "  and the level"                  "plan" "$(cad_call acp_agent_level claude-code-acp)"
-check "the launch carries no tools"      "false" "$(cad_pb_get aichatv2_launch_queue | /usr/bin/awk -F"|" "{ print \$2 }")"
+check "the launch carries the tools chosen (Cadabra's servers, copied into the box)" "true" "$(cad_pb_get aichatv2_launch_queue | /usr/bin/awk -F"|" "{ print \$2 }")"
 check "the project step comes next"      "1|0" "$(chain_asked aichat.mcp.servers)|$(chain_asked aichat.chat)"
 
 section "Continue on this Mac keeps the old routes"

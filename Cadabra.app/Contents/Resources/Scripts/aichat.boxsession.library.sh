@@ -645,18 +645,26 @@ boxsession_disposable_name() {
     printf 'cadabra-%s-%s\n' "${_slug:-agent}" "$_hex"
 }
 
-# boxsession_start <window> <run-in> <agent id> <project> <yes|no read-only>  ->  the box name,
-# once the box runs and the project is shared in it. For "new:<image>" the box is made first,
-# with the catalog's network rules for the agent (none for an agent the catalog does not know:
-# the allowlist then allows nothing). The window's registry row is written as soon as the box
+# boxsession_start <window> <run-in> <agent id> <project> <yes|no read-only> [<use tools>]
+#   ->  the box name, once the box runs and the project is shared in it. For "new:<image>" the
+# box is made first, with the catalog's network rules for the agent (none for an agent the
+# catalog does not know: the allowlist then allows nothing), the hosts saved for it, and, with
+# <use tools> true, the rules of the box pane's servers (boxsession_tools_rules), which a kept
+# box gets added. "readonly" adds none: the search server, the one that needs them, has gated
+# tools and is never handed over in that mode. The window's registry row is written as soon as the box
 # is known, so the caller releases it on failure exactly as on a window close. A failure's
 # message is left for agentvm_last_error.
 boxsession_start() {
-    if [ $# -ne 5 ]; then
-        _agentvm_refuse 2 "boxsession_start needs a window, where the agent runs, its id, a project and yes or no."
+    if [ $# -ne 5 ] && [ $# -ne 6 ]; then
+        _agentvm_refuse 2 "boxsession_start needs a window, where the agent runs, its id, a project, yes or no, and optionally the tools setting."
         return 2
     fi
-    local _window="$1" _run_in="$2" _agent="$3" _project="$4" _read_only="$5"
+    local _window="$1" _run_in="$2" _agent="$3" _project="$4" _read_only="$5" _use_tools="${6:-false}"
+    # Cadabra's tools for the agent (Use Tools on) need the box pane's rules too (Internet).
+    local _tool_rules=""
+    case "$_use_tools" in
+        true) _tool_rules="$(boxsession_tools_rules)" ;;
+    esac
     local _rules=""
     case "$_run_in" in
         new:?*)
@@ -668,18 +676,23 @@ boxsession_start() {
             fi
             # The hosts the user allowed for this agent in earlier boxes (Allow for <agent>),
             # after the catalog's; a rule in both is passed once.
-            _rules="$(printf '%s\n%s\n' "$_rules" "$(acp_agent_allowed "$_agent")" | /usr/bin/awk 'NF && !seen[$0]++')" ;;
+            _rules="$(printf '%s\n%s\n%s\n' "$_rules" "$(acp_agent_allowed "$_agent")" "$_tool_rules" | /usr/bin/awk 'NF && !seen[$0]++')" ;;
     esac
-    _boxsession_start_box "$_window" "$_run_in" "$_agent" "$_project" "$_read_only" "$_rules"
+    _boxsession_start_box "$_window" "$_run_in" "$_agent" "$_project" "$_read_only" "$_rules" "$_tool_rules"
 }
 
 # _boxsession_start_box <window> <run-in> <name part> <project> <yes|no read-only> <rules>
-#   ->  boxsession_start's work for any kind of session: the box name once it runs with the
-# project shared. <name part> goes into a disposable box's name (boxsession_disposable_name);
-# <rules> are its network rules, one per line (a rule never holds whitespace), used only when
-# the box is made here.
+#   [<kept rules>]  ->  boxsession_start's work for any kind of session: the box name once it
+# runs with the project shared. <name part> goes into a disposable box's name
+# (boxsession_disposable_name); <rules> are its network rules, one per line (a rule never holds
+# whitespace), used only when the box is made here. <kept rules> are the rules Cadabra's tools
+# need (boxsession_tools_rules), added to a kept box: on an allowlist they are added (never
+# removed: a kept box's rules are its own); an open box reaches every host already; one whose
+# network is off is refused, since Internet would be on in a box that reaches nothing. A box
+# whose record has no network runs open (agent-vm's legacy boxes); one whose mode cannot be read
+# gets the rules added, as before this was checked.
 _boxsession_start_box() {
-    local _window="$1" _run_in="$2" _slug="$3" _project="$4" _read_only="$5" _rules="$6"
+    local _window="$1" _run_in="$2" _slug="$3" _project="$4" _read_only="$5" _rules="$6" _kept_rules="${7:-}"
     case "$_project" in
         /*) ;;
         *) _agentvm_refuse 2 "The project must be an absolute path, not \"$_project\"."
@@ -700,7 +713,17 @@ _boxsession_start_box() {
         box:?*)
             _box="${_run_in#box:}"
             _disposable=no
-            _agentvm_need_name box "$_box" || return $? ;;
+            _agentvm_need_name box "$_box" || return $?
+            if [ -n "$_kept_rules" ]; then
+                local _mode="$(agentvm_boxes 2>/dev/null | /usr/bin/awk -F'\t' -v box="$_box" '$1 == box { print $17; exit }')"
+                /bin/rm -f "$agentvm_err_file"
+                case "$_mode" in
+                    off)
+                        _agentvm_refuse 1 "The kept AgentVM box $_box has its network off, so Internet search & fetch cannot work in it. Turn Internet off in Agentic Session Tools, or give the box a network in Tools > AgentVM."
+                        return 1 ;;
+                    open|-) _kept_rules="" ;;
+                esac
+            fi ;;
         new:?*)
             local _image="${_run_in#new:}"
             _agentvm_need_name image "$_image" || return $?
@@ -724,6 +747,12 @@ EOF
     esac
     boxsession_registry_add "$_window" "$_box" "$_disposable" "$_project" "$_read_only" || return $?
     agentvm_box_start "$_box" || return $?
+    if [ "$_disposable" = "no" ]; then
+        local _rule
+        for _rule in $_kept_rules; do
+            agentvm_box_allow "$_box" "$_rule" || return $?
+        done
+    fi
     agentvm_box_warmup "$_box" "$_project" "$_read_only" || return $?
     printf '%s\n' "$_box"
 }
@@ -919,33 +948,10 @@ boxsession_start_tools() {
     local _window="$1" _run_in="$2" _project="$3" _read_only="$4"
     local _box
     local _rules="$(boxsession_tools_rules)"
-    # Whether a kept box gets the rules added: yes on an allowlist, or when its mode cannot be read
-    # (as before this was checked); no for an open box, which reaches every host already.
-    local _add_rules=no
-    case "$_run_in" in
-        box:?*)
-            local _mode="$(agentvm_boxes 2>/dev/null | /usr/bin/awk -F'\t' -v box="${_run_in#box:}" '$1 == box { print $17; exit }')"
-            /bin/rm -f "$agentvm_err_file"
-            case "$_mode" in
-                off)
-                    if [ -n "$_rules" ]; then
-                        _agentvm_refuse 1 "The kept AgentVM box ${_run_in#box:} has its network off, so Internet search & fetch cannot work in it. Turn Internet off in Agentic Session Tools, or give the box a network in Tools > AgentVM."
-                        return 1
-                    fi ;;
-                open|-) ;;
-                *) _add_rules=yes ;;
-            esac ;;
-    esac
-    _box="$(_boxsession_start_box "$_window" "$_run_in" tools "$_project" "$_read_only" "$_rules")"
+    _box="$(_boxsession_start_box "$_window" "$_run_in" tools "$_project" "$_read_only" "$_rules" "$_rules")"
     local _status=$?
     if [ "$_status" -ne 0 ]; then
         return "$_status"
-    fi
-    if [ "$_add_rules" = "yes" ]; then
-        local _rule
-        for _rule in $_rules; do
-            agentvm_box_allow "$_box" "$_rule" || return $?
-        done
     fi
     local _copy
     _copy="$(boxsession_tools_copy "$_box")"
@@ -1006,21 +1012,48 @@ boxsession_secret() {
 }
 
 # boxsession_transport <command> <window> <agent id> <box> <project> <yes|no read-only> <level>
-#   ->  the Chat element's transport JSON for the agent in the box, or nothing and status 1 with
-# the reason left for agentvm_last_error. <agent id> is "" for a command the user edited: the
-# command then runs as typed, with no catalog recipe and no secret. <level> is free, ask or plan.
+#   [<use tools>]  ->  the Chat element's transport JSON for the agent in the box, or nothing and
+# status 1 with the reason left for agentvm_last_error. <agent id> is "" for a command the user
+# edited: the command then runs as typed, with no catalog recipe and no secret. <level> is free,
+# ask or plan. <use tools> (true, readonly or false, the default) hands the agent Cadabra's MCP
+# servers: they are copied into the box (boxsession_tools_copy) and listed as the agent starts
+# them there, at their box paths (generate_mcp_configs.py --client in-box, following the box
+# pane's settings); "readonly" passes only the servers with no permission-gated tools.
 # The builder is called directly, never through aichat_acp_transport_json, whose fallback builds
 # a transport of its own when the builder prints nothing: here that would run the agent on this
 # Mac instead of refusing.
 boxsession_transport() {
-    if [ $# -ne 7 ]; then
-        _agentvm_refuse 2 "boxsession_transport needs a command, a window, an agent id, a box, a project, yes or no and a level."
+    if [ $# -ne 7 ] && [ $# -ne 8 ]; then
+        _agentvm_refuse 2 "boxsession_transport needs a command, a window, an agent id, a box, a project, yes or no, a level and optionally the tools setting."
         return 2
     fi
     local _command="$1" _window="$2" _agent="$3" _box="$4" _project="$5" _read_only="$6" _level="$7"
+    local _use_tools="${8:-false}"
     local _cfg="$(aichat_session_config_dir "$_window")/mcp-config.json"
-    # No tools in a box yet, so no server config: drop one left by an earlier launch of the window.
+    # A config left by an earlier launch of the window must never reach this agent.
     /bin/rm -f "$_cfg"
+    case "$_use_tools" in
+        true|readonly)
+            local _copy
+            _copy="$(boxsession_tools_copy "$_box")"
+            local _copy_status=$?
+            if [ "$_copy_status" -ne 0 ]; then
+                return 1
+            fi
+            set -- --box "$_box" --agent-vm "$(agentvm_bin)" --project "$_project" \
+                --guest-tools "${_copy%%"$boxsession_tab"*}" --guest-pycache "${_copy#*"$boxsession_tab"}" --client in-box
+            local _store="$(agentvm_setting agent-vm-home)"
+            if [ -n "$_store" ]; then
+                set -- "$@" --agent-vm-home "$_store"
+            fi
+            if [ "$_read_only" = "yes" ]; then
+                set -- "$@" --read-only
+            fi
+            # Its diagnostics (a server omitted, a failed probe) go to the log; stdout stays the JSON.
+            generate_stdio_mcp_config "$_cfg" "$@" 1>&2
+            ;;
+        *) _use_tools=false ;;
+    esac
     set -- --box "$_box" --agent-vm "$(agentvm_bin)" --project "$_project" --level "$_level"
     local _home="$(agentvm_setting agent-vm-home)"
     if [ -n "$_home" ]; then
@@ -1042,7 +1075,7 @@ boxsession_transport() {
         fi
     fi
     local _json
-    _json="$("$agentvm_python" "$boxsession_transport_py" /usr/bin/false external "$_command" "$_cfg" "$_project" false "$@" 2>"$agentvm_err_file")"
+    _json="$("$agentvm_python" "$boxsession_transport_py" /usr/bin/false external "$_command" "$_cfg" "$_project" "$_use_tools" "$@" 2>"$agentvm_err_file")"
     if [ -z "$_json" ]; then
         local _why="$(/usr/bin/sed 's/^acp_transport_json: //' "$agentvm_err_file" 2>/dev/null)"
         _agentvm_refuse 1 "${_why:-The transport for the agent could not be built.}"

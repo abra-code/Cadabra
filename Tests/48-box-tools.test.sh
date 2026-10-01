@@ -302,6 +302,90 @@ json=$( ( CADABRA_AGENT_VM="$FAKE"; export CADABRA_AGENT_VM; cad_call_lib aichat
 check "an unusable record refuses the transport" "1|" "$?|$json"
 cad_pb_set aichatv2_boxtools_w1 ""
 
+section "an external agent in a box gets Cadabra's servers at their box paths"
+fake_reset
+prefs_reset true
+guest="$TOOLS_ROOT/$TOOLS_ID"
+# mcp_servers <transport json> <python expression over m, the mcpServers by name>
+mcp_servers() {
+    printf '%s' "$1" | "$OMC_APP_BUNDLE_PATH/Contents/Library/Python/bin/python3" -c 'import json, sys
+t = json.load(sys.stdin)["transport"]
+m = {s["name"]: s for s in t.get("mcpServers", [])}
+print(eval(sys.argv[1]))' "$2" 2>&1
+}
+json=$(with_fake boxsession_transport "claude-agent-acp" w1 claude-code-acp b1 "$PROJECT" no free true)
+check "it builds"                         "0" "$?"
+check "the agent itself runs through agent-vm exec" "1" "$(cad_has "$json" '"exec", "--box", "b1"')"
+check "  and gets all four servers" "local|pdf|search|time" "$(mcp_servers "$json" '"|".join(sorted(m))')"
+check "  each started by the agent in the box, not through agent-vm" \
+    "$guest/Support/replay|$guest/Support/pdfutil|$guest/Library/Python/bin/python3" \
+    "$(mcp_servers "$json" 'm["local"]["command"] + "|" + m["pdf"]["command"] + "|" + m["search"]["command"]')"
+check "  replay unconfined, the project first" "--mcp-server --no-sandbox --allow-write $PROJECT --allow-write /" \
+    "$(mcp_servers "$json" '" ".join(m["local"]["args"])')"
+check "  the Python servers' environment in ACP's form" "PYTHONPATH=$guest/Library/Packages,PYTHONPYCACHEPREFIX=$PYCACHE" \
+    "$(mcp_servers "$json" '",".join(e["name"] + "=" + e["value"] for e in m["search"]["env"])')"
+check "  no agent-vm anywhere in them" "0" "$(mcp_servers "$json" 'sum("agent-vm" in json.dumps(s) or "fake_agent_vm" in json.dumps(s) for s in m.values())')"
+check "  probed through the box"         "1" "$(cad_has "$(/bin/cat "$FAKE_AGENTVM_DIR/log")" "exec --box b1 --project $PROJECT -- $guest/Support/replay")"
+json=$(with_fake boxsession_transport "claude-agent-acp" w1 claude-code-acp b1 "$PROJECT" no free readonly)
+check "read-only servers only: the ones with no gated tools" "time" "$(mcp_servers "$json" '"|".join(sorted(m))')"
+json=$(with_fake boxsession_transport "claude-agent-acp" w1 claude-code-acp b1 "$PROJECT" no free false)
+check "tools off: no servers, and no config left" "|no" \
+    "$(mcp_servers "$json" '"|".join(sorted(m))')|$([ -f "$HOME/Library/Application Support/Cadabra/Sessions/w1/mcp-config.json" ] && echo yes || echo no)"
+fake_reset
+box=$(with_fake boxsession_start w1 new:dev claude-code-acp "$PROJECT" no true)
+check "a new agent box with Internet on also allows any public host" "1" "$(cad_has "$(logged 'box create')" '--allow public')"
+with_fake boxsession_release w1
+fake_reset
+box=$(with_fake boxsession_start w1 new:dev claude-code-acp "$PROJECT" no readonly)
+check "  nor with read-only servers only, which never include search" "0|0" "$?|$(cad_has "$(logged 'box create')" '--allow public')"
+with_fake boxsession_release w1
+fake_reset
+prefs_reset
+box=$(with_fake boxsession_start w1 new:dev claude-code-acp "$PROJECT" no true)
+check "  and not with Internet off"       "0|1|0" "$?|$(logged_count 'box create')|$(cad_has "$(logged 'box create')" '--allow public')"
+with_fake boxsession_release w1
+
+section "an agent in a box with Cadabra's tools: the share mode, kept boxes, chat init"
+fake_reset
+prefs_reset
+json=$(with_fake boxsession_transport "claude-agent-acp" w1 claude-code-acp b1 "$PROJECT" yes free true)
+check "a read-only share: the agent's exec is read-only" "0|1" "$?|$(cad_has "$json" '"--project", "'"$PROJECT"'", "--read-only"')"
+check "  pdfutil in the box is not writable" "mcp --root $PROJECT --root /private/tmp" "$(mcp_servers "$json" '" ".join(m["pdf"]["args"])')"
+check "  and the servers were probed read-only" "1|0" \
+    "$(cad_has "$(logged 'exec --box b1 --project')" "--read-only -- $guest/Support/pdfutil")|$(cad_has "$(logged 'exec --box b1 --project')" "$PROJECT -- $guest")"
+fake_reset
+prefs_reset true
+printf '%s' '[{"box": {"name": "b1", "network": {"mode": "off"}}, "state": "stopped"}]' > "$FAKE_AGENTVM_DIR/box-list.json"
+box=$(with_fake boxsession_start w1 box:b1 claude-code-acp "$PROJECT" no true)
+status=$?
+why=$(message "$status")
+check "an agent's kept box with its network off refuses Internet, before it starts" "1||" "$status|$(logged 'box start')|$(/bin/cat "$REGISTRY" 2>/dev/null)"
+check "  saying why"                      "1" "$(cad_has "$why" 'has its network off, so Internet search & fetch cannot work in it')"
+box=$(with_fake boxsession_start w1 box:b1 claude-code-acp "$PROJECT" no false)
+check "  with tools off it starts, its rules untouched" "0|b1|" "$?|$box|$(logged 'box network')"
+with_fake boxsession_release w1
+fake_reset
+box=$(with_fake boxsession_start w1 box:b1 claude-code-acp "$PROJECT" no true)
+check "an agent's kept box on an allowlist gets the public rule added" "0|box network b1 --allow public --json" "$?|$(logged 'box network')"
+with_fake boxsession_release w1
+fake_reset
+prefs_reset true
+cad_pb_set aichatv2_open_w1 1
+alerts_reset
+out=$(engine chat_engine_box_transport w1 "claude-agent-acp" claude-code-acp new:dev true)
+json=$(printf '%s\n' "$out" | /usr/bin/sed 1d)
+check "chat init hands a boxed agent with tools on the servers" "0|local|pdf|search|time" \
+    "$(printf '%s\n' "$out" | /usr/bin/head -1)|$(mcp_servers "$json" '"|".join(sorted(m))')"
+check "  in a box that allows any public host" "1" "$(cad_has "$(logged 'box create')" '--allow public')"
+check "  no alert"                        "0" "$(alerts_count)"
+with_fake boxsession_release w1
+fake_reset
+out=$(engine chat_engine_box_transport w1 "claude-agent-acp" claude-code-acp new:dev false)
+json=$(printf '%s\n' "$out" | /usr/bin/sed 1d)
+check "  and with tools off, none, and no public rule" "0||0" \
+    "$(printf '%s\n' "$out" | /usr/bin/head -1)|$(mcp_servers "$json" '"|".join(sorted(m))')|$(cad_has "$(logged 'box create')" '--allow public')"
+with_fake boxsession_release w1
+
 section "chat init starts the tools' box before the engine"
 fake_reset
 prefs_reset

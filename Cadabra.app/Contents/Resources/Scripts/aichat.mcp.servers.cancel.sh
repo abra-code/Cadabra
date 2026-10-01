@@ -14,3 +14,4 @@ pb_set "aichatv2_toolsbox_${OMC_ACTIONUI_WINDOW_UUID}" ""
 pb_set "aichatv2_toolsrunin_${OMC_ACTIONUI_WINDOW_UUID}" ""
 # The boxes and images listed for Where tools run (agent_load_places).
 /bin/rm -f "${TMPDIR:-/tmp}/cadabra-runin-places.${OMC_ACTIONUI_WINDOW_UUID}"
+pb_set "aichatv2_toolsboxpane_${OMC_ACTIONUI_WINDOW_UUID}" ""

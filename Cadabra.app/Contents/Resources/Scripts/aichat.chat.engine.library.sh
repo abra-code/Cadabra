@@ -293,9 +293,10 @@ $why"
 #
 #   The project is the one folder shared with the box, at the same path: the Project folder of
 #   Agentic Session Tools, which every boxed session is routed through, and where the user also
-#   chooses whether it is shared read-only (acp_agent_read_only). No MCP servers go into a
-#   box yet (Cadabra's servers live at paths on this Mac), so tools are dropped with a line in the
-#   log rather than refused: the agent brings its own tools, and they run in the box.
+#   chooses whether it is shared read-only (acp_agent_read_only). With tools on (Use Tools in
+#   Select ACP Agent), Cadabra's MCP servers are copied into the box and handed to the agent at
+#   their box paths, following the box pane's settings (boxsession_transport); the agent starts
+#   them there. Its own tools run in the box either way.
 #
 #   <agent id> is the stored id. Only a catalog id is handed on as the agent's recipe: "custom"
 #   (an edited command) and "custom:N" (a saved agent) run their command as typed, with no
@@ -318,7 +319,8 @@ Choose the Project folder in Agentic Session Tools, then start the conversation 
 		return 1
 	fi
 	case "$use_tools" in
-		true|readonly) echo "box: Cadabra's tools do not run in a box yet; the agent uses its own" ;;
+		true|readonly) ;;
+		*) use_tools=false ;;
 	esac
 	local recipe="$agent"
 	case "$agent" in
@@ -363,9 +365,13 @@ $why"
 		return 1
 	fi
 
-	chat_loading_overlay_note "$win" "Starting the AgentVM box..."
+	if [ "$use_tools" = "false" ]; then
+		chat_loading_overlay_note "$win" "Starting the AgentVM box..."
+	else
+		chat_loading_overlay_note "$win" "Starting the AgentVM box and copying Cadabra's tools into it..."
+	fi
 	local box
-	box="$(boxsession_start "$win" "$run_in" "$agent" "$project" "$read_only")"
+	box="$(boxsession_start "$win" "$run_in" "$agent" "$project" "$read_only" "$use_tools")"
 	local box_status=$?
 	if [ "$box_status" -ne 0 ]; then
 		local why="$(agentvm_last_error "$box_status")"
@@ -377,7 +383,7 @@ $why"
 $why"
 		return 1
 	fi
-	CHAT_ENGINE_CONFIG="$(boxsession_transport "$command" "$win" "$recipe" "$box" "$project" "$read_only" "$level")"
+	CHAT_ENGINE_CONFIG="$(boxsession_transport "$command" "$win" "$recipe" "$box" "$project" "$read_only" "$level" "$use_tools")"
 	local transport_status=$?
 	if [ "$transport_status" -ne 0 ] || [ -z "$CHAT_ENGINE_CONFIG" ]; then
 		local why="$(agentvm_last_error "$transport_status")"

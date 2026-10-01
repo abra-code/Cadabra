@@ -9,7 +9,7 @@
 # Usage: python3 generate_mcp_configs.py \
 #            <out_json> <app_bundle> <tz> [<mcp_prefs_plist>]
 #            [--box NAME --agent-vm PATH [--agent-vm-home DIR] --project DIR [--read-only]
-#             --guest-tools DIR --guest-pycache DIR]
+#             --guest-tools DIR --guest-pycache DIR [--client mac|in-box]]
 #
 # BOX MODE (--box): the servers run in an agent-vm box while the model stays on this Mac. Each
 # server's command becomes `agent-vm exec --box NAME --project DIR [--read-only] [--env N=V ...]
@@ -30,6 +30,9 @@
 #     the project is shared read-only (its outputs could not be written anyway);
 #   - the Python servers get PYTHONPATH and PYTHONPYCACHEPREFIX for the copy, through --env, so
 #     they reach the program in the box rather than agent-vm on this Mac.
+# --client in-box writes each server as a client inside the box starts it (its command and
+# environment there, no agent-vm exec): for an external agent that runs in the box and starts
+# the servers itself from its session/new mcpServers. The probe still runs through exec.
 # --agent-vm-home, agent-vm's store when Cadabra uses another one, goes into each server's env,
 # for agent-vm itself. Every exec of a window shares one project and mode, as agent-vm requires.
 # The probe below runs each server exactly this way, so the box must be running.
@@ -101,6 +104,7 @@ _box_parser.add_argument("--project", default="")
 _box_parser.add_argument("--read-only", action="store_true")
 _box_parser.add_argument("--guest-tools", default="")
 _box_parser.add_argument("--guest-pycache", default="")
+_box_parser.add_argument("--client", default="mac", choices=("mac", "in-box"))
 box = _box_parser.parse_args(_box_words)
 if _box_words and not box.box:
     sys.exit("generate_mcp_configs: box options need --box")
@@ -330,7 +334,9 @@ if box.box:
             args.append("--read-only")
         for name, value in sorted((guest_env or {}).items()):
             args += ["--env", f"{name}={value}"]
-        spec = {"command": box.agent_vm, "args": args + ["--"] + argv}
+        spec = {"command": box.agent_vm, "args": args + ["--"] + argv,
+                # The server as a client inside the box starts it (--client in-box).
+                "guest": {"command": argv[0], "args": argv[1:], "env": dict(guest_env or {})}}
         if box.agent_vm_home:
             spec["env"] = {"AGENT_VM_HOME": box.agent_vm_home}
         return spec
@@ -624,9 +630,18 @@ for name in server_order:
     if tools is None:
         print(f"  omitting the {name} server from this session's config")
         continue
-    entry = {"name": name, "command": spec["command"], "args": list(spec.get("args") or [])}
-    if spec.get("env"):
-        entry["env"] = spec["env"]
+    if box.box and box.client == "in-box":
+        # For a client that runs in the box itself (an external agent there): the server's own
+        # command line and environment in the box, no agent-vm exec. Probed above as mlx-agent
+        # would run it, through exec, since the probe runs on this Mac.
+        guest = spec["guest"]
+        entry = {"name": name, "command": guest["command"], "args": list(guest["args"])}
+        if guest["env"]:
+            entry["env"] = guest["env"]
+    else:
+        entry = {"name": name, "command": spec["command"], "args": list(spec.get("args") or [])}
+        if spec.get("env"):
+            entry["env"] = spec["env"]
     gated = list(dict.fromkeys(          # de-duplicated, order preserved
         tool["name"] for tool in tools
         if (tool.get("annotations") or {}).get("readOnlyHint") is not True))

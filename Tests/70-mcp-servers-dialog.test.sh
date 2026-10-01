@@ -490,6 +490,29 @@ check "read-only stays read-only"        "yes|1" "$(cad_call acp_agent_read_only
 queue_settle "|false|"
 cad_call launch_queue_clear
 
+section "an agent in a box with Cadabra's tools gets the box pane"
+cad_reset
+cad_call acp_agent_store claude-code-acp "claude-agent-acp"
+cad_call acp_agent_set_run_in claude-code-acp new:dev-agents
+cad_call acp_agent_set_read_only claude-code-acp yes
+fresh_window
+arm_launch "" "true"
+omc_run aichat.mcp.servers.init
+check "the box pane, not the agent panel" "1|no" \
+    "$(ui_visible "$MCP_TOOLS_BOX_PANE_ID")|$([ "$(ui_visible "$MCP_BOX_PANEL_ID")" = 1 ] && echo yes || echo no)"
+check "  saying where the agent runs, with the tools" "Runs in a new disposable AgentVM box from dev-agents, with Cadabra's tools" "$(ui_value "$MCP_TOOLS_BOX_WHERE_TEXT_ID")"
+check "  with the agent's own read-only choice" "true" "$(ui_value "$MCP_TOOLS_BOX_READ_ONLY_TOGGLE_ID")"
+check "  and no Where tools run row: the agent's place decides" "no" "$([ "$(ui_visible "$MCP_TOOLS_RUNIN_ROW_ID")" = 1 ] && echo yes || echo no)"
+omc_control "$MCP_TOOLS_BOX_READ_ONLY_TOGGLE_ID" false
+omc_control "$MCP_TOOLS_BOX_INTERNET_TOGGLE_ID" true
+chains_reset
+omc_run aichat.mcp.servers.start
+check "Start stores the agent's read-only choice and the box settings" "no|true|1" \
+    "$(cad_call acp_agent_read_only claude-code-acp)|$(cad_call_lib aichat.mcp.servers.library.sh mcp_box_setting internet)|$(chain_asked aichat.chat)"
+check "  and forgets which panel was shown" "" "$(cad_pb_get "aichatv2_toolsboxpane_$OMC_ACTIONUI_WINDOW_UUID")"
+queue_settle "|true|"
+cad_call launch_queue_clear
+
 section "the same agent on this Mac, a local model, and the Tools menu keep the servers"
 cad_reset
 cad_call acp_agent_store claude-code-acp "claude-agent-acp"

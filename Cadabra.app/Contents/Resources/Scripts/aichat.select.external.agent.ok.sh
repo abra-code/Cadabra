@@ -185,10 +185,6 @@ if [ "$(acp_agent_stored_command)" != "$command_line" ]; then
     "$dialog_tool" "$window_uuid" $RESULT_TEXT_ID "Could not save this agent. Check that ~/Library/Application Support/Cadabra is writable."
     exit 0
 fi
-# Cadabra's tools run on this Mac and are not handed to an agent in a box yet.
-if [ "$in_box" = "yes" ]; then
-    use_tools="false"
-fi
 echo "external agent selected: $command_line (id=$selected_id, tools=$use_tools, runs in ${run_in:-its stored place}, level $level)"
 
 # Same handoff the model picker uses. The launch queue carries the tools decision, which the
@@ -204,8 +200,8 @@ agent_forget_places
 # Both tool settings go through the MCP servers step: "readonly" still needs the servers
 # configured and probed, because the probe is what produces the gatedTools lists that decide
 # which of them qualify as read-only.
-# A boxed agent goes through the MCP servers step too, with tools off: that window is where the
-# project folder is chosen, and the project is the one folder shared with the box.
+# A boxed agent goes through the MCP servers step too, with tools off as well: that window is
+# where the project folder is chosen, and the project is the one folder shared with the box.
 if [ "$in_box" = "yes" ]; then
     "$next_command" "$OMC_CURRENT_COMMAND_GUID" "aichat.mcp.servers"
     exit 0

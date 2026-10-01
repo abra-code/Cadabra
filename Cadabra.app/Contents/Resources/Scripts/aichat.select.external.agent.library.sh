@@ -403,9 +403,9 @@ IMAGES
 }
 
 # agent_apply_run_in <run-in> [yes|no keys]  ->  the rest of the window follows where the agent
-# runs. In a box, the level picker shows and Use Tools is off and disabled: Cadabra's tools run
-# on this Mac and are not handed to an agent in a box yet. Keys... shows in a box when the agent
-# has keys or a login to offer (agent_has_keys), and never on this Mac.
+# runs. In a box, the level picker shows; Use Tools stays available either way (in a box,
+# Cadabra's servers are copied there and the agent starts them there). Keys... shows in a box
+# when the agent has keys or a login to offer (agent_has_keys), and never on this Mac.
 agent_apply_run_in() {
     case "$1" in
         ''|mac)
@@ -420,8 +420,7 @@ agent_apply_run_in() {
             else
                 "$dialog_tool" "$window_uuid" $KEYS_BUTTON_ID omc_hide
             fi
-            "$dialog_tool" "$window_uuid" $USE_TOOLS_PICKER_ID false
-            "$dialog_tool" "$window_uuid" $USE_TOOLS_PICKER_ID omc_disable
+            "$dialog_tool" "$window_uuid" $USE_TOOLS_PICKER_ID omc_enable
             ;;
     esac
 }
