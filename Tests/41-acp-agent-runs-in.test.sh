@@ -77,13 +77,30 @@ omc_run aichat.select.external.agent.init
 check "it is still the value"            "box:gone" "$(ui_value "$RUN_IN_PICKER_ID")"
 check "  offered as not found"           "1" "$(cad_has "$(ui_prop "$RUN_IN_PICKER_ID" options)" '"gone (not found)"')"
 
-section "where boxes cannot be used the row is hidden and the picker empty"
+section "where boxes cannot be used, an agent on this Mac gets no row and an empty picker"
 fake_reset
 printf '0.1.0\n' > "$FAKE_AGENTVM_DIR/version"
+cad_call acp_agent_set_run_in claude-code-acp mac
 ui_reset
 omc_run aichat.select.external.agent.init
 check "the row is hidden"                "0" "$(ui_visible "$BOX_ROW_ID")"
 check "  and the picker holds nothing"   "" "$(ui_value "$RUN_IN_PICKER_ID")"
+fake_reset
+
+section "where boxes cannot be used, an agent set to a box can still be moved back to this Mac"
+cad_reset
+fake_reset
+printf '0.1.0\n' > "$FAKE_AGENTVM_DIR/version"
+cad_call acp_agent_store claude-code-acp "claude-agent-acp"
+cad_call acp_agent_set_run_in claude-code-acp box:try1
+ui_reset
+omc_run aichat.select.external.agent.init
+check "the row shows"                    "1" "$(ui_visible "$BOX_ROW_ID")"
+check "  offering This Mac and the stored place only" "mac box:try1" "$(options | /usr/bin/sed 's/ |[^ ]*//g')"
+check "  with the stored place chosen"   "box:try1" "$(ui_value "$RUN_IN_PICKER_ID")"
+continue_with claude-code-acp "claude-agent-acp" mac free
+check "choosing This Mac stores it"      "mac" "$(cad_call acp_agent_run_in claude-code-acp)"
+cad_reset
 fake_reset
 
 section "changing the place changes the rest of the window, and stores nothing"

@@ -449,9 +449,10 @@ agent_has_keys() {
 # agent_prepare_run_in <agent id> [refresh|cached]  ->  what the Runs in row shows for this agent: its stored
 # choice and level, among the boxes and images agent-vm has now, left in runin_options,
 # runin_value, runin_level and runin_keys for agent_paint_run_in. Where boxes cannot be used (agentvm_available
-# says why) runin_options is empty: the row stays hidden and the picker holds no value, which
-# Continue reads as "leave the stored choice alone": an agent set to a box then fails at chat
-# start with the reason, rather than quietly running on this Mac.
+# says why), an agent on this Mac gets an empty runin_options: the row stays hidden and the picker
+# holds no value, which Continue reads as "leave the stored choice alone". An agent set to a box
+# gets the row with This Mac and its stored place only, so the user can move it back to this Mac;
+# kept in the box, it fails at chat start with the reason, rather than quietly running here.
 #
 # SPLIT FROM THE PAINT FOR THE PANE-OWNER PROTOCOL. This is the slow half - agent-vm's version,
 # box list and image list, about 2.5 s together on a Mac with a few images - and the picker is a
@@ -518,10 +519,18 @@ agent_prepare_run_in() {
     runin_keys="no"
     agent_load_places "${2:-cached}"
     local status=$?
-    if [ "$status" -ne 0 ]; then
+    local stored="$(acp_agent_run_in "$1")"
+    # Where boxes cannot be used, the row still shows for an agent set to a box, offering This Mac
+    # and its stored place only: hiding it would leave every launch of the agent refused, with no
+    # way back to This Mac in this window.
+    if [ "$status" -ne 0 ] && [ "$stored" = "mac" ]; then
         return 0
     fi
-    runin_value="$(acp_agent_run_in "$1")"
+    if [ "$status" -ne 0 ]; then
+        runin_boxes=""
+        runin_images=""
+    fi
+    runin_value="$stored"
     case "$runin_value" in
         mac|box:?*|new:?*) ;;
         *) runin_value="damaged" ;;
