@@ -473,7 +473,9 @@ runin_images=""
 # before the pane can update. So init reads them ("refresh") into a file named after the window,
 # and every later handler reuses it ("cached"), reading it again only when it is missing. A box
 # made or deleted in the Box Manager meanwhile shows the next time this window opens.
-#   line 1: "available" or "unavailable"; then "box<TAB>name" and "image<TAB>name" lines.
+#   line 1: "available" or "unavailable"; then "box<TAB>name<TAB>network mode<TAB>rules" and
+#   "image<TAB>name" lines (the rules comma-joined, "-" for none; Agentic Session Tools shows a
+#   kept box's network from them).
 agent_places_file() {
     printf '%s\n' "${TMPDIR:-/tmp}/cadabra-runin-places.${window_uuid}"
 }
@@ -491,7 +493,7 @@ agent_load_places() {
         else
             {
                 printf 'available\n'
-                agentvm_boxes 2>/dev/null | /usr/bin/awk -F'\t' '$12 != "true" { print "box\t" $1 }'
+                agentvm_boxes 2>/dev/null | /usr/bin/awk -F'\t' '$12 != "true" { print "box\t" $1 "\t" $17 "\t" $18 }'
                 agentvm_images 2>/dev/null | /usr/bin/awk -F'\t' '$2 == "ready" { print "image\t" $1 }'
             } > "$tmp"
             /bin/rm -f "$agentvm_err_file"

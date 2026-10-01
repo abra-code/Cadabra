@@ -55,14 +55,18 @@ fake_reset() {
     /bin/rm -f "$REGISTRY"
 }
 
-# prefs_reset [network] [search] - the MCP settings at their defaults with the project set, then
-# allow-network and the search server as given (true by default).
+# prefs_reset [internet] - the MCP settings at their defaults with the project set, and the box
+# pane's Internet as given (its default, off, when not given).
 prefs_reset() {
     cad_reset
     cad_call mcp_prefs_write_defaults >/dev/null 2>&1
     cad_call mcp_prefs_set_string servers/local/project "$PROJECT"
-    cad_call mcp_prefs_set_bool allow-network "${1:-true}"
-    cad_call mcp_prefs_set_bool servers/search/enabled "${2:-true}"
+    box_set internet "${1:-false}"
+}
+
+# box_set <name> <true|false> - one setting of the box pane.
+box_set() {
+    cad_call_lib aichat.mcp.servers.library.sh mcp_box_set_setting "$1" "$2"
 }
 
 engine() {
@@ -148,25 +152,26 @@ check "  naming what did not arrive"      "1" "$(cad_has "$(/bin/cat "$OMCTEST_W
 
 section "a disposable box for the tools: the servers' hosts, the project, the copy, the record"
 fake_reset
-prefs_reset
+prefs_reset true
 box=$(with_fake boxsession_start_tools w1 new:dev "$PROJECT" no)
 status=$?
 check "it starts"                         "0" "$status"
 case "$box" in cadabra-tools-??????) named=yes ;; *) named="no: $box" ;; esac
 check "  named cadabra-tools-<6 hex digits>" "yes" "$named"
-check "  allowing the search server's host" \
-    "box create $box --image dev --net allowlist --allow html.duckduckgo.com --disposable --json" "$(logged 'box create')"
+check "  with Internet on, allowing any public host" \
+    "box create $box --image dev --net allowlist --allow public --disposable --json" "$(logged 'box create')"
 check "  the project shared by a warm-up" "exec --box $box --project $PROJECT -- /usr/bin/true" "$(logged 'exec --box '"$box"' --project')"
 check "  registered for its window"       "w1${TAB}$box${TAB}yes${TAB}$PROJECT${TAB}no" "$(/usr/bin/cut -f1-5 "$REGISTRY")"
 check "  the window's tools record"       "$box${TAB}$PROJECT${TAB}no${TAB}$TOOLS_ROOT/$TOOLS_ID${TAB}$PYCACHE" "$(cad_pb_get aichatv2_boxtools_w1)"
 fake_reset
-prefs_reset false
+prefs_reset
 box=$(with_fake boxsession_start_tools w1 new:dev "$PROJECT" no)
-check "with the network off it reaches no host" "0" "$(cad_has "$(logged 'box create')" '--allow')"
+check "with Internet off (the default) it reaches no host" "0" "$(cad_has "$(logged 'box create')" '--allow')"
+cad_call mcp_prefs_set_bool allow-network true
+cad_call mcp_prefs_set_bool servers/search/enabled true
 fake_reset
-prefs_reset true false
 box=$(with_fake boxsession_start_tools w1 new:dev "$PROJECT" no)
-check "  nor with the search server off"  "0" "$(cad_has "$(logged 'box create')" '--allow')"
+check "  whatever this Mac's servers are set to" "0" "$(cad_has "$(logged 'box create')" '--allow')"
 
 section "a kept box for the tools, read-only; the release clears the record"
 fake_reset
@@ -176,6 +181,28 @@ check "it starts, under its own name"     "0|b1" "$?|$box"
 check "  nothing is made"                 "" "$(logged 'box create')"
 check "  the share is read-only"          "exec --box b1 --project $PROJECT --read-only -- /usr/bin/true" "$(logged 'exec --box b1 --project')"
 check "  and so is the record"            "b1${TAB}$PROJECT${TAB}yes" "$(cad_pb_get aichatv2_boxtools_w1 | /usr/bin/cut -f1-3)"
+check "  its rules are left alone with Internet off" "" "$(logged 'box network')"
+with_fake boxsession_release w1
+fake_reset
+prefs_reset true
+box=$(with_fake boxsession_start_tools w1 box:b1 "$PROJECT" no)
+check "with Internet on a kept box gets the public rule added" "0|box network b1 --allow public --json" "$?|$(logged 'box network')"
+with_fake boxsession_release w1
+fake_reset
+printf '%s' '[{"box": {"name": "b1", "network": {"mode": "open"}}, "state": "stopped"}]' > "$FAKE_AGENTVM_DIR/box-list.json"
+box=$(with_fake boxsession_start_tools w1 box:b1 "$PROJECT" no)
+check "  an open kept box reaches every host already: nothing added" "0|" "$?|$(logged 'box network')"
+with_fake boxsession_release w1
+fake_reset
+printf '%s' '[{"box": {"name": "b1", "network": {"mode": "off"}}, "state": "stopped"}]' > "$FAKE_AGENTVM_DIR/box-list.json"
+box=$(with_fake boxsession_start_tools w1 box:b1 "$PROJECT" no)
+status=$?
+why=$(message "$status")
+check "  one whose network is off refuses Internet, before it starts" "1||" "$status|$(logged 'box start')|$(/bin/cat "$REGISTRY" 2>/dev/null)"
+check "  saying why"                      "1" "$(cad_has "$why" 'has its network off, so Internet search & fetch cannot work in it')"
+box_set internet false
+box=$(with_fake boxsession_start_tools w1 box:b1 "$PROJECT" no)
+check "  and starts with Internet off"    "0|b1" "$?|$box"
 with_fake boxsession_release w1
 check "the release clears the record"     "" "$(cad_pb_get aichatv2_boxtools_w1)"
 check "  and the row"                     "" "$(/bin/cat "$REGISTRY")"
@@ -189,7 +216,7 @@ with_fake boxsession_release w1
 
 section "the MCP config in box mode runs every server through agent-vm exec"
 fake_reset
-prefs_reset
+prefs_reset true
 with_fake boxsession_start_tools w1 box:b1 "$PROJECT" no >/dev/null
 cad_call mcp_prefs_set_string servers/local/project "/elsewhere/now"
 json=$( ( CADABRA_AGENT_VM="$FAKE"; export CADABRA_AGENT_VM; cad_call_lib aichat.mcp.servers.library.sh \
@@ -202,8 +229,8 @@ check "all four servers described themselves through the box" "local|pdf|time|se
     "$("$OMC_APP_BUNDLE_PATH/Contents/Library/Python/bin/python3" -c 'import json, sys; print("|".join(s["name"] for s in json.load(open(sys.argv[1]))["servers"]))' "$cfg" 2>&1)"
 check "each is agent-vm"                  "$FAKE|$FAKE|$FAKE|$FAKE" \
     "$(server "$cfg" local 's["command"]')|$(server "$cfg" pdf 's["command"]')|$(server "$cfg" time 's["command"]')|$(server "$cfg" search 's["command"]')"
-check "replay: exec in the box's project, with its box profile" \
-    "exec --box b1 --project $PROJECT -- $guest/Support/replay --mcp-server --allow-write $PROJECT --sandbox-profile $guest/Resources/replay-box-sandbox.json" \
+check "replay: exec in the box's project, unconfined there by default, the project first" \
+    "exec --box b1 --project $PROJECT -- $guest/Support/replay --mcp-server --no-sandbox --allow-write $PROJECT --allow-write /" \
     "$(server "$cfg" local '" ".join(s["args"])')"
 check "  its tools gated as on this Mac"  "1" "$(server "$cfg" local '1 if "execute_command" in s.get("gatedTools", []) else 0')"
 check "pdfutil: the project and the box's temporary folder, writable" \
@@ -215,17 +242,37 @@ check "the Python servers get their paths in the box through --env" \
 check "  and no environment on this Mac"  "none" "$(server "$cfg" search 's.get("env", "none")')"
 check "no path of this Mac's sandbox reaches the box" "0" "$(cad_has "$(/bin/cat "$cfg")" '/opt/homebrew')"
 
-section "box mode follows the settings: read-only, network off, another store"
+section "box mode follows the box pane, not this Mac's servers"
 fake_reset
-prefs_reset false
+prefs_reset
+# This Mac's servers set otherwise, to show they do not count in a box.
+cad_call mcp_prefs_set_bool allow-network false
+cad_call mcp_prefs_set_bool servers/time/enabled false
 with_fake boxsession_start_tools w1 box:b1 "$PROJECT" yes >/dev/null
 ( CADABRA_AGENT_VM="$FAKE"; export CADABRA_AGENT_VM; cad_call_lib aichat.mcp.servers.library.sh \
     aichat_acp_transport_json /bin/mlx-agent openai http://127.0.0.1:8099/v1 w1 true >/dev/null 2>&1 )
-check "network off: no time or search server" "absent|absent" "$(server "$cfg" time 's')|$(server "$cfg" search 's')"
-check "  replay denies the network, every exec is read-only" \
-    "exec --box b1 --project $PROJECT --read-only -- $guest/Support/replay --mcp-server --deny-network --allow-write $PROJECT --sandbox-profile $guest/Resources/replay-box-sandbox.json" \
+check "Internet off: no search server; the time server needs no network" "absent|present" \
+    "$(server "$cfg" search 's')|$(server "$cfg" time '"present"')"
+check "  every exec is read-only; replay unconfined, with no network switch" \
+    "exec --box b1 --project $PROJECT --read-only -- $guest/Support/replay --mcp-server --no-sandbox --allow-write $PROJECT --allow-write /" \
     "$(server "$cfg" local '" ".join(s["args"])')"
 check "  pdfutil is not writable on a read-only project" "0" "$(server "$cfg" pdf '1 if "--writable" in s["args"] else 0')"
+box_set confineLocal true
+box_set time false
+box_set pdf false
+( CADABRA_AGENT_VM="$FAKE"; export CADABRA_AGENT_VM; cad_call_lib aichat.mcp.servers.library.sh \
+    aichat_acp_transport_json /bin/mlx-agent openai http://127.0.0.1:8099/v1 w1 true >/dev/null 2>&1 )
+check "confined when asked: replay's box profile, the box's network" \
+    "exec --box b1 --project $PROJECT --read-only -- $guest/Support/replay --mcp-server --allow-write $PROJECT --sandbox-profile $guest/Resources/replay-box-sandbox.json" \
+    "$(server "$cfg" local '" ".join(s["args"])')"
+check "  and it still describes itself through the box" "1" "$(server "$cfg" local '1 if "execute_command" in s.get("gatedTools", []) else 0')"
+check "PDF and Date & Time off: not started" "absent|absent" "$(server "$cfg" pdf 's')|$(server "$cfg" time 's')"
+box_set local false
+box_set pdf true
+( CADABRA_AGENT_VM="$FAKE"; export CADABRA_AGENT_VM; cad_call_lib aichat.mcp.servers.library.sh \
+    aichat_acp_transport_json /bin/mlx-agent openai http://127.0.0.1:8099/v1 w1 true >/dev/null 2>&1 )
+check "Files and shell off: no Local server" "absent|present" "$(server "$cfg" local 's')|$(server "$cfg" pdf '"present"')"
+prefs_reset
 set_developer() {
     "$cad_plister" get type "$cad_settings" /developer >/dev/null 2>&1 || \
         "$cad_plister" insert developer dict "$cad_settings" / >/dev/null 2>&1
@@ -351,14 +398,36 @@ cad_pb_set aichatv2_open_w2 ""
 
 section "where the tools run and the share mode are stored as chosen"
 cad_reset
+check "the box pane's defaults" "true|false|true|true|true|false|false" \
+    "$(for n in local confineLocal pdf pdfWritable time internet readOnly; do cad_call_lib aichat.mcp.servers.library.sh mcp_box_setting $n; done | /usr/bin/paste -sd'|' -)"
+check "  a setting stores and reads back"  "0|true" "$(box_set confineLocal true; echo $?)|$(cad_call_lib aichat.mcp.servers.library.sh mcp_box_setting confineLocal)"
+check "  an unknown name or value is refused" "2|2" "$(box_set nosuch true; echo $?)|$(box_set internet maybe; echo $?)"
+"$cad_plister" remove "$cad_settings" /servers/box/confineLocal >/dev/null 2>&1
+"$cad_plister" insert confineLocal string true "$cad_settings" /servers/box >/dev/null 2>&1
+check "  the text \"true\" reads as the default, as the generator reads it" "string|false" \
+    "$("$cad_plister" get type "$cad_settings" /servers/box/confineLocal)|$(cad_call_lib aichat.mcp.servers.library.sh mcp_box_setting confineLocal)"
+check "  and choosing again replaces it"  "0|true" "$(box_set confineLocal true; echo $?)|$(cad_call_lib aichat.mcp.servers.library.sh mcp_box_setting confineLocal)"
+"$cad_plister" insert readOnly string yes "$cad_settings" /servers/box >/dev/null 2>&1
+check "a share mode stored as something else is damaged, never read-write" "damaged" "$(cad_call_lib aichat.mcp.servers.library.sh mcp_tools_read_only)"
+cad_reset
 check "nothing stored reads as this Mac and read-write" "mac|no" \
     "$(cad_call_lib aichat.mcp.servers.library.sh mcp_tools_run_in)|$(cad_call_lib aichat.mcp.servers.library.sh mcp_tools_read_only)"
 check "a place that is not a choice is refused" "2" "$(cad_call_lib aichat.mcp.servers.library.sh mcp_tools_set_run_in 'somewhere'; echo $?)"
-check "  and so is a share mode"          "2" "$(cad_call_lib aichat.mcp.servers.library.sh mcp_tools_set_read_only maybe; echo $?)"
 cad_call_lib aichat.mcp.servers.library.sh mcp_tools_set_run_in box:b1
-cad_call_lib aichat.mcp.servers.library.sh mcp_tools_set_read_only yes
+box_set readOnly true
 check "a kept box and read-only read back" "box:b1|yes" \
     "$(cad_call_lib aichat.mcp.servers.library.sh mcp_tools_run_in)|$(cad_call_lib aichat.mcp.servers.library.sh mcp_tools_read_only)"
+
+section "the box pane says what a kept box may reach"
+net_places="${TMPDIR:-/tmp}/cadabra-runin-places.nettest$$"
+printf 'available\nbox\tfenced\tallowlist\tpack:npm,opencode.ai\nbox\tbare\tallowlist\t-\nbox\tshut\toff\t-\nbox\twide\topen\t-\nbox\told\t-\t-\n' > "$net_places"
+net_line() { cad_call_lib aichat.mcp.servers.library.sh mcp_tools_box_network_line "nettest$$" "box:$1"; }
+check "an allowlist, its rules"           "Its network: allowlist - pack:npm, opencode.ai" "$(net_line fenced)"
+check "  none"                            "Its network: allowlist, no rules" "$(net_line bare)"
+check "  off"                             "Its network: off" "$(net_line shut)"
+check "  open"                            "Its network: open (any host, also on your local network)" "$(net_line wide)"
+check "  no mode recorded runs open in agent-vm, and says so" "Its network: open (any host, also on your local network)" "$(net_line old)"
+/bin/rm -f "$net_places"
 
 /bin/rm -rf "$TOOLS_ROOT" "$PYCACHE"
 omctest_end

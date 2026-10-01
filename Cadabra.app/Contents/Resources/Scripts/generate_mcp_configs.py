@@ -16,10 +16,16 @@
 # -- <server in the box> <args>`, so mlx-agent starts it in the box and talks to it over the
 # exec's standard input and output. --guest-tools is where Cadabra's tools were copied in the
 # box, in the layout of Cadabra.app/Contents (boxsession_tools_copy), and --guest-pycache the
-# bytecode cache there. The project is the only folder of this Mac the box sees, so the
-# sandbox paths of the settings do not apply there:
-#   - replay gets --allow-write <project> and the box profile copied with it
-#     (Resources/replay-box-sandbox.json), and --deny-network when the network is off;
+# bytecode cache there. The servers follow the box pane's own settings (/servers/box, see
+# mcp_box_setting), not this Mac's: the project is the only folder of this Mac the box sees, and
+# the box's network rules, not Allow Network, decide what its programs reach:
+#   - replay runs without its own sandbox by default (--no-sandbox, allowed "/" after the
+#     project, which stays its working folder): the box is the boundary, and a folder replay's
+#     profile would block could not be allowed during the session. With confineLocal on it
+#     confines itself: --allow-write <project> and the box profile copied with it
+#     (Resources/replay-box-sandbox.json), with the network the box allows;
+#   - the time server needs no network; the search server runs with internet on (the box then
+#     allows any public host, boxsession_tools_rules);
 #   - pdfutil's roots are the project and the box's /private/tmp, and it is not --writable when
 #     the project is shared read-only (its outputs could not be written anyway);
 #   - the Python servers get PYTHONPATH and PYTHONPYCACHEPREFIX for the copy, through --env, so
@@ -124,6 +130,16 @@ def srv_enabled(name: str) -> bool:
 
 def srv_flag(name: str, key: str, default: bool = True) -> bool:
     return prefs.get("servers", {}).get(name, {}).get(key, default)
+
+# The box pane's settings (/servers/box/<name>): a bool, or the name's default for anything else,
+# as mcp_box_setting reads them.
+BOX_DEFAULTS = {"local": True, "confineLocal": False, "pdf": True, "pdfWritable": True,
+                "time": True, "internet": False}
+
+def box_flag(name: str) -> bool:
+    box_prefs = prefs.get("servers", {}).get("box")
+    value = box_prefs.get(name) if isinstance(box_prefs, dict) else None
+    return value if isinstance(value, bool) else BOX_DEFAULTS[name]
 
 # Master network gate. When false, the network-dependent servers (time, search) are
 # not started and the local (replay) server runs with --deny-network.
@@ -318,26 +334,27 @@ if box.box:
             spec["env"] = {"AGENT_VM_HOME": box.agent_vm_home}
         return spec
 
-    if srv_enabled("local"):
+    if box_flag("local"):
         replay_argv = [f"{box.guest_tools}/Support/replay", "--mcp-server"]
-        if not allow_network:
-            replay_argv.append("--deny-network")
-        replay_argv += ["--allow-write", box.project,
-                        "--sandbox-profile", f"{box.guest_tools}/Resources/replay-box-sandbox.json"]
+        if box_flag("confineLocal"):
+            replay_argv += ["--allow-write", box.project,
+                            "--sandbox-profile", f"{box.guest_tools}/Resources/replay-box-sandbox.json"]
+        else:
+            replay_argv += ["--no-sandbox", "--allow-write", box.project, "--allow-write", "/"]
         servers["local"] = boxed(replay_argv)
         server_order.append("local")
-    if srv_enabled("pdf"):
+    if box_flag("pdf"):
         pdf_argv = [f"{box.guest_tools}/Support/pdfutil", "mcp",
                     "--root", box.project, "--root", "/private/tmp"]
-        if srv_flag("pdf", "writable", True) and not box.read_only:
+        if box_flag("pdfWritable") and not box.read_only:
             pdf_argv.append("--writable")
         servers["pdf"] = boxed(pdf_argv)
         server_order.append("pdf")
-    if allow_network and srv_enabled("time"):
+    if box_flag("time"):
         servers["time"] = boxed([guest_python, "-m", "mcp_server_time", "--local-timezone", tz],
                                 guest_python_env)
         server_order.append("time")
-    if allow_network and srv_enabled("search"):
+    if box_flag("internet"):
         servers["search"] = boxed([guest_python, "-m", "duckduckgo_mcp_server.server"],
                                   guest_python_env)
         server_order.append("search")

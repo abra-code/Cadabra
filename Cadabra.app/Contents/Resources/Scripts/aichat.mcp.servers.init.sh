@@ -127,15 +127,23 @@ fi
 # WHERE A LOCAL MODEL'S TOOLS RUN (mcp_tools_run_in): This Mac, a kept AgentVM box, or a new
 # disposable box from a ready image, offered where boxes can be used. Shown for a local model's
 # launch and for the Tools menu (nothing queued: the choice applies to the next load), never for
-# an external agent, which runs its own tools. In a box the sandbox paths give way to the tools
-# box panel, since the box sees only the project; the server toggles and Allow Network stay.
-# aichatv2_toolsrunin_<window> says the row was offered, so Start stores the picker's choice.
+# an external agent, which runs its own tools. In a box this Mac's servers and paths give way to
+# the tools box pane, whose settings are its own (mcp_box_setting): the servers and the network
+# mean different things there. aichatv2_toolsrunin_<window> says the row was offered, so Start
+# stores the picker's choice and the box pane.
 TOOLS_RUNIN_ROW_ID=290
 TOOLS_RUNIN_PICKER_ID=292
-SANDBOX_PATHS_ID=400
-TOOLS_BOX_PANEL_ID=510
-TOOLS_BOX_WHERE_TEXT_ID=511
-TOOLS_BOX_READ_ONLY_TOGGLE_ID=512
+MAC_SERVERS_ID=150
+TOOLS_BOX_PANE_ID=520
+TOOLS_BOX_WHERE_TEXT_ID=521
+TOOLS_BOX_NETWORK_TEXT_ID=529
+TOOLS_BOX_LOCAL_TOGGLE_ID=522
+TOOLS_BOX_CONFINE_TOGGLE_ID=523
+TOOLS_BOX_PDF_TOGGLE_ID=524
+TOOLS_BOX_PDF_WRITABLE_TOGGLE_ID=525
+TOOLS_BOX_TIME_TOGGLE_ID=526
+TOOLS_BOX_INTERNET_TOGGLE_ID=527
+TOOLS_BOX_READ_ONLY_TOGGLE_ID=528
 pb_set "aichatv2_toolsrunin_${window_uuid}" ""
 tools_launch=yes
 if [ -n "$queued" ]; then
@@ -162,9 +170,16 @@ if [ "$tools_launch" = "yes" ]; then
     if [ "$places_status" -eq 0 ]; then
         "$dialog" "$window_uuid" $TOOLS_RUNIN_PICKER_ID omc_set_property options "$(agent_run_in_options "$tools_run_in")"
         "$dialog" "$window_uuid" $TOOLS_RUNIN_PICKER_ID "$tools_run_in"
+        "$dialog" "$window_uuid" $TOOLS_BOX_LOCAL_TOGGLE_ID "$(mcp_box_setting local)"
+        "$dialog" "$window_uuid" $TOOLS_BOX_CONFINE_TOGGLE_ID "$(mcp_box_setting confineLocal)"
+        "$dialog" "$window_uuid" $TOOLS_BOX_PDF_TOGGLE_ID "$(mcp_box_setting pdf)"
+        "$dialog" "$window_uuid" $TOOLS_BOX_PDF_WRITABLE_TOGGLE_ID "$(mcp_box_setting pdfWritable)"
+        "$dialog" "$window_uuid" $TOOLS_BOX_TIME_TOGGLE_ID "$(mcp_box_setting time)"
+        "$dialog" "$window_uuid" $TOOLS_BOX_INTERNET_TOGGLE_ID "$(mcp_box_setting internet)"
+        # A share mode that cannot be read shows read-only: Start then stores what is shown.
         case "$(mcp_tools_read_only)" in
-            yes) "$dialog" "$window_uuid" $TOOLS_BOX_READ_ONLY_TOGGLE_ID true ;;
-            *)   "$dialog" "$window_uuid" $TOOLS_BOX_READ_ONLY_TOGGLE_ID false ;;
+            no) "$dialog" "$window_uuid" $TOOLS_BOX_READ_ONLY_TOGGLE_ID false ;;
+            *)  "$dialog" "$window_uuid" $TOOLS_BOX_READ_ONLY_TOGGLE_ID true ;;
         esac
         "$dialog" "$window_uuid" $TOOLS_RUNIN_ROW_ID omc_show
         mcp_tools_apply_run_in "$window_uuid" "$tools_run_in"

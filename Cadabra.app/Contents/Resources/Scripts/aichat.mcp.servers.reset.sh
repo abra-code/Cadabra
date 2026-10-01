@@ -24,6 +24,13 @@ RW_TABLE_ID=320
 RW_REMOVE_BTN_ID=322
 RO_TABLE_ID=330
 RO_REMOVE_BTN_ID=332
+BOX_LOCAL_TOGGLE_ID=522
+BOX_CONFINE_TOGGLE_ID=523
+BOX_PDF_TOGGLE_ID=524
+BOX_PDF_WRITABLE_TOGGLE_ID=525
+BOX_TIME_TOGGLE_ID=526
+BOX_INTERNET_TOGGLE_ID=527
+BOX_READ_ONLY_TOGGLE_ID=528
 
 mcp_prefs_write_defaults
 
@@ -40,6 +47,16 @@ mcp_prefs_write_defaults
 "$dialog" "$window_uuid" $TIME_TOGGLE_ID   omc_enable
 "$dialog" "$window_uuid" $SEARCH_TOGGLE_ID omc_enable
 "$dialog" "$window_uuid" $PDF_WRITABLE_TOGGLE_ID omc_enable
+
+# The AgentVM box pane's settings went with /servers too; show their defaults, so Start does
+# not store the old values back. Where the tools run is left as chosen: Start stores the picker.
+"$dialog" "$window_uuid" $BOX_LOCAL_TOGGLE_ID true
+"$dialog" "$window_uuid" $BOX_CONFINE_TOGGLE_ID false
+"$dialog" "$window_uuid" $BOX_PDF_TOGGLE_ID true
+"$dialog" "$window_uuid" $BOX_PDF_WRITABLE_TOGGLE_ID true
+"$dialog" "$window_uuid" $BOX_TIME_TOGGLE_ID true
+"$dialog" "$window_uuid" $BOX_INTERNET_TOGGLE_ID false
+"$dialog" "$window_uuid" $BOX_READ_ONLY_TOGGLE_ID false
 
 mcp_refresh_rw_table "$window_uuid" $RW_TABLE_ID
 mcp_refresh_path_table "$window_uuid" $RO_TABLE_ID servers/local/allowed-read

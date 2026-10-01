@@ -558,34 +558,48 @@ check "a local model's launch shows the row" "1" "$(ui_visible "$MCP_TOOLS_RUNIN
 check "  offering the places" \
     "mac |Kept AgentVM boxes box:cadabra-spike box:try1 |New disposable AgentVM box from new:dev new:dev-agents new:dev-node new:dev-xcode new:dev-xcode-ios" \
     "$(tools_options)"
-check "  on this Mac by default, with the sandbox paths" "mac|1" "$(ui_value "$MCP_TOOLS_RUNIN_PICKER_ID")|$(ui_visible "$MCP_SANDBOX_PATHS_ID")"
+check "  on this Mac by default, with this Mac's servers" "mac|1|0" \
+    "$(ui_value "$MCP_TOOLS_RUNIN_PICKER_ID")|$(ui_visible "$MCP_MAC_SERVERS_ID")|$(ui_visible "$MCP_TOOLS_BOX_PANE_ID")"
+check "  the box pane at its defaults" "true|false|true|true|true|false|false" \
+    "$(for v in $MCP_TOOLS_BOX_LOCAL_TOGGLE_ID $MCP_TOOLS_BOX_CONFINE_TOGGLE_ID $MCP_TOOLS_BOX_PDF_TOGGLE_ID $MCP_TOOLS_BOX_PDF_WRITABLE_TOGGLE_ID $MCP_TOOLS_BOX_TIME_TOGGLE_ID $MCP_TOOLS_BOX_INTERNET_TOGGLE_ID $MCP_TOOLS_BOX_READ_ONLY_TOGGLE_ID; do printf "%s\n" "$(ui_value $v)"; done | /usr/bin/paste -sd'|' -)"
 omc_control "$MCP_TOOLS_RUNIN_PICKER_ID" new:dev
 omc_run aichat.mcp.servers.runin.changed
-check "choosing a box swaps the paths for the box panel" "0|1" "$(ui_visible "$MCP_SANDBOX_PATHS_ID")|$(ui_visible "$MCP_TOOLS_BOX_PANEL_ID")"
+check "choosing a box swaps this Mac's servers for the box pane" "0|1" "$(ui_visible "$MCP_MAC_SERVERS_ID")|$(ui_visible "$MCP_TOOLS_BOX_PANE_ID")"
 check "  saying which box"                "1" "$(cad_has "$(ui_value "$MCP_TOOLS_BOX_WHERE_TEXT_ID")" 'new disposable AgentVM box from dev')"
-check "  the servers stay"                "shown" "$([ "$(ui_visible "$MCP_SERVERS_AREA_ID")" = 0 ] && echo hidden || echo shown)"
+check "  and what a new box reaches"      "1" "$(cad_has "$(ui_value "$MCP_TOOLS_BOX_NETWORK_TEXT_ID")" 'reaches nothing, or any public host with Internet on')"
+omc_control "$MCP_TOOLS_RUNIN_PICKER_ID" box:cadabra-spike
+omc_run aichat.mcp.servers.runin.changed
+check "a kept box's own network is shown" "Its network: allowlist - pack:npm" "$(ui_value "$MCP_TOOLS_BOX_NETWORK_TEXT_ID")"
+omc_control "$MCP_TOOLS_RUNIN_PICKER_ID" new:dev
+omc_run aichat.mcp.servers.runin.changed
 omc_control "$MCP_TOOLS_BOX_READ_ONLY_TOGGLE_ID" true
+omc_control "$MCP_TOOLS_BOX_CONFINE_TOGGLE_ID" true
+omc_control "$MCP_TOOLS_BOX_INTERNET_TOGGLE_ID" true
+omc_control "$MCP_TOOLS_BOX_TIME_TOGGLE_ID" false
 chains_reset
 omc_run aichat.mcp.servers.start
-check "Start stores the place and the share mode" "new:dev|yes" \
-    "$(cad_call_lib aichat.mcp.servers.library.sh mcp_tools_run_in)|$(cad_call_lib aichat.mcp.servers.library.sh mcp_tools_read_only)"
+check "Start stores the place and the box pane" "new:dev|yes|true|true|false|true" \
+    "$(cad_call_lib aichat.mcp.servers.library.sh mcp_tools_run_in)|$(cad_call_lib aichat.mcp.servers.library.sh mcp_tools_read_only)|$(for n in confineLocal internet time local; do cad_call_lib aichat.mcp.servers.library.sh mcp_box_setting $n; done | /usr/bin/paste -sd'|' -)"
 check "  and opens the chat"              "1" "$(chain_asked aichat.chat)"
 queue_settle "/models/tiny.gguf|true|"
 cad_call launch_queue_clear
 fresh_window
 arm_launch "/models/tiny.gguf" "true"
 omc_run aichat.mcp.servers.init
-check "the next launch shows the stored choice" "new:dev|true|0|1" \
-    "$(ui_value "$MCP_TOOLS_RUNIN_PICKER_ID")|$(ui_value "$MCP_TOOLS_BOX_READ_ONLY_TOGGLE_ID")|$(ui_visible "$MCP_SANDBOX_PATHS_ID")|$(ui_visible "$MCP_TOOLS_BOX_PANEL_ID")"
+check "the next launch shows the stored choice" "new:dev|true|true|true|0|1" \
+    "$(ui_value "$MCP_TOOLS_RUNIN_PICKER_ID")|$(ui_value "$MCP_TOOLS_BOX_READ_ONLY_TOGGLE_ID")|$(ui_value "$MCP_TOOLS_BOX_CONFINE_TOGGLE_ID")|$(ui_value "$MCP_TOOLS_BOX_INTERNET_TOGGLE_ID")|$(ui_visible "$MCP_MAC_SERVERS_ID")|$(ui_visible "$MCP_TOOLS_BOX_PANE_ID")"
 omc_control "$MCP_TOOLS_RUNIN_PICKER_ID" mac
 omc_run aichat.mcp.servers.runin.changed
-check "back to this Mac brings the paths back" "1|0" "$(ui_visible "$MCP_SANDBOX_PATHS_ID")|$(ui_visible "$MCP_TOOLS_BOX_PANEL_ID")"
+check "back to this Mac brings its servers back" "1|0" "$(ui_visible "$MCP_MAC_SERVERS_ID")|$(ui_visible "$MCP_TOOLS_BOX_PANE_ID")"
 omc_control "$MCP_TOOLS_RUNIN_PICKER_ID" damaged
 chains_reset
 alerts_reset
 omc_run aichat.mcp.servers.start
 check "an unreadable choice keeps the dialog open" "0|1" "$(chain_asked aichat.chat)|$(alerts_mention 'Where the tools run cannot be read')"
 check "  and stores nothing"              "new:dev" "$(cad_call_lib aichat.mcp.servers.library.sh mcp_tools_run_in)"
+omc_run aichat.mcp.servers.reset
+check "Reset to Defaults shows the box pane's defaults too" "true|false|true|true|true|false|false" \
+    "$(for v in $MCP_TOOLS_BOX_LOCAL_TOGGLE_ID $MCP_TOOLS_BOX_CONFINE_TOGGLE_ID $MCP_TOOLS_BOX_PDF_TOGGLE_ID $MCP_TOOLS_BOX_PDF_WRITABLE_TOGGLE_ID $MCP_TOOLS_BOX_TIME_TOGGLE_ID $MCP_TOOLS_BOX_INTERNET_TOGGLE_ID $MCP_TOOLS_BOX_READ_ONLY_TOGGLE_ID; do printf "%s\n" "$(ui_value $v)"; done | /usr/bin/paste -sd'|' -)"
 omc_run aichat.mcp.servers.cancel
 cad_call launch_queue_clear
 cad_call acp_agent_store claude-code-acp "claude-agent-acp"

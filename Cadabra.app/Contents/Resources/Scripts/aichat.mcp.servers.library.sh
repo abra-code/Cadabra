@@ -188,13 +188,26 @@ mcp_prefs_array_remove_value() {
 }
 
 # WHERE A LOCAL MODEL'S TOOLS RUN, chosen in Agentic Session Tools (plan D6, D11):
-#   /servers/runIn    : string - "mac" (this Mac, the default: the servers under replay's
-#                       sandbox, as always), "box:<name>" (a kept agent-vm box) or "new:<image>"
-#                       (a disposable box made from the image for each chat window)
-#   /servers/readOnly : string - "no" (the default) or "yes": the project is shared with the box
-#                       read-only (`exec --read-only`), so the tools can read it and never change it
+#   /servers/runIn : string - "mac" (this Mac, the default: the servers under replay's sandbox,
+#                    with the settings above), "box:<name>" (a kept agent-vm box) or "new:<image>"
+#                    (a disposable box made from the image for each chat window)
 # The model itself always runs on this Mac. External agents keep their own choice
 # (/agents/runIn/<id>), since an agent in a box starts its tools in the box itself.
+#
+# THE TOOLS IN A BOX have settings of their own, since in a box the servers and the network mean
+# different things (the box pane of Agentic Session Tools), each a bool under /servers/box:
+#   local        (true)  the Local server: files and shell, anywhere in the box
+#   confineLocal (false) the Local server also applies its own sandbox (the project and the box's
+#                        temporary folders); off, the box is the boundary
+#   pdf          (true)  the PDF server, on the project and the box's /private/tmp
+#   pdfWritable  (true)  with its editing tools
+#   time         (true)  the time server, which needs no network
+#   internet     (false) the search server; a new box then allows any public host (agent-vm's
+#                        "public" rule, logged), and a kept box gets that rule added at the start
+#   readOnly     (false) the project is shared read-only (`exec --read-only`)
+# A missing value is its default. A value of another type (a hand-edited file) also reads as the
+# default, except readOnly, which reads as "damaged" and is refused at chat start rather than
+# share the project read-write.
 
 # _mcp_prefs_choice <key-path> <default>  ->  the stored text, the default when nothing is
 # stored, or "damaged" when something that is not text is stored there (a hand-edited file),
@@ -216,15 +229,6 @@ mcp_tools_run_in() {
     case "$val" in
         mac|box:?*|new:?*) printf '%s\n' "$val" ;;
         *)                 printf 'damaged\n' ;;
-    esac
-}
-
-# mcp_tools_read_only  ->  "yes", "no", or "damaged".
-mcp_tools_read_only() {
-    local val="$(_mcp_prefs_choice servers/readOnly no)"
-    case "$val" in
-        yes|no) printf '%s\n' "$val" ;;
-        *)      printf 'damaged\n' ;;
     esac
 }
 
@@ -256,23 +260,108 @@ mcp_tools_set_run_in() {
     _mcp_prefs_set_choice servers/runIn "$1"
 }
 
-# mcp_tools_set_read_only <yes|no>  ->  0 once stored; 2 for another value; 1 when the write did
-# not land.
-mcp_tools_set_read_only() {
+# mcp_box_setting <name>  ->  "true" or "false": /servers/box/<name> when it is a bool, else the
+# name's default; "damaged" for readOnly stored as something other than a bool. The reading
+# generate_mcp_configs.py makes too (box_flag), so the pane never shows what the servers do not do.
+mcp_box_setting() {
+    local default
     case "$1" in
-        yes|no) ;;
+        local|pdf|pdfWritable|time) default=true ;;
+        confineLocal|internet|readOnly) default=false ;;
         *) return 2 ;;
     esac
-    _mcp_prefs_set_choice servers/readOnly "$1"
+    local kind="$("$plister" get type "$mcp_prefs" "/servers/box/$1" 2>/dev/null)"
+    local val="$("$plister" get value "$mcp_prefs" "/servers/box/$1" 2>/dev/null)"
+    if [ "$kind" = "bool" ]; then
+        case "$val" in
+            true|false) printf '%s\n' "$val"; return 0 ;;
+        esac
+    fi
+    if [ -n "$kind" ] && [ "$1" = "readOnly" ]; then
+        printf 'damaged\n'
+        return 0
+    fi
+    printf '%s\n' "$default"
+}
+
+# mcp_box_set_setting <name> <true|false>  ->  0 once stored and read back; 2 for another name or
+# value; 1 when the write did not land. A value of another type is replaced.
+mcp_box_set_setting() {
+    case "$1" in
+        local|pdf|pdfWritable|time|confineLocal|internet|readOnly) ;;
+        *) return 2 ;;
+    esac
+    case "$2" in
+        true|false) ;;
+        *) return 2 ;;
+    esac
+    mcp_prefs_init_if_missing
+    local parent="$("$plister" get type "$mcp_prefs" /servers/box 2>/dev/null)"
+    if [ "$parent" != "dict" ]; then
+        "$plister" remove "$mcp_prefs" /servers/box >/dev/null 2>&1
+        "$plister" insert box dict "$mcp_prefs" /servers >/dev/null 2>&1
+    fi
+    local kind="$("$plister" get type "$mcp_prefs" "/servers/box/$1" 2>/dev/null)"
+    if [ -n "$kind" ] && [ "$kind" != "bool" ]; then
+        "$plister" remove "$mcp_prefs" "/servers/box/$1" >/dev/null 2>&1
+        kind=""
+    fi
+    if [ -z "$kind" ]; then
+        "$plister" insert "$1" bool "$2" "$mcp_prefs" /servers/box >/dev/null 2>&1
+    fi
+    mcp_prefs_set_bool "servers/box/$1" "$2"
+    local back="$(mcp_box_setting "$1")"
+    [ "$back" = "$2" ]
+}
+
+# mcp_tools_read_only  ->  "yes", "no", or "damaged": whether a box shares the project read-only.
+mcp_tools_read_only() {
+    case "$(mcp_box_setting readOnly)" in
+        true)  printf 'yes\n' ;;
+        false) printf 'no\n' ;;
+        *)     printf 'damaged\n' ;;
+    esac
+}
+
+# THE TWO PANES. Agentic Session Tools shows the servers of this Mac (HStack 150: the server
+# toggles, Allow Network, the sandbox paths) or the tools box pane (GroupBox 520), never both;
+# they sit in one ZStack with the external agent's box panel (500). The ids are
+# aichat.mcp.servers.init.sh's MAC_SERVERS_ID, TOOLS_BOX_PANE_ID, TOOLS_BOX_WHERE_TEXT_ID and
+# TOOLS_BOX_NETWORK_TEXT_ID.
+mcp_mac_servers_view=150
+mcp_tools_box_pane_view=520
+mcp_tools_box_where_view=521
+mcp_tools_box_network_view=529
+
+# mcp_tools_box_network_line <window_uuid> <run-in>  ->  what a kept box may reach, from the
+# places Where tools run listed (agent_load_places): "Its network: allowlist - pack:npm,
+# opencode.ai", "... no rules", "... off" or "... open (any host, also on your local network)";
+# for a new box, what it will get. Nothing when the box is not among them. A box with no mode
+# recorded ("-", made before agent-vm had network rules) runs open: agent-vm's BoxNetwork.legacy.
+mcp_tools_box_network_line() {
+    case "$2" in
+        new:?*)
+            printf '%s\n' "A new box reaches nothing, or any public host with Internet on."
+            return 0 ;;
+        box:?*) ;;
+        *) return 0 ;;
+    esac
+    local file="${TMPDIR:-/tmp}/cadabra-runin-places.$1"
+    [ -f "$file" ] || return 0
+    /usr/bin/awk -F'\t' -v box="${2#box:}" '$1 == "box" && $2 == box {
+        mode = $3; rules = $4
+        if (mode == "off") text = "off"
+        else if (mode == "open" || mode == "-" || mode == "") text = "open (any host, also on your local network)"
+        else if (mode != "allowlist") text = mode
+        else if (rules == "" || rules == "-") text = "allowlist, no rules"
+        else { gsub(/,/, ", ", rules); text = "allowlist - " rules }
+        print "Its network: " text
+        exit
+    }' "$file"
 }
 
 # mcp_tools_apply_run_in <window_uuid> <run-in>  ->  Agentic Session Tools follows where the tools
-# run: on this Mac the sandbox paths (GroupBox 400), in a box the tools box panel (510) saying
-# which box. The ids are aichat.mcp.servers.init.sh's SANDBOX_PATHS_ID, TOOLS_BOX_PANEL_ID and
-# TOOLS_BOX_WHERE_TEXT_ID.
-mcp_sandbox_paths_view=400
-mcp_tools_box_panel_view=510
-mcp_tools_box_where_view=511
+# run: this Mac's servers, or the box pane saying which box and what it may reach.
 mcp_tools_apply_run_in() {
     local where=""
     case "$2" in
@@ -282,13 +371,14 @@ mcp_tools_apply_run_in() {
         *)        where="In an AgentVM box whose setting cannot be read. Choose where the tools run again." ;;
     esac
     if [ -z "$where" ]; then
-        "$dialog" "$1" $mcp_tools_box_panel_view omc_hide
-        "$dialog" "$1" $mcp_sandbox_paths_view omc_show
+        "$dialog" "$1" $mcp_tools_box_pane_view omc_hide
+        "$dialog" "$1" $mcp_mac_servers_view omc_show
         return 0
     fi
     "$dialog" "$1" $mcp_tools_box_where_view "$where"
-    "$dialog" "$1" $mcp_sandbox_paths_view omc_hide
-    "$dialog" "$1" $mcp_tools_box_panel_view omc_show
+    "$dialog" "$1" $mcp_tools_box_network_view "$(mcp_tools_box_network_line "$1" "$2")"
+    "$dialog" "$1" $mcp_mac_servers_view omc_hide
+    "$dialog" "$1" $mcp_tools_box_pane_view omc_show
 }
 
 # A CHAT WINDOW'S TOOLS IN A BOX. Once a local model's box runs with Cadabra's tools copied in

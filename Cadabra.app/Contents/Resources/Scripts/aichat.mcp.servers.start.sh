@@ -65,23 +65,24 @@ if [ "$tools_runin_offered" = "yes" ]; then
     esac
     mcp_tools_set_run_in "$tools_run_in"
     status=$?
-    # A toggle with no value keeps the stored choice: falling back to "no" would turn a
-    # read-only share into a read-write one.
-    tools_read_only=""
-    case "${OMC_ACTIONUI_VIEW_512_VALUE:-}" in
-        true)  tools_read_only=yes ;;
-        false) tools_read_only=no ;;
-    esac
-    if [ "$status" -eq 0 ] && [ -n "$tools_read_only" ]; then
-        mcp_tools_set_read_only "$tools_read_only"
-        status=$?
-    fi
+    # The box pane's settings, each from its toggle. A toggle with no value keeps the stored
+    # setting: falling back to a default would, for one, turn a read-only share into a read-write one.
+    for pair in local:522 confineLocal:523 pdf:524 pdfWritable:525 time:526 internet:527 readOnly:528; do
+        [ "$status" -eq 0 ] || break
+        name="${pair%%:*}"
+        eval "value=\"\${OMC_ACTIONUI_VIEW_${pair#*:}_VALUE:-}\""
+        case "$value" in
+            true|false)
+                mcp_box_set_setting "$name" "$value"
+                status=$? ;;
+        esac
+    done
     if [ "$status" -ne 0 ]; then
         "$alert" --level "stop" --title "$APPLET_NAME" --ok "OK" \
             "Could not save where the tools run. Check that ~/Library/Application Support/Cadabra is writable."
         exit 0
     fi
-    echo "tools run in: $tools_run_in read-only=$tools_read_only"
+    echo "tools run in: $tools_run_in; box: local=$(mcp_box_setting local) confine=$(mcp_box_setting confineLocal) internet=$(mcp_box_setting internet) read-only=$(mcp_box_setting readOnly)"
 fi
 pb_set "aichatv2_toolsrunin_${window_uuid}" ""
 # The boxes and images listed for Where tools run (agent_load_places).

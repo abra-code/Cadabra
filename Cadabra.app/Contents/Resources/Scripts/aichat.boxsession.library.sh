@@ -740,17 +740,19 @@ EOF
 # builds are removed when a new one lands. A copy rather than a shared folder: the box has one
 # shared folder, the project's, and Python's many small files are slow over it.
 #
-# The copy includes replay-box-sandbox.json, replay's own Seatbelt profile inside the box: the
-# project stays read-write through --allow-write, the box's temporary folders are writable, and
-# the toolchains and /private/etc/ssl are readable (curl needs its certificates), so a shell
-# command the model runs cannot change the box user's home folder, where a kept box keeps logins.
+# The copy includes replay-box-sandbox.json, replay's own Seatbelt profile inside the box, used
+# only when the Local server is set to confine itself there (mcp_box_setting confineLocal; off by
+# default, the box being the boundary): the project stays read-write through --allow-write, the
+# box's temporary folders are writable, and the toolchains and /private/etc/ssl are readable
+# (curl needs its certificates), so a shell command the model runs cannot change the box user's
+# home folder, where a kept box keeps logins.
 #
 # The digest covers the copied files' paths, sizes and modification times (under 0.1 s), so a
 # rebuilt Cadabra copies again even at the same version.
 boxsession_tools_items="Support/replay Support/pdfutil Library/Python Library/Packages Resources/replay-box-sandbox.json"
-# The search server's host: its search reads html.duckduckgo.com. Its fetch tool reads whatever
-# page the model names, and those hosts are refused until the user allows them (Network...).
-boxsession_tools_search_hosts="html.duckduckgo.com"
+# The rule the search server needs: agent-vm's "public" (any public host name, logged, never
+# this Mac or the local network), since its fetch tool reads whatever page the model names.
+boxsession_tools_internet_rule="public"
 # How long a window waits, in tenths of a second, for another window's copy into the same box,
 # and after how many seconds a copy's lock counts as left over from a killed handler. A copy
 # takes 3-5 s, so a minute is ample, and it is well inside the wait (about two minutes with the
@@ -889,23 +891,26 @@ EOF
     printf '%s\t%s\n' "$_dir" "$_cache"
 }
 
-# boxsession_tools_rules  ->  the network rules a new box needs for the enabled servers, one per
-# line: the search server's host when it and the network are on, else none. The time server
-# needs none (the box's clock is set from this Mac), nor do the others.
+# boxsession_tools_rules  ->  the network rules a box needs for the box pane's servers, one per
+# line: any public host with Internet on (the search server), else none. The time server needs
+# none (the box's clock follows this Mac's), nor do the others.
 boxsession_tools_rules() {
-    local _network="$(mcp_prefs_get_bool allow-network)"
-    local _search="$(mcp_prefs_get_bool servers/search/enabled)"
-    if [ "$_network" = "true" ] && [ "$_search" = "true" ]; then
-        printf '%s\n' $boxsession_tools_search_hosts
+    local _internet="$(mcp_box_setting internet)"
+    if [ "$_internet" = "true" ]; then
+        printf '%s\n' "$boxsession_tools_internet_rule"
     fi
 }
 
 # boxsession_start_tools <window> <run-in> <project> <yes|no read-only>  ->  the box name once
 # the box runs, the project is shared in it and Cadabra's tools are copied there, with the
 # window's tools record set (mcp_box_tools_set) for generate_mcp_configs.py's box mode. A new
-# disposable box is named cadabra-tools-<6 hex digits> and allows the hosts of the enabled
-# servers. The window's registry row is written as soon as the box is known, like
-# boxsession_start's. A failure's message is left for agentvm_last_error.
+# disposable box is named cadabra-tools-<6 hex digits> and gets the rules of the box pane's
+# servers (boxsession_tools_rules). A kept box on an allowlist gets them added (never removed:
+# a kept box's rules are its own); an open one reaches every host already; one whose network is
+# off is refused when rules are needed, before it starts, since Internet would be on in a box
+# that reaches nothing. A box whose record has no network runs open (agent-vm's legacy boxes).
+# The window's registry row is written as soon as the box is known, like boxsession_start's.
+# A failure's message is left for agentvm_last_error.
 boxsession_start_tools() {
     if [ $# -ne 4 ]; then
         _agentvm_refuse 2 "boxsession_start_tools needs a window, where the tools run, a project and yes or no."
@@ -913,10 +918,34 @@ boxsession_start_tools() {
     fi
     local _window="$1" _run_in="$2" _project="$3" _read_only="$4"
     local _box
-    _box="$(_boxsession_start_box "$_window" "$_run_in" tools "$_project" "$_read_only" "$(boxsession_tools_rules)")"
+    local _rules="$(boxsession_tools_rules)"
+    # Whether a kept box gets the rules added: yes on an allowlist, or when its mode cannot be read
+    # (as before this was checked); no for an open box, which reaches every host already.
+    local _add_rules=no
+    case "$_run_in" in
+        box:?*)
+            local _mode="$(agentvm_boxes 2>/dev/null | /usr/bin/awk -F'\t' -v box="${_run_in#box:}" '$1 == box { print $17; exit }')"
+            /bin/rm -f "$agentvm_err_file"
+            case "$_mode" in
+                off)
+                    if [ -n "$_rules" ]; then
+                        _agentvm_refuse 1 "The kept AgentVM box ${_run_in#box:} has its network off, so Internet search & fetch cannot work in it. Turn Internet off in Agentic Session Tools, or give the box a network in Tools > AgentVM."
+                        return 1
+                    fi ;;
+                open|-) ;;
+                *) _add_rules=yes ;;
+            esac ;;
+    esac
+    _box="$(_boxsession_start_box "$_window" "$_run_in" tools "$_project" "$_read_only" "$_rules")"
     local _status=$?
     if [ "$_status" -ne 0 ]; then
         return "$_status"
+    fi
+    if [ "$_add_rules" = "yes" ]; then
+        local _rule
+        for _rule in $_rules; do
+            agentvm_box_allow "$_box" "$_rule" || return $?
+        done
     fi
     local _copy
     _copy="$(boxsession_tools_copy "$_box")"
