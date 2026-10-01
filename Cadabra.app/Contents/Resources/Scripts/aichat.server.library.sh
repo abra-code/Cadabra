@@ -480,8 +480,8 @@ retiring_discount_mib() {
 # --ctx-size at up to 131072 computed from total RAM, which --fit is not allowed to
 # shrink - on small models that alone could blow the GPU budget.
 #
-# GPU-stress testing overrides: if /tmp/aichatv2_srvtune exists (and is owned by the
-# user) it is sourced and may set TUNE_BASE_RESERVE_MB, TUNE_FIT_TARGET_MB,
+# GPU-stress testing overrides: if srvtune exists in Cadabra's Application Support folder (and is
+# owned by the user) it is sourced and may set TUNE_BASE_RESERVE_MB, TUNE_FIT_TARGET_MB,
 # TUNE_NO_MMAP (1|0), TUNE_CTX, TUNE_EXTRA_ARGS. The chosen policy is srvlog'd as
 # MEMPOLICY either way (touch /tmp/aichatv2_srvdbg to capture).
 compute_server_memory_args() {
@@ -512,11 +512,11 @@ EOF
 
     local fit_target_mib=$(( reserve_mib + others_mib ))
 
-    # $TMPDIR is the per-user mode-700 temp dir, so unlike /tmp no other local user can
-    # plant or swap the file (sourcing a /tmp path would be a TOCTOU hole). Non-numeric
-    # values are ignored, not trusted: an arithmetic expansion error would kill the
-    # whole launch handler.
-    local tune_file="${TMPDIR:-/tmp}/aichatv2_srvtune"
+    # The file is SOURCED, so it lives in Cadabra's own folder: $TMPDIR is writable by the
+    # tools' sandbox by default, and a tool that planted the file there would run its text here,
+    # outside every sandbox. Non-numeric values are ignored, not trusted: an arithmetic
+    # expansion error would kill the whole launch handler.
+    local tune_file="$mcp_app_support/srvtune"
     local TUNE_BASE_RESERVE_MB="" TUNE_FIT_TARGET_MB="" TUNE_NO_MMAP="" TUNE_CTX="" TUNE_EXTRA_ARGS=""
     if [ -f "$tune_file" ] && [ -O "$tune_file" ]; then
         . "$tune_file"
@@ -835,8 +835,9 @@ prune_server_registry() { # <front_pid>
     stop_orphaned_servers
 }
 
-# wait_for_server <win_uuid> <port> [limit_seconds] [model_label] - poll /health on <port> until
-# ready or time out with an alert. 0 = ready, 13 = timeout.
+# wait_for_server <win_uuid> <port> [limit_seconds] [model_label] [server_pid] - poll /health on
+# <port> until ready or time out with an alert. 0 = ready, 13 = timeout, 12 = the process
+# <server_pid> ended first (no alert: the caller reports it).
 # limit_seconds defaults to 30; launches that pass --no-mmap hand in a size-scaled limit
 # because the model file is read and copied instead of mapped.
 #
@@ -846,10 +847,21 @@ prune_server_registry() { # <front_pid>
 # function that reached into its caller's global for it would be a function that cannot be
 # called from anywhere else.
 wait_for_server() {
-    local win="$1" port="$2" limit="${3:-30}" label="$4" result=0 seconds_count=0
+    local win="$1" port="$2" limit="${3:-30}" label="$4" server_pid="$5" result=0 seconds_count=0
     while true; do
         /usr/bin/curl --fail --silent "http://localhost:$port/health" >/dev/null 2>&1 && {
             echo "server became responsive after $seconds_count seconds"; break; }
+        # A server that ended will never answer: status 12, and no alert here, since the caller
+        # knows why it may have ended (its sandbox) and words it.
+        if [ -n "$server_pid" ]; then
+            /bin/ps -p "$server_pid" >/dev/null 2>&1
+            local alive_status=$?
+            if [ "$alive_status" -ne 0 ]; then
+                echo "server pid=$server_pid ended after $seconds_count seconds without answering"
+                result=12
+                break
+            fi
+        fi
         seconds_count=$((seconds_count + 1))
         if [ "$seconds_count" -ge "$limit" ]; then
             local message="Timed out after $seconds_count seconds while waiting for llama-server response.\n\nPlease try again"
@@ -874,6 +886,103 @@ report_server_launch_failure() {
     local message="llama-server failed to launch! \n\nVerify if the selected large language model is supported by llama.cpp engine."
     "$alert" --level "stop" --title "$APPLET_NAME" --ok "OK" "$message"
     return 11
+}
+
+# ──────────────────────────────────────────────────────────────
+# The model engine's sandbox
+# ──────────────────────────────────────────────────────────────
+# llama-server is third-party code that parses a model file, so it runs under a Seatbelt profile
+# (/usr/bin/sandbox-exec) that lets it read its own folder and the model, use the GPU and listen
+# on its port: no other file, no outgoing connection, no other program. inference_sandbox.py
+# writes the profile. The setting /inference/sandbox turns it off (inference_sandbox_enabled in
+# aichat.library.sh); the checkbox is in Select Local Model.
+
+# llama_sandbox_profile <model_path> <port>  ->  the path of the profile written for this launch.
+# Non-zero, with the reason on stderr, when it cannot be written: the caller then refuses the
+# launch, since starting the engine unconfined is not what the setting says.
+llama_sandbox_profile() {
+    local _python="$OMC_APP_BUNDLE_PATH/Contents/Library/Python/bin/python3"
+    local _builder="$OMC_APP_BUNDLE_PATH/Contents/Resources/Scripts/inference_sandbox.py"
+    local _out="$(cadabra_run_file "llama-sandbox-$2.sb")"
+    "$_python" "$_builder" llama \
+        --engine-dir "$OMC_APP_BUNDLE_PATH/Contents/Support/Llama.cpp" \
+        --model "$1" --port "$2" --out "$_out" 1>&2
+    local _status=$?
+    if [ "$_status" -ne 0 ]; then
+        return 1
+    fi
+    printf '%s\n' "$_out"
+}
+
+# What the sandbox refuses is in the system log only while someone is listening (reading it back
+# afterwards misses entries), so a launch listens while the engine starts.
+#
+# llama_denials_watch <port>  ->  starts the listener; sets llama_denials_pid and
+# llama_denials_file. It returns once the listener is running, or after 2 s without it.
+llama_denials_pid=""
+llama_denials_file=""
+llama_denials_watch() {
+    llama_denials_file="$(cadabra_run_file "llama-denials-$1.log")"
+    : > "$llama_denials_file"
+    /usr/bin/log stream --style compact \
+        --timeout 6m \
+        --predicate 'sender == "Sandbox" AND eventMessage CONTAINS "llama-server("' \
+        > "$llama_denials_file" 2>/dev/null &
+    llama_denials_pid=$!
+    local _tenths=0
+    while [ ! -s "$llama_denials_file" ] && [ "$_tenths" -lt 20 ]; do
+        /bin/sleep 0.1
+        _tenths=$((_tenths + 1))
+    done
+}
+
+# llama_denials_stop  ->  ends the listener llama_denials_watch started; the file stays.
+llama_denials_stop() {
+    if [ -n "$llama_denials_pid" ]; then
+        kill -TERM "$llama_denials_pid" 2>/dev/null
+        # Waited for, so the shell does not report the ended job in the handler's output.
+        wait "$llama_denials_pid" 2>/dev/null
+        llama_denials_pid=""
+    fi
+}
+
+# llama_denials_summary <server_pid>  ->  up to three things the sandbox refused that process,
+# joined with "; " ("file-read-data /path"), or nothing. Lookups of system services are left
+# out: a healthy engine is refused several (the window server, disk arbitration) and works.
+llama_denials_summary() {
+    [ -f "$llama_denials_file" ] || return 0
+    /usr/bin/sed -n "s/.*Sandbox: llama-server($1) deny([0-9]*) //p" "$llama_denials_file" \
+        | /usr/bin/grep -v '^mach-lookup ' \
+        | /usr/bin/awk '!seen[$0]++ { out = out (n++ ? "; " : "") $0 } n == 3 { exit } END { printf "%s", out }'
+}
+
+# report_server_ended <sandboxed> <server_pid> <port> <win>  ->  the alert for a server that ended
+# instead of answering: blocked by its sandbox when the log shows a refusal, else the model.
+# The system does not log every refusal (about half of them, in repeated runs), and none when the
+# profile itself is refused, so with the sandbox on and nothing in the log the alert names both
+# possible causes.
+report_server_ended() {
+    local _refused=""
+    if [ "$1" = "true" ]; then
+        _refused="$(llama_denials_summary "$2")"
+    fi
+    if [ -z "$_refused" ] && [ "$1" = "true" ]; then
+        srvlog "LAUNCH ended, no refusal logged server=$2 port=$3 win=$4"
+        local _either="llama-server failed to launch.
+
+Either the model is not supported by the llama.cpp engine, or the engine's sandbox stopped it. To rule out the sandbox, turn off \"Run Engine in Sandbox\" in Select Local Model and try again."
+        "$alert" --level "stop" --title "$APPLET_NAME" --ok "OK" "$_either"
+        return 0
+    fi
+    if [ -z "$_refused" ]; then
+        report_server_launch_failure
+        return 0
+    fi
+    srvlog "LAUNCH blocked by sandbox server=$2 port=$3 win=$4 refused=[$_refused]"
+    local _message="The model engine was blocked by its sandbox ($_refused).
+
+If this model should work, turn off \"Run Engine in Sandbox\" in Select Local Model and try again."
+    "$alert" --level "stop" --title "$APPLET_NAME" --ok "OK" "$_message"
 }
 
 # launch_model_on_port <model_path> <win_uuid> <port> [retiring_model_path] [retiring_window]
@@ -953,9 +1062,34 @@ launch_model_on_port() {
     launch_lock_acquire
     mem_args=$(compute_server_memory_args "$model_path" "$retiring" "$retiring_win")
 
+    # The engine's sandbox: the function's arguments are all in locals by now, so the positional
+    # parameters become the words that go in front of the server's own (none, with the sandbox
+    # off). sandbox-exec applies the profile and then becomes llama-server: same pid, and an
+    # argv that still begins with the server's path, which the port-freeing loop above and the
+    # reaper match on.
+    set --
+    local sandboxed
+    sandboxed="$(inference_sandbox_enabled)"
+    if [ "$sandboxed" = "true" ]; then
+        local sandbox_profile
+        sandbox_profile="$(llama_sandbox_profile "$model_path" "$port")"
+        local profile_status=$?
+        if [ "$profile_status" -ne 0 ] || [ -z "$sandbox_profile" ]; then
+            launch_lock_release
+            srvlog "LAUNCH refused: no sandbox profile port=$port win=$win"
+            "$alert" --level "stop" --title "$APPLET_NAME" --ok "OK" \
+                "Could not prepare the model engine's sandbox, so the model was not loaded.
+
+To load it without one, turn off \"Run Engine in Sandbox\" in Select Local Model."
+            return 11
+        fi
+        set -- /usr/bin/sandbox-exec -f "$sandbox_profile"
+        llama_denials_watch "$port"
+    fi
+
     # $mem_args is intentionally unquoted: it is a flag string built above (no paths).
-    echo "launching llama-server for $LAUNCHED_MODEL_LABEL on port $port (mem policy: $mem_args)"
-    "$ls_bin" \
+    echo "launching llama-server for $LAUNCHED_MODEL_LABEL on port $port (mem policy: $mem_args, sandbox: $sandboxed)"
+    "$@" "$ls_bin" \
         --host 127.0.0.1 --port "$port" \
         --cache-type-k "$KV" \
         --cache-type-v "$KV" \
@@ -967,7 +1101,8 @@ launch_model_on_port() {
     local server_pid=$!
     if [ -z "$server_pid" ] || ! { sleep 1; /bin/ps -p "$server_pid" >/dev/null 2>&1; }; then
         launch_lock_release
-        report_server_launch_failure
+        llama_denials_stop
+        report_server_ended "$sandboxed" "$server_pid" "$port" "$win"
         return 11
     fi
     launch_lock_release
@@ -980,8 +1115,15 @@ launch_model_on_port() {
         [ "$wait_limit" -gt 300 ] && wait_limit=300 ;;
     esac
 
-    wait_for_server "$win" "$port" "$wait_limit" "$LAUNCHED_MODEL_LABEL"
+    wait_for_server "$win" "$port" "$wait_limit" "$LAUNCHED_MODEL_LABEL" "$server_pid"
     local r=$?
+    llama_denials_stop
+    if [ "$r" = 12 ]; then
+        # It started and then ended while loading the model (a file it could not read, a model
+        # it does not support).
+        report_server_ended "$sandboxed" "$server_pid" "$port" "$win"
+        r=11
+    fi
     if [ "$r" = 0 ]; then
         register_started_server "${OMC_FRONT_PROCESS_ID}" "$server_pid" "$model_path" "$win" "$port" "$model_size"
         srvlog "LAUNCH ok server=$server_pid port=$port win=$win registered_host=${OMC_FRONT_PROCESS_ID} app_pids=[$(srvlog_apppids)] hosts=[$(srvlog_hosts)] model=$LAUNCHED_MODEL_LABEL"

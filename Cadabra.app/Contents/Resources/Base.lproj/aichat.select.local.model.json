@@ -245,6 +245,17 @@
           },
           {
             "type": "Toggle",
+            "id": 31,
+            "properties": {
+              "title": "Run Engine in Sandbox",
+              "isOn": true,
+              "style": "checkbox",
+              "help": "The model engine can read only its own files and the model, and cannot reach the network. Turn off only when a model fails to load because of it.",
+              "actionID": "aichat.select.local.model.toggle.sandbox"
+            }
+          },
+          {
+            "type": "Toggle",
             "id": 30,
             "properties": {
               "title": "Use Tools in Agentic Session",

@@ -462,6 +462,35 @@ cadabra_settings_init() {
     "$plister" set dict "$cadabra_settings" / >/dev/null 2>&1
 }
 
+# The model engine's sandbox, on unless the setting /inference/sandbox says false ("Run Engine in
+# Sandbox" in Select Local Model). What it confines is in aichat.server.library.sh.
+#
+# inference_sandbox_enabled  ->  "true" | "false"
+inference_sandbox_enabled() {
+    local _value="$("$plister" get value "$cadabra_settings" "/inference/sandbox" 2>/dev/null)"
+    case "$_value" in
+        false) echo "false" ;;
+        *)     echo "true" ;;
+    esac
+}
+
+# inference_sandbox_set <true|false>
+inference_sandbox_set() {
+    cadabra_settings_init
+    "$plister" get type "$cadabra_settings" "/inference" >/dev/null 2>&1
+    local _has_dict=$?
+    if [ "$_has_dict" -ne 0 ]; then
+        "$plister" insert "inference" dict "$cadabra_settings" / >/dev/null 2>&1
+    fi
+    "$plister" get type "$cadabra_settings" "/inference/sandbox" >/dev/null 2>&1
+    local _has_value=$?
+    if [ "$_has_value" -eq 0 ]; then
+        "$plister" set bool "$1" "$cadabra_settings" "/inference/sandbox" >/dev/null 2>&1
+    else
+        "$plister" insert "sandbox" bool "$1" "$cadabra_settings" "/inference" >/dev/null 2>&1
+    fi
+}
+
 # NO APP-WIDE SUMMARIZER SETTING LIVES HERE ANY MORE, and its absence is deliberate rather than an
 # oversight. `cad_digest_backend` read a /digest-backend string out of the settings file and every
 # chat window passed it to its agent as --digest-backend, which made "which model summarizes a

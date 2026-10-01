@@ -45,6 +45,9 @@ TABLE_ID=10
 dialog_tool="$OMC_OMC_SUPPORT_PATH/omc_dialog_control"
 window_uuid="$OMC_ACTIONUI_WINDOW_UUID"
 
+# "Run Engine in Sandbox" shows the stored setting; its handler stores a change at once.
+"$dialog_tool" "$window_uuid" 31 "$(inference_sandbox_enabled)"
+
 # ── ROW ICONS ─────────────────────────────────────────────────────────────────
 # SF Symbol names, drawn by the table's two Image columns (columnTypes in the dialog JSON).
 #
