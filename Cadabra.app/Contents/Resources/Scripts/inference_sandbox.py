@@ -1,7 +1,10 @@
 #!/usr/bin/env python3
-"""Write the sandbox profile a model engine runs under.
+"""The sandbox profiles the model engines run under.
 
     inference_sandbox.py llama --engine-dir DIR --model FILE --port N --out FILE
+
+mlx-agent's own profile (agent_profile below) is built by acp_transport_json.py, which imports
+this file.
 
 llama-server is third-party code that parses a model file and serves one port. Its profile, in
 Seatbelt's policy language for /usr/bin/sandbox-exec, lets it:
@@ -21,10 +24,12 @@ caller is a shell script and a path is the user's (quotes, spaces).
 Exit status 0 with the profile written; 1 with a message on stderr and no file.
 """
 import argparse
+import json
 import os
 import re
 import subprocess
 import sys
+import urllib.parse
 
 GPU_USER_CLIENTS = ("AGXDeviceUserClient", "IOSurfaceRootUserClient")
 GPU_CACHE_FOLDERS = ("com.apple.metal", "com.apple.metalfe", "com.apple.gpuarchiver")
@@ -144,6 +149,125 @@ def write_profile(path, text):
         sys.stderr.write("inference_sandbox: cannot write %s: %s\n" % (path, exc))
         return False
     return True
+
+AGENT_VM_DEFAULT_STORE = "~/Library/Application Support/agent-vm"
+
+
+def model_grants(model_dir):
+    """What an MLX model is read from: (folders, single files).
+
+    The model folder itself, and for every link in it (or one folder below, where shards may be)
+    the one file the link leads to. A Hugging Face snapshot is links into the repository's blobs
+    folder; a user may also keep weights elsewhere and link them. Each link grants its own
+    target and nothing beside it: the folder is the model's content, and a link to a file in the
+    home folder must not open the folder that file is in.
+
+    A link to a folder is followed only inside a Hugging Face repository (the model folder is in
+    "snapshots", and the target is under the folder above that). Anywhere else it is left out:
+    such a model loads without the sandbox, not with a wider one.
+    """
+    real_model = os.path.realpath(model_dir)
+    repository = ""
+    if os.path.basename(os.path.dirname(real_model)) == "snapshots":
+        repository = os.path.dirname(os.path.dirname(real_model))
+    folders = [model_dir]
+    files = []
+    pending = [(model_dir, 0)]
+    while pending:
+        folder, depth = pending.pop(0)
+        try:
+            names = sorted(os.listdir(folder))
+        except OSError:
+            continue
+        for name in names:
+            path = os.path.join(folder, name)
+            if not os.path.islink(path):
+                if depth == 0 and os.path.isdir(path):
+                    pending.append((path, 1))
+                continue
+            real = os.path.realpath(path)
+            if (real + "/").startswith(real_model + "/"):
+                continue
+            if os.path.isfile(real):
+                if real not in files:
+                    files.append(real)
+            elif os.path.isdir(real) and repository and (real + "/").startswith(repository + "/"):
+                if real not in folders:
+                    folders.append(real)
+    return folders, files
+
+
+def local_port(base_url):
+    """The port of a server on this Mac named by an http URL, or 0."""
+    try:
+        parts = urllib.parse.urlsplit(base_url)
+        port = parts.port
+    except ValueError:
+        return 0
+    if parts.hostname not in ("127.0.0.1", "localhost", "::1") or not port:
+        return 0
+    return port
+
+
+def agent_profile(engine, target, config_path, servers, tools_box, agent_vm, agent_vm_home):
+    """mlx-agent's sandbox profile for one launch, as its --sandbox-profile JSON object.
+
+    Returns (profile, reason): profile is None when the agent must run unconfined, and reason
+    says why in a few words (for the log).
+
+    - engine "mlx": the GPU, the model's folder and the files its links lead to. "openai": a connection to the llama-server
+      port of this Mac. "foundation": Apple's on-device model service.
+    - no tool servers: nothing more.
+    - tool servers in an AgentVM box: every server is `agent-vm exec`, which needs agent-vm
+      itself, the box's record, its control socket and its exec log (the audit record: without
+      the rule exec works and its lines are silently lost).
+    - tool servers on this Mac: unconfined. Each server confines itself at startup, and a
+      process under a profile cannot apply a second one.
+    """
+    # Always: Apple's on-device model. A conversation restored with a summary may have chosen it
+    # as the summarizer whatever the engine is (session/prime's condense.backend).
+    profile = {"foundation_models": True}
+    if engine == "openai":
+        port = local_port(target)
+        if not port:
+            return None, "the model server's address is not a port of this Mac"
+        profile["network_connect"] = ["localhost:%d" % port]
+    elif engine == "foundation":
+        pass
+    elif engine == "mlx":
+        if not os.path.isabs(target) or not os.path.isdir(target):
+            return None, "the model folder does not exist"
+        profile["gpu"] = True
+        profile["read_only"], linked = model_grants(target)
+        if linked:
+            profile["read_only_files"] = linked
+    else:
+        return None, "no profile for engine %s" % engine
+
+    if not servers:
+        return profile, ""
+    if not tools_box:
+        return None, "the tools run on this Mac"
+    if not agent_vm or not os.path.isabs(agent_vm):
+        return None, "the tools run in a box but agent-vm's path is unknown"
+    for server in servers:
+        args = server.get("args") if isinstance(server, dict) else None
+        if (not isinstance(server, dict) or server.get("command") != agent_vm
+                or not isinstance(args, list) or args[:3] != ["exec", "--box", tools_box]):
+            return None, "a tool server is not an agent-vm exec into box %s" % tools_box
+    store = os.path.expanduser(agent_vm_home or AGENT_VM_DEFAULT_STORE)
+    box_dir = os.path.join(store, "Boxes", tools_box)
+    profile["read_only_files"] = profile.get("read_only_files", []) + [
+        config_path, box_dir, os.path.join(box_dir, "box.json")]
+    profile["exec_files"] = [agent_vm]
+    profile["unix_socket_connect"] = [os.path.join(box_dir, "control.sock")]
+    profile["read_write_files"] = [os.path.join(box_dir, "exec.jsonl")]
+    return profile, ""
+
+
+def write_agent_profile(path, profile):
+    """Write mlx-agent's profile JSON for this user only. True when written."""
+    return write_profile(path, json.dumps(profile, indent=1, sort_keys=True) + "\n")
 
 
 def run_llama(options):

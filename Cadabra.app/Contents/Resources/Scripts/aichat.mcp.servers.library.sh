@@ -627,9 +627,11 @@ generate_stdio_mcp_config() {
 # than generate a config that would run the tools on this Mac under a box window's name.
 mcp_box_args=""
 mcp_box_project=""
+mcp_box_name=""
 _mcp_box_config_args() {
     mcp_box_args=""
     mcp_box_project=""
+    mcp_box_name=""
     local record="$(mcp_box_tools_get "$1")"
     if [ -z "$record" ]; then
         return 0
@@ -654,7 +656,39 @@ EOF
         mcp_box_args="$mcp_box_args${nl}--read-only"
     fi
     mcp_box_project="$project"
+    mcp_box_name="$box"
     return 0
+}
+
+# _mcp_agent_sandbox_args <window_uuid> <agent_bin>  ->  sets mcp_sandbox_args: the transport
+# builder's options for mlx-agent's own sandbox, one per line, or nothing when the setting is
+# off ("Run Engine in Sandbox") or this mlx-agent cannot confine itself. Call after
+# _mcp_box_config_args: tools in a box need the box's name in the profile. Whether a profile
+# applies at all (it does not with tools on this Mac) is the builder's decision, since it reads
+# the generated config.
+mcp_sandbox_args=""
+_mcp_agent_sandbox_args() {
+    mcp_sandbox_args=""
+    if [ "$(inference_sandbox_enabled)" != "true" ]; then
+        return 0
+    fi
+    local supported
+    supported="$("$2" --help 2>&1 | /usr/bin/grep -c -e '--sandbox-profile')"
+    if [ "${supported:-0}" = "0" ]; then
+        echo "mlx-agent has no --sandbox-profile; it runs without a sandbox" 1>&2
+        return 0
+    fi
+    local nl="
+"
+    mcp_sandbox_args="--sandbox-out${nl}$(cadabra_run_file "agent-sandbox-$1.json")"
+    if [ -n "$mcp_box_name" ]; then
+        source "$OMC_APP_BUNDLE_PATH/Contents/Resources/Scripts/aichat.agentvm.library.sh"
+        mcp_sandbox_args="$mcp_sandbox_args${nl}--tools-box${nl}$mcp_box_name${nl}--agent-vm${nl}$(agentvm_bin)"
+        local home="$(agentvm_setting agent-vm-home)"
+        if [ -n "$home" ]; then
+            mcp_sandbox_args="$mcp_sandbox_args${nl}--agent-vm-home${nl}$home"
+        fi
+    fi
 }
 
 # aichat_acp_transport_json <agent_bin> <engine> <target> <window_uuid> [use_tools]
@@ -755,8 +789,33 @@ EOF
     # config falls back to chat — never wedges the window).
     local builder="$OMC_APP_BUNDLE_PATH/Contents/Resources/Scripts/acp_transport_json.py"
     if [ -x "$python3" ] && [ -f "$builder" ]; then
-        "$python3" "$builder" "$agent_bin" "$engine" "$target" "$cfg" "$cwd" "$use_tools" \
-            && return 0
+        # The bundled agent's own sandbox: the builder's options for it, one per line, become
+        # arguments (the function's own are all in locals by now).
+        set --
+        if [ "$engine" != "external" ]; then
+            _mcp_agent_sandbox_args "$window_uuid" "$agent_bin"
+            if [ -n "$mcp_sandbox_args" ]; then
+                local sandbox_arg
+                while IFS= read -r sandbox_arg; do
+                    set -- "$@" "$sandbox_arg"
+                done <<EOF
+$mcp_sandbox_args
+EOF
+            fi
+        fi
+        local built
+        built="$("$python3" "$builder" "$agent_bin" "$engine" "$target" "$cfg" "$cwd" "$use_tools" "$@")"
+        local built_status=$?
+        if [ "$built_status" -eq 0 ]; then
+            printf '%s\n' "$built"
+            return 0
+        fi
+    fi
+    if [ "$engine" != "external" ] && [ "$(inference_sandbox_enabled)" = "true" ] && [ -x "$python3" ] && [ -f "$builder" ]; then
+        # The builder ran and failed with the sandbox on: the hand-built transport below has no
+        # profile, and the agent must not start unconfined because its profile could not be made.
+        echo "aichat_acp_transport_json: the transport builder failed; not starting the agent without its sandbox" 1>&2
+        return 1
     fi
 
     # Bundled Python missing (or the builder above failed): emit a plain chat-only transport by

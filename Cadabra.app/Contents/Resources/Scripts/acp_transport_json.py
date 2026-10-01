@@ -11,9 +11,12 @@ Usage:
                           [--box NAME --agent-vm PATH [--agent-vm-home DIR] --project DIR
                            [--read-only] --level free|ask|plan [--agent-id ID]
                            [--secret NAME ...] [--env NAME=VALUE ...]]
+                          [--sandbox-out FILE [--tools-box NAME --agent-vm PATH
+                           [--agent-vm-home DIR]]]
 
-    The named options come after the positional ones and apply to engine "external" only: the
-    agent runs in an agent-vm box (see "IN A BOX" below).
+    The named options come after the positional ones. The first set applies to engine
+    "external" only: the agent runs in an agent-vm box (see "IN A BOX" below). The second set
+    applies to the other engines: mlx-agent confines itself (see "THE AGENT'S SANDBOX" below).
 
     [tools] is optional and defaults to "true": "readonly" hands the external agent only
     the servers that have no gated tools (see acp_mcp_servers); anything else hands over
@@ -70,6 +73,19 @@ project shared at the same path:
   into the box (generate_mcp_configs.py --client in-box), so the agent starts them in the box
   itself; "readonly" passes only servers with no gated tools, as on this Mac.
 
+THE AGENT'S SANDBOX (--sandbox-out): mlx-agent holds the model and the conversation, and a
+model's output decides which tools are called. With --sandbox-out it is started with
+`--sandbox-profile FILE`, a profile written here for this launch (inference_sandbox.agent_profile):
+the model's folders and the GPU (mlx), the llama-server port of this Mac (openai), Apple's
+on-device model service (always: a restored conversation may summarize with it).
+- No tool servers: nothing more.
+- Tool servers in an AgentVM box (--tools-box, with agent-vm's path and store): agent-vm and that
+  box's record, control socket and exec log.
+- Tool servers on this Mac: NO profile, and the agent runs as before. Each server confines
+  itself at startup, and a process under a profile cannot apply a second one.
+- A profile that cannot be written refuses the transport (nothing on stdout): the agent is not
+  started unconfined when confinement was asked for.
+
 Writes one line of JSON to stdout and nothing else, so the caller's stdout stays
 pure JSON.
 """
@@ -81,6 +97,7 @@ import sys
 
 import acp_agent_env
 import acp_catalog
+import inference_sandbox
 
 # Boxed agents get this long to answer initialize and session/new (a cold Node start in the guest).
 BOX_STARTUP_TIMEOUT_SECONDS = 60
@@ -193,6 +210,37 @@ def parse_box_options(words):
     return parser.parse_args(words)
 
 
+def parse_sandbox_options(words):
+    """The named options of a bundled engine (the agent's sandbox), or None when there are none."""
+    if not words:
+        return None
+    parser = argparse.ArgumentParser(prog="acp_transport_json.py", add_help=False, allow_abbrev=False)
+    parser.add_argument("--sandbox-out", required=True)
+    parser.add_argument("--tools-box", default="")
+    parser.add_argument("--agent-vm", default="")
+    parser.add_argument("--agent-vm-home", default="")
+    return parser.parse_args(words)
+
+
+def sandbox_arguments(sandbox, engine, target, cfg, servers):
+    """mlx-agent's extra arguments for its sandbox: [] to run unconfined, None to refuse."""
+    if sandbox is None:
+        return []
+    profile, reason = inference_sandbox.agent_profile(
+        engine, target, cfg, servers, sandbox.tools_box, sandbox.agent_vm, sandbox.agent_vm_home)
+    if profile is None:
+        # Said on stderr, which is the handler's log: the user chose where the tools run, and
+        # that choice, not an error, is why the agent is unconfined.
+        sys.stderr.write("acp_transport_json: the agent runs without a sandbox: %s\n" % reason)
+        return []
+    if not os.path.isabs(sandbox.sandbox_out):
+        sys.stderr.write("acp_transport_json: --sandbox-out must be an absolute path\n")
+        return None
+    if not inference_sandbox.write_agent_profile(sandbox.sandbox_out, profile):
+        return None
+    return ["--sandbox-profile", sandbox.sandbox_out]
+
+
 def catalog_box(agent_id):
     """The catalog's box object for this agent id, or None (no id, no object, or no catalog)."""
     if not agent_id:
@@ -278,12 +326,17 @@ def main():
         if index >= 5 and word.startswith("--"):
             positional, named = positional[:index], positional[index:]
             break
+    agent, engine, target, cfg, cwd = positional[0:5]
+    options = None
+    sandbox = None
     try:
-        options = parse_box_options(named)
+        if engine == "external":
+            options = parse_box_options(named)
+        else:
+            sandbox = parse_sandbox_options(named)
     except SystemExit:
         # argparse has written its message to stderr; nothing on stdout, so the caller alerts.
         return
-    agent, engine, target, cfg, cwd = positional[0:5]
     # The session's tools setting, as the dialog's picker tags spell it: "true" (all
     # servers), "readonly" (only servers with no gated tools), "false" (no config was
     # generated at all, so there is nothing here to filter). Optional and defaulting to
@@ -354,12 +407,6 @@ def main():
         sys.stdout.write("\n")
         return
 
-    if options is not None:
-        # Only an external agent runs in a box in this version; mlx-agent with its tools in a box
-        # is the plan's D11. Refusing beats silently running on this Mac.
-        sys.stderr.write("acp_transport_json: --box applies to engine external only\n")
-        return
-
     # Dispatched explicitly rather than "openai or else --model": the on-device engine has no
     # target, so falling through to the else would build `--model ""` and start an agent that
     # fails on an empty model path instead of using the model the user picked.
@@ -373,8 +420,14 @@ def main():
     # Agent mode only when the config parsed and lists at least one server. A missing,
     # empty, or broken config leaves servers empty, so the transport falls back to plain
     # chat rather than wedging the window.
-    if read_servers(cfg):
+    servers = read_servers(cfg)
+    if servers:
         argv += ["--mcp-config", cfg]
+
+    extra = sandbox_arguments(sandbox, engine, target, cfg, servers)
+    if extra is None:
+        return
+    argv += extra
 
     json.dump({"protocol": "acp", "transport": {"command": argv, "cwd": cwd}}, sys.stdout)
     sys.stdout.write("\n")

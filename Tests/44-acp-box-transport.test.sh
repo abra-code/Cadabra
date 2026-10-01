@@ -108,7 +108,7 @@ check "a relative project is refused"    "1" "$(cad_has "$json" 'must be an abso
 check "  with no transport"              "0" "$(cad_has "$json" '"protocol"')"
 json="$("$cad_py" "$SCRIPTS/acp_transport_json.py" /bin/echo mlx /models/m "$OMCTEST_WORK/x.json" "$OMCTEST_WORK" true \
     --box b --agent-vm "$AGENTVM" --project "$PROJECT" --level free 2>&1)"
-check "mlx-agent is not boxed in this version" "1" "$(cad_has "$json" 'external only')"
+check "an external agent's box options on the bundled agent are refused" "1" "$(cad_has "$json" '--sandbox-out')"
 check "  and is not silently run on this Mac"  "0" "$(cad_has "$json" '"protocol"')"
 json="$(transport free opencode "opencode acp" --env NOVALUE)"
 check "an --env without a value is refused" "1" "$(cad_has "$json" 'needs NAME=VALUE')"
