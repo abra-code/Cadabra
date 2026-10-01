@@ -38,6 +38,15 @@ if [ -f "$mcp_app_support/box-sessions.tsv" ]; then
     ) >/dev/null 2>&1 &
 fi
 
+# Project snapshots of a Cadabra that is gone: their sessions are ended, so their projects can have
+# new ones (agent-vm keeps one active session per project). In the background, as above.
+if [ -f "$mcp_app_support/snapshot-sessions.tsv" ]; then
+    (
+        source "$OMC_APP_BUNDLE_PATH/Contents/Resources/Scripts/aichat.snapshot.library.sh"
+        snapshot_release_stale
+    ) >/dev/null 2>&1 &
+fi
+
 marker="$mcp_app_support/.webui_history_imported"
 consent="$mcp_app_support/.webui_import_consent"
 [ -f "$marker" ] && exit 0   # asked and answered once - never again

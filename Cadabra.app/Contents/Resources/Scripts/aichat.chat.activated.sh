@@ -18,3 +18,13 @@ if [ -n "$win" ] && [ -f "$mcp_app_support/box-sessions.tsv" ]; then
         ) >/dev/null 2>&1 &
     fi
 fi
+# The same for a window on this Mac with a project snapshot (aichat.snapshot.library.sh).
+if [ -n "$win" ] && [ -f "$mcp_app_support/snapshot-sessions.tsv" ]; then
+    snap_line=$(pb_get "aichatv2_snapline_${win}")
+    if [ -n "$snap_line" ]; then
+        (
+            source "$OMC_APP_BUNDLE_PATH/Contents/Resources/Scripts/aichat.snapshot.library.sh"
+            snapshot_line_focus "$win"
+        ) >/dev/null 2>&1 &
+    fi
+fi

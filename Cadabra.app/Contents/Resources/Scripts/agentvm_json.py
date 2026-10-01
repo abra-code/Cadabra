@@ -22,6 +22,8 @@ Usage (the JSON on stdin):
     agentvm_json.py netlog    <- agent-vm box netlog <box> --json
     agentvm_json.py secrets   <- agent-vm secret list --json
     agentvm_json.py sizes     <- agent-vm image info <image> --json, or box info <box> --json
+    agentvm_json.py sessions  <- agent-vm session list --json, or session start|end|discard --json
+    agentvm_json.py report-summary <- agent-vm session report <id> --json
     agentvm_json.py recipe <recipe.json>   an image recipe file, read directly
 The job-log readers at the end (log_progress, log_error) are for agentvm_job.py, which imports
 this file.
@@ -68,6 +70,19 @@ value):
     name, readable
   readable is "false" when macOS would ask before agent-vm could read it (a rebuilt agent-vm
   that is not yet on the item's access list, say).
+"sessions" emits one row per session (one for start, end and discard, which answer with the
+session itself), oldest first:
+    id, state, project, startSeconds, snapshotPath
+  state is active, ended, undone or discarded; startSeconds is when the snapshot was taken, in
+  seconds since 1970; project is the folder as agent-vm resolved it (no symbolic links).
+"report-summary" emits one row, what a session's project changed since its snapshot:
+    changes, flaggedHigh, flaggedMedium, warnings, flagged
+  changes counts what undo would restore (an entry inside an added or deleted folder is part of
+  the folder's change, and is listed in the report only when flagged); flaggedHigh and
+  flaggedMedium count those changes by their most severe flag, a folder's including the flags of
+  the entries inside it (agent-vm's own summary counts the entries); warnings counts the report's warnings (a clock that moved, say). flagged is for people: the
+  first REPORT_FLAGGED_SHOWN flagged changes, most severe first, each "path (reason)", joined
+  with "; ", then "and N more" when there are more.
 "recipe" emits the recipe, then one row per input and per parameter, in the file's order:
     kind (recipe, input or parameter), name, required, default, description
   The recipe's own row carries commandLineTools in the default column (true, false, or "-" when
@@ -249,6 +264,65 @@ def netlog_rows(data):
                    entry.get("method"), entry.get("reason") or entry.get("rule")])
 
 
+def session_row(session):
+    return row([session.get("id"), session.get("state"), session.get("project"),
+                session.get("startSeconds"), session.get("snapshotPath")])
+
+
+def session_rows(data):
+    if isinstance(data, list):
+        for session in objects(data):
+            yield session_row(session)
+    else:
+        yield session_row(need_object(data, "agent-vm session --json"))
+
+
+SEVERITY_RANK = {"high": 0, "medium": 1}
+REPORT_FLAGGED_SHOWN = 6
+
+
+def change_flag(change):
+    """The change's most severe high or medium flag, or None (info flags do not count)."""
+    flags = [flag for flag in objects(change.get("flags") or []) if flag.get("severity") in SEVERITY_RANK]
+    flags.sort(key=lambda flag: SEVERITY_RANK[flag["severity"]])
+    return flags[0] if flags else None
+
+
+def report_summary_rows(data):
+    data = need_object(data, "agent-vm session report --json")
+    changes = objects(need_list(data.get("changes"), "agent-vm session report --json changes"))
+    # The changes undo restores; an entry covered by a folder's change is listed only for its flag,
+    # and counts toward that folder.
+    top = [change for change in changes if change.get("coveredByAncestor") is not True]
+    rank = {}
+    for change in top:
+        flag = change_flag(change)
+        rank[str(change.get("path"))] = SEVERITY_RANK[flag["severity"]] if flag else len(SEVERITY_RANK)
+    for change in changes:
+        flag = change_flag(change)
+        if change.get("coveredByAncestor") is not True or flag is None:
+            continue
+        # Up the path to the folder whose change covers it: a few lookups, where a scan of every
+        # change would be quadratic in a new node_modules full of flagged executables.
+        folder = str(change.get("path"))
+        while "/" in folder:
+            folder = folder.rsplit("/", 1)[0]
+            if folder in rank:
+                rank[folder] = min(rank[folder], SEVERITY_RANK[flag["severity"]])
+                break
+    flagged = [(change, change_flag(change)) for change in changes]
+    flagged = [(change, flag) for change, flag in flagged if flag is not None]
+    flagged.sort(key=lambda pair: (SEVERITY_RANK[pair[1]["severity"]], str(pair[0].get("path"))))
+    shown = ["%s (%s)" % (change.get("path"), flag.get("reason") or flag.get("rule"))
+             for change, flag in flagged[:REPORT_FLAGGED_SHOWN]]
+    if len(flagged) > REPORT_FLAGGED_SHOWN:
+        shown.append("and %d more" % (len(flagged) - REPORT_FLAGGED_SHOWN))
+    warnings = data.get("warnings")
+    yield row([len(top), sum(1 for value in rank.values() if value == SEVERITY_RANK["high"]),
+               sum(1 for value in rank.values() if value == SEVERITY_RANK["medium"]),
+               len(warnings) if isinstance(warnings, list) else 0, "; ".join(shown)])
+
+
 # -- A long command's stderr, as agentvm_job.py keeps it ----------------------------------
 # Under --json, agent-vm writes one JSON event per line to stderr while it works, and a failure
 # ends with "Error: <what failed and the fix>", possibly followed by more lines (a guest
@@ -331,7 +405,7 @@ def recipe_rows(path):
 COMMANDS = {"version": version_rows, "status": status_rows, "doctor": doctor_rows,
             "images": image_rows, "boxes": box_rows, "packs": pack_rows,
             "execlog": execlog_rows, "netlog": netlog_rows, "secrets": secret_rows,
-            "sizes": size_rows}
+            "sizes": size_rows, "sessions": session_rows, "report-summary": report_summary_rows}
 
 
 def main(argv):

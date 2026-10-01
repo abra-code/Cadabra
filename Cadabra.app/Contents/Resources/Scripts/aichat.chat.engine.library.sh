@@ -419,6 +419,92 @@ $why"
 	return 0
 }
 
+# chat_engine_snapshot <win> <external-active> <use-tools>
+#   The project snapshot (aichat.snapshot.library.sh): 0 once it is taken, or when none is wanted;
+#   also 0 when the user chose to start without one after it failed. 1 when the user canceled the
+#   start then, or the window closed meanwhile, with nothing of it left registered.
+#
+#   Called last before the transport goes to the window, since the agent starts the moment it
+#   lands and the snapshot must come first: after an agent's or the tools' box started, so the
+#   window's place is known from its box row (the project shared with the box, and whether
+#   read-only). Wanted when Agentic Session Tools' setting for that place says so, for a project
+#   the session can change: not a project shared read-only, and not for a local model without
+#   tools, which reads and writes no file. A window on this Mac with no usable Project folder has
+#   none to take (its agent then works in the home folder, which agent-vm refuses anyway).
+chat_engine_snapshot() {
+	local win="$1" external_active="$2" use_tools="$3"
+	if [ "$external_active" != "true" ]; then
+		case "$use_tools" in
+			true|readonly) ;;
+			*) return 0 ;;
+		esac
+	fi
+	local place=mac read_only=no project
+	local box_row="$(boxsession_registry_row "$win")"
+	if [ -n "$box_row" ]; then
+		place=box
+		project="$(printf '%s\n' "$box_row" | /usr/bin/cut -f4)"
+		read_only="$(printf '%s\n' "$box_row" | /usr/bin/cut -f5)"
+	else
+		project="$(mcp_prefs_get_string servers/local/project)"
+	fi
+	local wanted="$(mcp_snapshot_setting "$place")"
+	if [ "$wanted" != "true" ]; then
+		return 0
+	fi
+	if [ "$read_only" = "yes" ]; then
+		echo "snapshot: none for a project shared read-only ($project)"
+		return 0
+	fi
+	case "$project" in
+		/*) ;;
+		*)  project="" ;;
+	esac
+	if [ -z "$project" ] || [ ! -d "$project" ]; then
+		echo "snapshot: no usable project folder (${project:-none})"
+		return 0
+	fi
+	chat_loading_overlay_note "$win" "Taking a snapshot of the project..."
+	local why id
+	why="$(agentvm_available 2>/dev/null)"
+	local snap_status=$?
+	if [ "$snap_status" -eq 0 ]; then
+		id="$(snapshot_start "$win" "$project")"
+		snap_status=$?
+		if [ "$snap_status" -ne 0 ]; then
+			why="$(agentvm_last_error "$snap_status")"
+		fi
+	else
+		why="A snapshot needs AgentVM. ${why:-agent-vm cannot be used on this Mac.}"
+	fi
+	if [ "$snap_status" -ne 0 ]; then
+		echo "snapshot: refused ($project, status $snap_status): $why"
+		"$alert" --level "caution" --title "$APPLET_NAME" --ok "Start Without Snapshot" --cancel "Cancel" \
+			"Could not take a snapshot of the project, so what this session changes cannot be reviewed or undone in Cadabra.
+
+$why"
+		local answer=$?
+		if [ "$answer" -eq 0 ]; then
+			echo "snapshot: starting without one"
+			return 0
+		fi
+		echo "snapshot: start canceled"
+		return 1
+	fi
+	# A window closed while the snapshot was taken: its close handler may have run before the row
+	# existed, so nothing else would end the session before Cadabra quits.
+	chat_window_is_open "$win"
+	local still_open=$?
+	if [ "$still_open" -ne 0 ]; then
+		echo "snapshot: the window closed while $id started; releasing it"
+		snapshot_release "$win"
+		return 1
+	fi
+	echo "snapshot: session $id ($place, project $project)"
+	snapshot_line_show "$win"
+	return 0
+}
+
 # chat_engine_transport_config <win> <engine> <model-path> <use-tools> <external-command> [port]
 #                              [retiring-model-path] [retiring-window]
 #   Everything ONE engine needs to exist before the window can talk, ending in the ACP transport
@@ -824,6 +910,12 @@ chat_engine_load() {
 		chat_config="$CHAT_ENGINE_CONFIG"
 	fi
 
+	# The project snapshot, last before the transport goes in: the agent starts the moment it lands.
+	if [ "$engine_ready" = 0 ]; then
+		chat_engine_snapshot "$win" "$external_active" "$use_tools"
+		engine_ready=$?
+	fi
+
 	if [ "$engine_ready" = 0 ]; then
 		"$dialog" "$win" "$CHAT_ELEMENT_ID" omc_set_state config "$chat_config"
 		chat_model_bar_set "$win" "$model_label"
@@ -866,12 +958,12 @@ chat_engine_load() {
 		# launch a second server beside it. Nothing to stop on the other engines (they launch no
 		# server) or when the port claim itself failed, and stop_window_server says so and returns.
 		[ -n "$port_num" ] && stop_window_server "$win" "ENGINE-LOAD-FAILED"
-		# And the box of a local model's tools, when one was started for an engine that then
-		# failed: nothing will use it. An agent's box was released where it failed, and a window
-		# without a box has nothing to release.
-		if [ "$external_active" != "true" ]; then
-			boxsession_release "$win"
-		fi
+		# And the box, when one was started for an engine that then failed or a start the user
+		# canceled at the snapshot: nothing will use it. An agent's box that failed itself was
+		# released where it failed, and a window without a box has nothing to release. The box line
+		# goes with it, since it would describe a box the window no longer has.
+		boxsession_release "$win"
+		"$dialog" "$win" "$boxsession_line_row_id" omc_remove_element 2>/dev/null
 		# Un-claim the window next. Nothing was injected, so it is driving nothing, and the
 		# stamps are what every other handler reads to decide what it is driving - leaving them
 		# set describes a model that is not loaded and locks the window out of a second attempt.
@@ -998,6 +1090,19 @@ Cadabra's tools are set to run in an AgentVM box, and this conversation started 
 	# retitle the window at every step of it, which is how a named conversation ended up with a
 	# model's name where the user's title had been.
 	chat_loading_overlay_show "$win" "$model_label"
+	# THE PROJECT SNAPSHOT for a window that has none: a switch can turn tools on in a conversation
+	# that started without them, and the tools then work on the project. Taken first, while the old
+	# engine still answers, so a Cancel at its question leaves the window exactly as it was. A
+	# window with a snapshot keeps it: taking another would end the one its changes are counted in.
+	local snapshot_row="$(snapshot_registry_row "$win")"
+	if [ -z "$snapshot_row" ]; then
+		chat_engine_snapshot "$win" false "$use_tools"
+		if [ $? -ne 0 ]; then
+			echo "switch canceled at the snapshot; window $win stays on $prev_model_path"
+			chat_loading_overlay_hide "$win"
+			return 1
+		fi
+	fi
 	# Stamped BEFORE the engine work because that work can run for minutes (up to a 300 s wait for
 	# a large --no-mmap model) and other handlers in this window read the stamp while it is in
 	# flight. Nothing between here and the launch reads it - the overlay and the button are passed

@@ -34,6 +34,14 @@ stop_window_server "$OMC_ACTIONUI_WINDOW_UUID" WINDOW-CANCEL
 reap_orphaned_bundle_processes
 srvlog "WINDOW-CANCEL exit hosts_after=[$(srvlog_hosts)] v2_servers_after=[$(srvlog_servers)]"
 
+# The window's project snapshot: its session ends once no window uses it, keeping the snapshot for
+# review and undo, or is discarded when the project did not change. Before the box question below,
+# which waits for the user. Only when the snapshot registry exists.
+if [ -f "$mcp_app_support/snapshot-sessions.tsv" ]; then
+    source "$OMC_APP_BUNDLE_PATH/Contents/Resources/Scripts/aichat.snapshot.library.sh"
+    snapshot_release "$OMC_ACTIONUI_WINDOW_UUID"
+fi
+
 # The window's agent-vm box, when its agent ran in one: a disposable box goes once no window uses
 # it; for a running kept box no window uses any more, the user is asked whether to stop it. Last,
 # because that question waits for the window's own programs in the box to end and then for the

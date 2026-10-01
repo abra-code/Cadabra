@@ -8,8 +8,8 @@
     "frame": {
       "minWidth": 820,
       "idealWidth": 900,
-      "minHeight": 520,
-      "idealHeight": 560
+      "minHeight": 680,
+      "idealHeight": 700
     }
   },
   "children": [
@@ -93,6 +93,15 @@
                 "text": "Primary read-write directory for this session. The assistant treats this as its working folder.",
                 "foregroundStyle": "secondary",
                 "font": "caption"
+              }
+            },
+            {
+              "type": "Toggle",
+              "id": 313,
+              "properties": {
+                "title": "Snapshot the project first, to review and undo changes afterwards",
+                "isOn": false,
+                "style": "checkbox"
               }
             }
           ]
@@ -498,7 +507,8 @@
                   "type": "Toggle",
                   "id": 502,
                   "properties": {
-                    "title": "Read-only project"
+                    "title": "Read-only project",
+                    "actionID": "aichat.mcp.servers.readonly.changed"
                   }
                 },
                 {
@@ -785,7 +795,8 @@
                         "properties": {
                           "title": "Read-only project",
                           "isOn": false,
-                          "style": "checkbox"
+                          "style": "checkbox",
+                          "actionID": "aichat.mcp.servers.readonly.changed"
                         }
                       },
                       {

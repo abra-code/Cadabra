@@ -226,3 +226,23 @@ if [ -n "$box_agent" ]; then
             pb_set "aichatv2_toolsboxpane_${window_uuid}" "yes" ;;
     esac
 fi
+
+# SNAPSHOT THE PROJECT FIRST (313): the setting of the place this launch runs in (an agent's box,
+# or Where tools run), and whether the project is shared read-only there (mcp_snapshot_apply).
+# Start works the place out again the same way and stores the toggle there.
+snapshot_place=mac
+snapshot_read_only=false
+if [ -n "$box_agent" ]; then
+    snapshot_place=box
+    case "$(acp_agent_read_only "$box_agent")" in
+        no) snapshot_read_only=false ;;
+        *)  snapshot_read_only=true ;;
+    esac
+elif [ "$(pb_get "aichatv2_toolsrunin_${window_uuid}")" = "yes" ]; then
+    snapshot_place="$(mcp_snapshot_place "$tools_run_in")"
+    case "$(mcp_tools_read_only)" in
+        no) snapshot_read_only=false ;;
+        *)  snapshot_read_only=true ;;
+    esac
+fi
+mcp_snapshot_apply "$window_uuid" "$snapshot_place" "$snapshot_read_only" show

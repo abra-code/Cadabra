@@ -33,6 +33,10 @@
 #              <readable>" line per secret, which `secret list --json` then answers from (before
 #              that, from secret-list.json). `secret set` stores as readable.
 #   secret-<name>  the value `secret set <name>` read from stdin, as it arrived.
+#   session-agent-vm  the path of a real agent-vm, which then answers every `session` command in a
+#              store of the test's own (session-store here): sessions need no virtual machine,
+#              only an APFS volume, and their snapshots and undo are what the tests check.
+#              Without it, `session` commands fail with 64.
 #
 # -- What it implements ---------------------------------------------------------
 #   --version, version --json, doctor --json, image list --json, box list --json,
@@ -42,7 +46,8 @@
 #   image delete <name> --json, box view <name> ... --json,
 #   image info <name> --json and box info <name> --json (the box must exist),
 #   box shell <name>, box network <name> ... --json (changes nothing), secret list --json, secret set <name> (value on stdin),
-#   secret delete <name>, exec --box <name> ... -- <argv> (runs nothing),
+#   secret delete <name>, exec --box <name> ... -- <argv> (runs nothing), session ... (see
+#   session-agent-vm),
 #   and the long ones, which print progress events on stderr like agent-vm
 #   and exit 130 (SIGINT) or 143 (SIGTERM) when stopped:
 #   box start <name> [--owner-pid N] --json, box stop <name> --json,
@@ -233,6 +238,14 @@ case "$1 $2" in
         progress "$fixtures/update-guest.events" "the setup of $3" ;;
     "image create")
         progress "$fixtures/image-create.events" "the build of $3" ;;
+    "session "*)
+        if [ ! -f "$state/session-agent-vm" ]; then
+            printf 'Error: fake_agent_vm: session commands need the file session-agent-vm\n' >&2
+            exit 64
+        fi
+        AGENT_VM_HOME="$state/session-store"
+        export AGENT_VM_HOME
+        exec "$(/bin/cat "$state/session-agent-vm")" "$@" ;;
     *)
         printf 'Error: fake_agent_vm does not implement: %s\n' "$*" >&2
         exit 64 ;;

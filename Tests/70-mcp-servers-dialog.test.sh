@@ -639,6 +639,90 @@ CADABRA_AGENT_VM="$OMCTEST_WORK/no-agent-vm-in-tests"
 # sticky across runs.
 cad_call launch_queue_clear
 
+section "snapshot the project first: one setting in a box, one on this Mac"
+SNAPSHOT_TOGGLE_ID=313
+check "  (the toggle's id is the library's)" "$SNAPSHOT_TOGGLE_ID" "$(cad_lib_var mcp_snapshot_toggle_view aichat.mcp.servers.library.sh)"
+# snap  ->  the toggle's value, then 1 or 0 for whether it can be changed.
+snap() { printf '%s|%s' "$(ui_value "$SNAPSHOT_TOGGLE_ID")" "$(ui_enabled "$SNAPSHOT_TOGGLE_ID")"; }
+setting() { cad_call_lib aichat.mcp.servers.library.sh mcp_snapshot_setting "$1"; }
+cad_reset
+fresh_window
+omc_run aichat.mcp.servers.init
+check "without agent-vm it shows this Mac's setting, off, and cannot be changed" "false|0" "$(snap)"
+check "  saying what it needs"           "1" "$(cad_has "$(ui_prop "$SNAPSHOT_TOGGLE_ID" help)" 'A snapshot needs AgentVM')"
+omc_run aichat.mcp.servers.cancel
+FAKE_AGENTVM_DIR="$OMCTEST_WORK/fakevm"
+/bin/rm -rf "$FAKE_AGENTVM_DIR"; /bin/mkdir -p "$FAKE_AGENTVM_DIR"
+CADABRA_AGENT_VM="$OMCTEST_TESTS/helpers/fake_agent_vm.sh"
+export FAKE_AGENTVM_DIR CADABRA_AGENT_VM
+check "the defaults: off on this Mac, on in a box" "false|true" "$(setting mac)|$(setting box)"
+fresh_window
+arm_launch "/models/tiny.gguf" "true"
+omc_run aichat.mcp.servers.init
+check "a local model's tools on this Mac: this Mac's setting, which can be changed" "false|1" "$(snap)"
+omc_control "$MCP_TOOLS_RUNIN_PICKER_ID" new:dev
+omc_run aichat.mcp.servers.runin.changed
+check "tools in a box: the box's setting"  "true|1" "$(snap)"
+omc_control "$MCP_TOOLS_BOX_READ_ONLY_TOGGLE_ID" true
+omc_run aichat.mcp.servers.readonly.changed
+check "a read-only project takes no snapshot" "true|0" "$(snap)"
+check "  saying so"                       "1" "$(cad_has "$(ui_prop "$SNAPSHOT_TOGGLE_ID" help)" 'shared read-only')"
+omc_control "$MCP_TOOLS_BOX_READ_ONLY_TOGGLE_ID" false
+omc_run aichat.mcp.servers.readonly.changed
+check "  and read-write again can"        "true|1" "$(snap)"
+omc_control "$SNAPSHOT_TOGGLE_ID" false
+chains_reset
+omc_run aichat.mcp.servers.start
+check "Start stores it for the box, not for this Mac" "false|false" "$(setting box)|$(setting mac)"
+queue_settle "/models/tiny.gguf|true|"
+cad_call launch_queue_clear
+fresh_window
+arm_launch "/models/tiny.gguf" "true"
+omc_run aichat.mcp.servers.init
+check "the next launch in a box shows it" "false|1" "$(snap)"
+omc_control "$MCP_TOOLS_RUNIN_PICKER_ID" mac
+omc_run aichat.mcp.servers.runin.changed
+omc_control "$SNAPSHOT_TOGGLE_ID" true
+chains_reset
+omc_run aichat.mcp.servers.start
+check "and on this Mac, for this Mac"     "true|false" "$(setting mac)|$(setting box)"
+queue_settle "/models/tiny.gguf|true|"
+cad_call launch_queue_clear
+fresh_window
+omc_run aichat.mcp.servers.init
+omc_run aichat.mcp.servers.reset
+check "Reset to Defaults shows the default of where the tools run" "false|1" "$(snap)"
+check "  and stored it"                   "false|true" "$(setting mac)|$(setting box)"
+omc_run aichat.mcp.servers.cancel
+cad_call acp_agent_store claude-code-acp "claude-agent-acp"
+cad_call acp_agent_set_run_in claude-code-acp new:dev-agents
+cad_call acp_agent_set_read_only claude-code-acp yes
+fresh_window
+arm_launch "" "false"
+omc_run aichat.mcp.servers.init
+check "an agent in a box, read-only: the box's setting, fixed" "true|0" "$(snap)"
+omc_control "$MCP_BOX_READ_ONLY_TOGGLE_ID" false
+omc_run aichat.mcp.servers.readonly.changed
+check "  read-write in its panel: it can be changed" "true|1" "$(snap)"
+omc_control "$SNAPSHOT_TOGGLE_ID" false
+chains_reset
+omc_run aichat.mcp.servers.start
+check "  and Start stores it for the box" "false|false" "$(setting box)|$(setting mac)"
+queue_settle "|false|"
+cad_call launch_queue_clear
+cad_call acp_agent_set_run_in claude-code-acp mac
+fresh_window
+arm_launch "" "true"
+omc_run aichat.mcp.servers.init
+check "an agent on this Mac: this Mac's setting" "false|1" "$(snap)"
+omc_control "$SNAPSHOT_TOGGLE_ID" true
+chains_reset
+omc_run aichat.mcp.servers.start
+check "  which Start stores"              "true|false" "$(setting mac)|$(setting box)"
+queue_settle "|true|"
+cad_call launch_queue_clear
+CADABRA_AGENT_VM="$OMCTEST_WORK/no-agent-vm-in-tests"
+
 section "cumulative: no handler wrote to a view id the window does not declare"
 # Cumulative across the whole file, which is what makes one check at the end meaningful.
 # It was not always: ui_reset used to DELETE unknown_ids.log along with the windows, so this

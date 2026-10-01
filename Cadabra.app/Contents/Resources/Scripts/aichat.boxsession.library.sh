@@ -46,14 +46,16 @@ boxsession_registry_file() {
     printf '%s\n' "$mcp_app_support/box-sessions.tsv"
 }
 
-# _boxsession_lock / _boxsession_unlock - the registry's lock, a directory (mkdir is atomic).
+# _boxsession_lock [lock [stale seconds]] / _boxsession_unlock [lock] - the registry's lock, or
+# another lock folder by its path (aichat.snapshot.library.sh's start lock), a directory (mkdir is
+# atomic). [stale seconds] replaces the 30 s below for a lock held across longer work.
 # A lock older than 30 s is left over from a killed handler and is taken over, by renaming it
 # away (only one contender's rename succeeds). A waiter gives up after about 10 s and returns 1:
 # the caller then leaves the registry alone rather than rewrite it unlocked. Every pass counts
 # toward that limit, a takeover too, so a lock that cannot be made (an unwritable folder) ends
 # the wait instead of looping; a lock that vanished between mkdir and stat is simply retried.
 _boxsession_lock() {
-    local _lock="$mcp_app_support/box-sessions.lock"
+    local _lock="${1:-$mcp_app_support/box-sessions.lock}"
     local _tries=0 _made _mtime _now
     /bin/mkdir -p "$mcp_app_support" 2>/dev/null
     while [ "$_tries" -lt 100 ]; do
@@ -65,7 +67,7 @@ _boxsession_lock() {
         _tries=$((_tries + 1))
         _mtime="$(/usr/bin/stat -f%m "$_lock" 2>/dev/null)"
         _now="$(/bin/date +%s)"
-        if [ -n "$_mtime" ] && [ $((_now - _mtime)) -gt 30 ]; then
+        if [ -n "$_mtime" ] && [ $((_now - _mtime)) -gt "${2:-30}" ]; then
             /bin/mv "$_lock" "$_lock.stale.$$" 2>/dev/null
             /bin/rm -rf "$_lock.stale.$$"
             continue
@@ -76,7 +78,7 @@ _boxsession_lock() {
 }
 
 _boxsession_unlock() {
-    /bin/rmdir "$mcp_app_support/box-sessions.lock" 2>/dev/null
+    /bin/rmdir "${1:-$mcp_app_support/box-sessions.lock}" 2>/dev/null
 }
 
 # _boxsession_rewrite <awk program> <window> [row]  ->  the registry rewritten through the awk
@@ -86,12 +88,17 @@ _boxsession_unlock() {
 # Status 1, with the reason left for agentvm_last_error, when the lock could not be had or the
 # file could not be replaced.
 _boxsession_rewrite() {
-    local _program="$1" _window="$2" _row="${3:-}"
-    local _file="$(boxsession_registry_file)"
+    _boxsession_rewrite_file "$(boxsession_registry_file)" "$@"
+}
+
+# _boxsession_rewrite_file <file> <awk program> <window> [row]  ->  _boxsession_rewrite for another
+# registry kept the same way (aichat.snapshot.library.sh's), under the same lock.
+_boxsession_rewrite_file() {
+    local _file="$1" _program="$2" _window="$3" _row="${4:-}"
     _boxsession_lock
     local _status=$?
     if [ "$_status" -ne 0 ]; then
-        _agentvm_refuse 1 "The AgentVM box session list ($_file) is locked by another Cadabra task, or its folder cannot be written."
+        _agentvm_refuse 1 "The AgentVM session list ($_file) is locked by another Cadabra task, or its folder cannot be written."
         return 1
     fi
     local _tmp="$_file.tmp.$$"
@@ -108,7 +115,7 @@ _boxsession_rewrite() {
     /bin/rm -f "$_tmp"
     _boxsession_unlock
     if [ "$_status" -ne 0 ]; then
-        _agentvm_refuse 1 "The AgentVM box session list ($_file) could not be rewritten."
+        _agentvm_refuse 1 "The AgentVM session list ($_file) could not be rewritten."
         return 1
     fi
     return 0
@@ -413,10 +420,11 @@ $_fix"
     return 0
 }
 
-# boxsession_line_refresh <window>  ->  0. Restates the line from the box's network log, and
-# the permission prompts its programs met from its exec log, telling the user of a new prompt
-# once. Nothing for a window without a line. A network log that cannot be read says so on the
-# line, with agent-vm's reason in the tooltip; an exec log that cannot be read adds nothing.
+# boxsession_line_refresh <window>  ->  0. Restates the line from the box's network log, the
+# permission prompts its programs met from its exec log, telling the user of a new prompt once,
+# and what the project changed since its snapshot, when the window has one. Nothing for a window
+# without a line. A network log that cannot be read says so on the line, with agent-vm's reason in
+# the tooltip; an exec log that cannot be read adds nothing.
 boxsession_line_refresh() {
     local _stamp="$(pb_get "aichatv2_boxline_$1")"
     if [ -z "$_stamp" ]; then
@@ -452,6 +460,13 @@ boxsession_line_refresh() {
     fi
     if [ "$_prompt_count" != "0" ]; then
         _help="Permission prompts nobody in the AgentVM box could answer: $(printf '%s\n' "$_prompts" | /usr/bin/awk -F'\t' 'NF > 0 { text = text (text == "" ? "" : ", ") $1 } END { print text }')$boxsession_newline$_help"
+    fi
+    # What the project changed since its snapshot, when the window has one (aichat.snapshot.library.sh).
+    local _snap_text _snap_help
+    _snapshot_changes_text "$1"
+    if [ $? -eq 0 ]; then
+        _tail="$_tail - $_snap_text"
+        _help="$_help$boxsession_newline$_snap_help"
     fi
     local _kept="$(_boxsession_kept_note "$1")"
     if [ -n "$_kept" ]; then
@@ -1342,3 +1357,7 @@ boxsession_release_stale() {
     done
     return 0
 }
+
+# The project snapshot, whose changes the box line shows (_snapshot_changes_text). Last, after
+# everything here is defined: it sources this file in turn, which then returns at once.
+source "$OMC_APP_BUNDLE_PATH/Contents/Resources/Scripts/aichat.snapshot.library.sh"

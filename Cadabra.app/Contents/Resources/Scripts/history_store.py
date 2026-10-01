@@ -926,11 +926,39 @@ def cmd_meta_set(session_dir, key, value):
     return 0
 
 
+def cmd_meta_snapshot(session_dir, session_id, project):
+    """Add a project snapshot (an AgentVM session) to meta.json's "snapshots", a list of
+    {"session", "project"}, oldest first, preserving the rest. A conversation gets one per window
+    it ran in with a snapshot; one already listed is not added again. Atomic as cmd_meta_set."""
+    meta = _read_meta(session_dir)
+    if not isinstance(meta, dict):
+        meta = {}
+    snapshots = meta.get("snapshots")
+    if not isinstance(snapshots, list):
+        snapshots = []
+    if any(isinstance(item, dict) and item.get("session") == session_id for item in snapshots):
+        return 0
+    snapshots.append({"session": session_id, "project": project})
+    meta["snapshots"] = snapshots
+    tmp = os.path.join(session_dir, "meta.json.tmp.%d" % os.getpid())
+    try:
+        with open(tmp, "w") as handle:
+            json.dump(meta, handle, ensure_ascii=False)
+        os.rename(tmp, os.path.join(session_dir, "meta.json"))
+    except (IOError, OSError):
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        return 1
+    return 0
+
+
 def main(argv):
     if len(argv) < 2:
         sys.stderr.write(
             "usage: history_store.py {index|search|transcript|preview|info|title|meta-init|"
-            "meta-set|session-event|session-event-item|session-event-record|"
+            "meta-set|meta-snapshot|session-event|session-event-item|session-event-record|"
             "digest-input} ...\n")
         return 2
     cmd = argv[1]
@@ -1024,6 +1052,11 @@ def main(argv):
             sys.stderr.write("usage: history_store.py meta-set <dir> <key> <value>\n")
             return 2
         return cmd_meta_set(path, argv[3], argv[4])
+    if cmd == "meta-snapshot":
+        if len(argv) < 5 or not argv[3] or not argv[4]:
+            sys.stderr.write("usage: history_store.py meta-snapshot <dir> <session id> <project>\n")
+            return 2
+        return cmd_meta_snapshot(path, argv[3], argv[4])
     sys.stderr.write("unknown subcommand: %s\n" % cmd)
     return 2
 

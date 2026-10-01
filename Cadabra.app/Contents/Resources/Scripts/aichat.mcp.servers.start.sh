@@ -68,6 +68,26 @@ if [ -n "$box_agent" ]; then
     fi
     echo "box mode: $box_agent read-only=$read_only"
 fi
+# Snapshot the project first, stored for the place the launch runs in: an agent's box, or Where
+# tools run (as init worked it out). A toggle with no value keeps the stored setting.
+snapshot_place=mac
+if [ -n "$box_agent" ]; then
+    snapshot_place=box
+elif [ "$(pb_get "aichatv2_toolsrunin_${window_uuid}")" = "yes" ]; then
+    snapshot_place="$(mcp_snapshot_place "${OMC_ACTIONUI_VIEW_292_VALUE:-mac}")"
+fi
+case "${OMC_ACTIONUI_VIEW_313_VALUE:-}" in
+    true|false)
+        mcp_snapshot_set_setting "$snapshot_place" "$OMC_ACTIONUI_VIEW_313_VALUE"
+        status=$?
+        if [ "$status" -ne 0 ]; then
+            "$alert" --level "stop" --title "$APPLET_NAME" --ok "OK" \
+                "Could not save whether to snapshot the project first. Check that ~/Library/Application Support/Cadabra is writable."
+            exit 0
+        fi
+        echo "snapshot ($snapshot_place): $OMC_ACTIONUI_VIEW_313_VALUE" ;;
+esac
+
 pb_set "aichatv2_toolsbox_${window_uuid}" ""
 pb_set "aichatv2_toolsboxpane_${window_uuid}" ""
 

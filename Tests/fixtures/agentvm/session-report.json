@@ -1,0 +1,141 @@
+{
+  "changes": [
+    {
+      "coveredByAncestor": false,
+      "flags": [
+        {
+          "reason": "git hook: runs automatically on the next git operation",
+          "rule": "git-hook",
+          "severity": "high"
+        },
+        {
+          "reason": "executable file added or changed: files written by the agent carry no quarantine attribute, so Gatekeeper will not check them",
+          "rule": "executable",
+          "severity": "medium"
+        }
+      ],
+      "kind": "added",
+      "path": ".git/hooks/pre-commit",
+      "size": 10,
+      "type": "file"
+    },
+    {
+      "coveredByAncestor": false,
+      "flags": [],
+      "kind": "modified",
+      "path": "a.txt",
+      "previousSize": 6,
+      "size": 14,
+      "type": "file"
+    },
+    {
+      "coveredByAncestor": false,
+      "flags": [
+        {
+          "reason": "package manifest or package-manager configuration: install scripts and sources run or load on install",
+          "rule": "package-manifest",
+          "severity": "medium"
+        }
+      ],
+      "kind": "modified",
+      "path": "package.json",
+      "previousSize": 13,
+      "size": 55,
+      "type": "file"
+    },
+    {
+      "coveredByAncestor": false,
+      "flags": [
+        {
+          "reason": "symlink pointing outside the project (/Users/you/.ssh): host tools that follow it read or write elsewhere",
+          "rule": "symlink-escape",
+          "severity": "high"
+        }
+      ],
+      "kind": "added",
+      "path": "sshlink",
+      "size": 20,
+      "symlinkTarget": "/Users/you/.ssh",
+      "type": "symlink"
+    },
+    {
+      "coveredByAncestor": false,
+      "flags": [],
+      "kind": "deleted",
+      "path": "sub/b.txt",
+      "previousSize": 2,
+      "type": "file"
+    },
+    {
+      "coveredByAncestor": false,
+      "entriesInside": 4,
+      "flags": [],
+      "kind": "added",
+      "path": "vendor",
+      "size": 128,
+      "type": "directory"
+    },
+    {
+      "coveredByAncestor": true,
+      "flags": [
+        {
+          "reason": "git folder or gitfile added or replaced: git commands run inside it (shell prompts included) use its hooks and configuration",
+          "rule": "git-dir",
+          "severity": "high"
+        }
+      ],
+      "kind": "added",
+      "path": "vendor/.git",
+      "size": 96,
+      "type": "directory"
+    },
+    {
+      "coveredByAncestor": true,
+      "flags": [
+        {
+          "reason": "git hook: runs automatically on the next git operation",
+          "rule": "git-hook",
+          "severity": "high"
+        }
+      ],
+      "kind": "added",
+      "path": "vendor/.git/hooks",
+      "size": 96,
+      "type": "directory"
+    },
+    {
+      "coveredByAncestor": true,
+      "flags": [
+        {
+          "reason": "git hook: runs automatically on the next git operation",
+          "rule": "git-hook",
+          "severity": "high"
+        },
+        {
+          "reason": "executable file added or changed: files written by the agent carry no quarantine attribute, so Gatekeeper will not check them",
+          "rule": "executable",
+          "severity": "medium"
+        }
+      ],
+      "kind": "added",
+      "path": "vendor/.git/hooks/post-checkout",
+      "size": 10,
+      "type": "file"
+    }
+  ],
+  "generatedAt": "2026-10-01T04:50:49Z",
+  "project": "/Users/you/Development/snapcap/app",
+  "session": "20260930-215049-4171",
+  "snapshotPath": "/Users/you/Development/snapcap/store/Sessions/20260930-215049-4171/snapshot",
+  "startedAt": "2026-10-01T04:50:49Z",
+  "summary": {
+    "added": 3,
+    "deleted": 1,
+    "flaggedHigh": 5,
+    "flaggedMedium": 1,
+    "metadata": 0,
+    "modified": 2,
+    "typeChanged": 0
+  },
+  "warnings": []
+}

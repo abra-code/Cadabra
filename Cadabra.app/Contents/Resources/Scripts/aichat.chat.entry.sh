@@ -77,6 +77,12 @@ EOF
     else
         history_init_meta "$history_root/$sid" "$sid" "$session_model_path" "$session_agent"
     fi
+    # The window's project snapshot, taken before this conversation existed: the record names it,
+    # for reviewing its changes from the history later. Only when the snapshot registry exists.
+    if [ -f "$mcp_app_support/snapshot-sessions.tsv" ]; then
+        source "$OMC_APP_BUNDLE_PATH/Contents/Resources/Scripts/aichat.snapshot.library.sh"
+        snapshot_record_meta "$win"
+    fi
     # Open the transcript with a record of what is answering it. Written BEFORE the first turn is
     # appended below, so it leads the conversation rather than interrupting it, and it is why a
     # conversation reopened months later can still say which model wrote its opening exchange -
@@ -215,6 +221,17 @@ if [ -f "$mcp_app_support/box-sessions.tsv" ]; then
             if [ -n "$envelope_is_message" ]; then
                 boxsession_line_refresh "$win"
             fi
+        ) >/dev/null 2>&1 &
+    fi
+fi
+# The project snapshot line of a window on this Mac (a box line says it itself, above) restates what
+# the project changed, after each message. In the background: agent-vm walks the project.
+if [ -n "$envelope_is_message" ] && [ -f "$mcp_app_support/snapshot-sessions.tsv" ]; then
+    snap_line=$(pb_get "aichatv2_snapline_${win}")
+    if [ -n "$snap_line" ]; then
+        (
+            source "$OMC_APP_BUNDLE_PATH/Contents/Resources/Scripts/aichat.snapshot.library.sh"
+            snapshot_line_refresh "$win"
         ) >/dev/null 2>&1 &
     fi
 fi

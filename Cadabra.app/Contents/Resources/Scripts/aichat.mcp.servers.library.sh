@@ -266,7 +266,7 @@ mcp_tools_set_run_in() {
 mcp_box_setting() {
     local default
     case "$1" in
-        local|pdf|pdfWritable|time) default=true ;;
+        local|pdf|pdfWritable|time|snapshot) default=true ;;
         confineLocal|internet|readOnly) default=false ;;
         *) return 2 ;;
     esac
@@ -288,7 +288,7 @@ mcp_box_setting() {
 # value; 1 when the write did not land. A value of another type is replaced.
 mcp_box_set_setting() {
     case "$1" in
-        local|pdf|pdfWritable|time|confineLocal|internet|readOnly) ;;
+        local|pdf|pdfWritable|time|confineLocal|internet|readOnly|snapshot) ;;
         *) return 2 ;;
     esac
     case "$2" in
@@ -321,6 +321,94 @@ mcp_tools_read_only() {
         false) printf 'no\n' ;;
         *)     printf 'damaged\n' ;;
     esac
+}
+
+# THE PROJECT SNAPSHOT. Agentic Session Tools' "Snapshot the project first" (toggle 313, under the
+# Project folder) has one setting for sessions in an AgentVM box, /servers/box/snapshot (on by
+# default: the box is where an agent is let work without asking), and one for sessions on this Mac,
+# /servers/snapshot (off by default). The window's place decides which one the toggle shows and
+# Start stores: an agent's box, or Where tools run. aichat.snapshot.library.sh takes the snapshot.
+mcp_snapshot_toggle_view=313
+
+# mcp_snapshot_setting <mac|box>  ->  "true" or "false": the stored setting when it is a bool,
+# else the place's default.
+mcp_snapshot_setting() {
+    case "$1" in
+        box) mcp_box_setting snapshot
+             return $? ;;
+        mac) ;;
+        *) return 2 ;;
+    esac
+    local kind="$("$plister" get type "$mcp_prefs" /servers/snapshot 2>/dev/null)"
+    local val="$("$plister" get value "$mcp_prefs" /servers/snapshot 2>/dev/null)"
+    if [ "$kind" = "bool" ]; then
+        case "$val" in
+            true|false) printf '%s\n' "$val"; return 0 ;;
+        esac
+    fi
+    printf 'false\n'
+}
+
+# mcp_snapshot_set_setting <mac|box> <true|false>  ->  0 once stored and read back; 2 for another
+# place or value; 1 when the write did not land. A value of another type is replaced.
+mcp_snapshot_set_setting() {
+    case "$2" in
+        true|false) ;;
+        *) return 2 ;;
+    esac
+    case "$1" in
+        box) mcp_box_set_setting snapshot "$2"
+             return $? ;;
+        mac) ;;
+        *) return 2 ;;
+    esac
+    mcp_prefs_init_if_missing
+    local kind="$("$plister" get type "$mcp_prefs" /servers/snapshot 2>/dev/null)"
+    if [ -n "$kind" ] && [ "$kind" != "bool" ]; then
+        "$plister" remove "$mcp_prefs" /servers/snapshot >/dev/null 2>&1
+        kind=""
+    fi
+    if [ -z "$kind" ]; then
+        "$plister" insert snapshot bool "$2" "$mcp_prefs" /servers >/dev/null 2>&1
+    fi
+    mcp_prefs_set_bool servers/snapshot "$2"
+    local back="$(mcp_snapshot_setting mac)"
+    [ "$back" = "$2" ]
+}
+
+# mcp_snapshot_place <run-in>  ->  "box" for an AgentVM box choice (box:NAME, new:IMAGE), else "mac".
+mcp_snapshot_place() {
+    case "$1" in
+        box:?*|new:?*) printf 'box\n' ;;
+        *) printf 'mac\n' ;;
+    esac
+}
+
+# mcp_snapshot_apply <window_uuid> <mac|box> [<read-only true|false>] [show]  ->  toggle 313 shows
+# the place's setting (with "show"), and can be changed only where a snapshot can be taken: not
+# without a usable agent-vm, which takes it (the tooltip then says why), and not for a project
+# shared read-only, which nothing in the session can change.
+mcp_snapshot_apply() {
+    if [ "${4:-}" = "show" ]; then
+        "$dialog" "$1" $mcp_snapshot_toggle_view "$(mcp_snapshot_setting "$2")"
+    fi
+    # Here rather than at the top: only Agentic Session Tools' handlers call this.
+    source "$OMC_APP_BUNDLE_PATH/Contents/Resources/Scripts/aichat.agentvm.library.sh"
+    local why
+    why="$(agentvm_available 2>/dev/null)"
+    local status=$?
+    if [ "$status" -ne 0 ]; then
+        "$dialog" "$1" $mcp_snapshot_toggle_view omc_disable
+        "$dialog" "$1" $mcp_snapshot_toggle_view omc_set_property help "A snapshot needs AgentVM. ${why:-agent-vm cannot be used on this Mac.}"
+        return 0
+    fi
+    if [ "$2" = "box" ] && [ "${3:-false}" = "true" ]; then
+        "$dialog" "$1" $mcp_snapshot_toggle_view omc_disable
+        "$dialog" "$1" $mcp_snapshot_toggle_view omc_set_property help "No snapshot is taken of a project shared read-only: nothing in the session can change it."
+        return 0
+    fi
+    "$dialog" "$1" $mcp_snapshot_toggle_view omc_enable
+    "$dialog" "$1" $mcp_snapshot_toggle_view omc_set_property help "An instant copy of the project folder when the session starts (APFS copy-on-write: it takes space only as files change), so you can see what the session changed and undo all or part of it. Taken by AgentVM; the project must be on the same disk as your home folder."
 }
 
 # THE TWO PANES. Agentic Session Tools shows the servers of this Mac (HStack 150: the server

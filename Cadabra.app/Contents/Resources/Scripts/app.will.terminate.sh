@@ -72,6 +72,14 @@ if [ -n "$mcp_app_support" ] && [ -d "$mcp_app_support/Sessions" ]; then
     /bin/rm -rf "$mcp_app_support/Sessions"
 fi
 
+# This process's project snapshots: their sessions end now rather than at the next launch; see
+# snapshot_release_own.
+if [ -f "$mcp_app_support/snapshot-sessions.tsv" ]; then
+    echo "terminate: ending this Cadabra's project snapshot sessions"
+    source "$OMC_APP_BUNDLE_PATH/Contents/Resources/Scripts/aichat.snapshot.library.sh"
+    snapshot_release_own
+fi
+
 # This process's agent-vm boxes (windows whose agent ran in one). A window closed by quitting may
 # never run its own close handler, so the rows are released here; see boxsession_release_own.
 if [ -f "$mcp_app_support/box-sessions.tsv" ]; then

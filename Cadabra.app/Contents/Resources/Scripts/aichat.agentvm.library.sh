@@ -1202,3 +1202,67 @@ agentvm_box_shell() {
     /bin/rm -f "$agentvm_err_file"
     return 0
 }
+
+# -- Sessions: a project's snapshot, what changed since, undo --------------------------
+# A session needs no virtual machine: agent-vm clones the project folder on this Mac (APFS
+# copy-on-write) into its store, so the project must be on the store's volume. One session per
+# project is active at a time. Rows as agentvm_json.py's "sessions" and "report-summary" document
+# them; failures leave agent-vm's message for agentvm_last_error, as everywhere in this file.
+
+# agentvm_valid_session_id <id>  ->  0 when <id> has the shape of agent-vm's session ids
+# ("20260930-213838-ad78": digits, lower-case hex letters and "-", starting with a digit), so it
+# can be passed as an argument and never read as an option.
+agentvm_valid_session_id() {
+    case "$1" in
+        [0123456789]*) ;;
+        *) return 1 ;;
+    esac
+    case "$1" in
+        *[!0123456789abcdef-]*) return 1 ;;
+    esac
+    return 0
+}
+
+# _agentvm_need_session <id>  ->  0, or 2 with the reason left for agentvm_last_error.
+_agentvm_need_session() {
+    agentvm_valid_session_id "$1" && return 0
+    _agentvm_refuse 2 "\"$1\" is not an AgentVM session id."
+}
+
+# agentvm_session_start <project>  ->  the new session's row. Refused by agent-vm when the project
+# is the home folder or holds it, is on another volume, or already has an active session.
+agentvm_session_start() {
+    case "$1" in
+        /*) ;;
+        *) _agentvm_refuse 2 "The project must be an absolute path, not \"$1\"."
+           return 2 ;;
+    esac
+    agentvm_rows sessions session start --project "$1"
+}
+
+# agentvm_sessions  ->  every session's row, oldest first.
+agentvm_sessions() {
+    agentvm_rows sessions session list
+}
+
+# agentvm_session_end <id>  ->  the session's row once it is ended: its snapshot is kept for undo,
+# and its project may have a new session.
+agentvm_session_end() {
+    _agentvm_need_session "$1" || return $?
+    agentvm_rows sessions session end "$1"
+}
+
+# agentvm_session_discard <id>  ->  the session's row once its snapshot is deleted; undo is no
+# longer possible. agent-vm ends an active session first.
+agentvm_session_discard() {
+    _agentvm_need_session "$1" || return $?
+    agentvm_rows sessions session discard "$1"
+}
+
+# agentvm_session_summary <id>  ->  one row: what the project changed since the snapshot. Walks
+# the project folder (quick for unchanged files, which agent-vm tells by their status-change time),
+# so it is for a refresh after a message, not for a poll.
+agentvm_session_summary() {
+    _agentvm_need_session "$1" || return $?
+    agentvm_rows report-summary session report "$1"
+}

@@ -57,6 +57,15 @@ mcp_prefs_write_defaults
 "$dialog" "$window_uuid" $BOX_INTERNET_TOGGLE_ID false
 "$dialog" "$window_uuid" $BOX_READ_ONLY_TOGGLE_ID false
 
+# Snapshot the project first, at the default of the place Where tools run names (this Mac where the
+# row is not offered); the box pane's Read-only project is off again above. Reset to Defaults is
+# hidden for an agent in a box, so that place is not one here.
+snapshot_place=mac
+if [ "$(pb_get "aichatv2_toolsrunin_${window_uuid}")" = "yes" ]; then
+    snapshot_place="$(mcp_snapshot_place "${OMC_ACTIONUI_VIEW_292_VALUE:-mac}")"
+fi
+mcp_snapshot_apply "$window_uuid" "$snapshot_place" false show
+
 mcp_refresh_rw_table "$window_uuid" $RW_TABLE_ID
 mcp_refresh_path_table "$window_uuid" $RO_TABLE_ID servers/local/allowed-read
 
