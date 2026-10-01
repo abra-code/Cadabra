@@ -42,9 +42,8 @@ mcp_prefs_write_defaults
 "$dialog" "$window_uuid" $PDF_WRITABLE_TOGGLE_ID true
 "$dialog" "$window_uuid" $PROJECT_FIELD_ID  ""
 
-# Defaults allow network, so the network-dependent toggles are interactive again; and
+# Defaults allow network, so the search toggle is interactive again; and
 # the PDF server is on, so its nested editing toggle is interactive too.
-"$dialog" "$window_uuid" $TIME_TOGGLE_ID   omc_enable
 "$dialog" "$window_uuid" $SEARCH_TOGGLE_ID omc_enable
 "$dialog" "$window_uuid" $PDF_WRITABLE_TOGGLE_ID omc_enable
 

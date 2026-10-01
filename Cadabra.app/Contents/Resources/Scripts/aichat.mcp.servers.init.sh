@@ -40,15 +40,14 @@ else
     "$dialog" "$window_uuid" $PDF_WRITABLE_TOGGLE_ID omc_disable
 fi
 
-# Allow Network master gate. When off, the network-dependent server toggles are
-# greyed out (their stored values are kept and restored when network is re-enabled).
+# Allow Network master gate. When off, the search server's toggle is greyed out (its stored
+# value is kept and restored when network is re-enabled). Date & Time uses no network, so the
+# gate leaves it alone.
 allow_network=$(mcp_prefs_get_bool allow-network)
 "$dialog" "$window_uuid" $NETWORK_TOGGLE_ID "$allow_network"
 if [ "$allow_network" = "true" ]; then
-    "$dialog" "$window_uuid" $TIME_TOGGLE_ID   omc_enable
     "$dialog" "$window_uuid" $SEARCH_TOGGLE_ID omc_enable
 else
-    "$dialog" "$window_uuid" $TIME_TOGGLE_ID   omc_disable
     "$dialog" "$window_uuid" $SEARCH_TOGGLE_ID omc_disable
 fi
 

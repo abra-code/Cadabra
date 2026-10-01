@@ -29,8 +29,8 @@ source "$OMC_APP_BUNDLE_PATH/Contents/Resources/Scripts/aichat.library.sh"
 #   /servers/local/include-session-tmpdir : bool  (grant the login session $TMPDIR RW)
 #
 # allow-network is a master switch surfaced as the "Allow Network" checkbox. When
-# false, the Time and Web Search & Fetch servers are not started and the local
-# (replay) server is launched with --deny-network, cutting off all outbound/inbound
+# false, the Web Search & Fetch server is not started and the local (replay) server is
+# launched with --deny-network, cutting off all outbound/inbound
 # network for the sandboxed shell. When true, each server follows its own toggle.
 #
 # allowed-write and allowed-read are seeded by mcp_prefs_write_defaults() with the

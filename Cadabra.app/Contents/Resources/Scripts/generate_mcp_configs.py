@@ -37,8 +37,8 @@
 # Almost all sandbox paths come from <mcp_prefs_plist>: the allow-network master
 # gate, per-server enabled flags, the prominent project workspace, and the
 # allowed-read / allowed-write lists shown and edited in the MCP servers dialog. When
-# allow-network is false, the time and search servers are omitted and replay gets
-# --deny-network. The bundled pdf server (pdfutil) is network-free, so it honors only its
+# allow-network is false, the search server is omitted and replay gets --deny-network;
+# the time server needs no network, so it follows only its own flag. The bundled pdf server (pdfutil) is network-free, so it honors only its
 # own enabled flag (plus its own writable flag) and reuses the local sandbox's readable
 # dirs as its --root confinement (see the pdf block below). That plist is seeded with Homebrew, nvm, temp, third-party tool/data
 # dirs, and the app bundle by mcp_prefs_write_defaults() in aichat.library.sh, so
@@ -141,8 +141,9 @@ def box_flag(name: str) -> bool:
     value = box_prefs.get(name) if isinstance(box_prefs, dict) else None
     return value if isinstance(value, bool) else BOX_DEFAULTS[name]
 
-# Master network gate. When false, the network-dependent servers (time, search) are
-# not started and the local (replay) server runs with --deny-network.
+# Master network gate. When false, the search server (the one that uses the network) is not
+# started and the local (replay) server runs with --deny-network. The time server reads only the
+# clock and the time zone data, so it does not depend on it.
 allow_network = prefs.get("allow-network", True)
 
 # ── Build the per-server config table, honoring enabled flags ─────────────────
@@ -298,7 +299,7 @@ if not box.box and srv_enabled("pdf"):
     else:
         print("  pdf server enabled but no readable sandbox paths configured; omitting it")
 
-if not box.box and allow_network and srv_enabled("time"):
+if not box.box and srv_enabled("time"):
     servers["time"] = {
         "command": python3_bin,
         "args": ["-m", "mcp_server_time", "--local-timezone", tz],

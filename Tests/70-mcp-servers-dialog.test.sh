@@ -86,9 +86,9 @@ check "  both of them"               "0" "$(ui_enabled "$MCP_RO_REMOVE_BTN_ID")"
 section "with nothing queued, the confirm button just saves"
 check "the button says Save" "Save" "$(ui_prop "$MCP_CONFIRM_BTN_ID" title)"
 
-section "the network gate greys its dependents without forgetting them"
-# The stored values must survive being greyed out: a user who turns network off and on again
-# must get their Time and Search choices back, not defaults.
+section "the network gate greys the search server without forgetting it"
+# The stored value must survive being greyed out: a user who turns network off and on again
+# must get their Search choice back, not the default. Time is not gated: it uses no network.
 cad_reset
 cad_call mcp_prefs_write_defaults >/dev/null 2>&1
 cad_call mcp_prefs_set_bool servers/search/enabled false
@@ -96,7 +96,7 @@ cad_call mcp_prefs_set_bool allow-network false
 fresh_window
 omc_run aichat.mcp.servers.init
 check "network shows off"        "false" "$(ui_value "$MCP_NETWORK_TOGGLE_ID")"
-check "time is greyed out"       "0"     "$(ui_enabled "$MCP_TIME_TOGGLE_ID")"
+check "time stays interactive: it uses no network" "no" "$([ "$(ui_enabled "$MCP_TIME_TOGGLE_ID")" = 0 ] && echo greyed || echo no)"
 check "search is greyed out"     "0"     "$(ui_enabled "$MCP_SEARCH_TOGGLE_ID")"
 check "but time still reads on"  "true"  "$(ui_value "$MCP_TIME_TOGGLE_ID")"
 check "and search still reads off" "false" "$(ui_value "$MCP_SEARCH_TOGGLE_ID")"
@@ -113,9 +113,9 @@ omc_run aichat.mcp.servers.init
 check "pdf shows off"                  "false" "$(ui_value "$MCP_PDF_TOGGLE_ID")"
 check "editing is greyed out"          "0"     "$(ui_enabled "$MCP_PDF_WRITABLE_TOGGLE_ID")"
 check "  but keeps its stored value"   "true"  "$(ui_value "$MCP_PDF_WRITABLE_TOGGLE_ID")"
-check "the network toggles are not greyed" "1" "$(ui_enabled "$MCP_TIME_TOGGLE_ID")"
+check "the network toggle's dependent is not greyed" "1" "$(ui_enabled "$MCP_SEARCH_TOGGLE_ID")"
 
-section "toggling network live moves the dependents, and persists"
+section "toggling network live moves the search server, and persists"
 cad_reset
 cad_call mcp_prefs_write_defaults >/dev/null 2>&1
 fresh_window
@@ -123,12 +123,11 @@ omc_control "$MCP_NETWORK_TOGGLE_ID" false
 omc_run aichat.mcp.servers.toggle.network
 check_status "the toggle handler ran" 0
 check "the choice is stored"   "false" "$(cad_call mcp_prefs_get_bool allow-network)"
-check "time greys out"         "0"     "$(ui_enabled "$MCP_TIME_TOGGLE_ID")"
+check "time does not grey out" "no"    "$([ "$(ui_enabled "$MCP_TIME_TOGGLE_ID")" = 0 ] && echo greyed || echo no)"
 check "search greys out"       "0"     "$(ui_enabled "$MCP_SEARCH_TOGGLE_ID")"
 omc_control "$MCP_NETWORK_TOGGLE_ID" true
 omc_run aichat.mcp.servers.toggle.network
 check "turning it back on stores that" "true" "$(cad_call mcp_prefs_get_bool allow-network)"
-check "  and time is interactive again" "1"   "$(ui_enabled "$MCP_TIME_TOGGLE_ID")"
 check "  and search too"                "1"   "$(ui_enabled "$MCP_SEARCH_TOGGLE_ID")"
 
 section "toggling PDF live moves its nested switch, and persists"
@@ -289,7 +288,7 @@ check "pdf is on again"          "true" "$(ui_value "$MCP_PDF_TOGGLE_ID")"
 check "the project field is cleared" "1"  "$(cad_writes "$MCP_PROJECT_FIELD_ID")"
 check "  to the empty string"        ""   "$(ui_value "$MCP_PROJECT_FIELD_ID")"
 check "  and so is the stored value" ""  "$(cad_call mcp_prefs_get_string servers/local/project)"
-check "time is interactive"      "1" "$(ui_enabled "$MCP_TIME_TOGGLE_ID")"
+check "search is interactive"    "1" "$(ui_enabled "$MCP_SEARCH_TOGGLE_ID")"
 check "pdf editing is interactive" "1" "$(ui_enabled "$MCP_PDF_WRITABLE_TOGGLE_ID")"
 check "the tables are repainted"  "2" "$(ui_row_count "$MCP_RW_TABLE_ID")"
 check "the - buttons are disabled again" "0" "$(ui_enabled "$MCP_RW_REMOVE_BTN_ID")"

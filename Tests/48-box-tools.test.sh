@@ -290,6 +290,12 @@ with_fake boxsession_release w1
 ( CADABRA_AGENT_VM="$FAKE"; export CADABRA_AGENT_VM; cad_call_lib aichat.mcp.servers.library.sh \
     aichat_acp_transport_json /bin/mlx-agent openai http://127.0.0.1:8099/v1 w1 true >/dev/null 2>&1 )
 check "with the record cleared the servers run on this Mac again" "$OMC_APP_BUNDLE_PATH/Contents/Support/replay" "$(server "$cfg" local 's["command"]')"
+cad_call mcp_prefs_set_bool allow-network false
+( CADABRA_AGENT_VM="$FAKE"; export CADABRA_AGENT_VM; cad_call_lib aichat.mcp.servers.library.sh \
+    aichat_acp_transport_json /bin/mlx-agent openai http://127.0.0.1:8099/v1 w1 true >/dev/null 2>&1 )
+check "  on this Mac with the network off: the time server stays, search goes" "present|absent" \
+    "$(server "$cfg" time '"present"')|$(server "$cfg" search 's')"
+cad_call mcp_prefs_set_bool allow-network true
 cad_pb_set aichatv2_boxtools_w1 "b1${TAB}relative${TAB}no${TAB}/g${TAB}/c"
 json=$( ( CADABRA_AGENT_VM="$FAKE"; export CADABRA_AGENT_VM; cad_call_lib aichat.mcp.servers.library.sh \
     aichat_acp_transport_json /bin/mlx-agent openai http://127.0.0.1:8099/v1 w1 true 2>/dev/null ) )

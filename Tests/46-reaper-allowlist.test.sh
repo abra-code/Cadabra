@@ -31,6 +31,7 @@ section "the existing bundle executables are still swept"
 check "llama-server"       "yes" "$(swept "$B/Support/Llama.cpp/llama-server --port 8150 -m /m/x.gguf")"
 check "the bundled Python" "yes" "$(swept "$B/Library/Python/bin/python3 -m mcp_server_time")"
 check "replay"             "yes" "$(swept "$B/Support/replay --mcp-server --allow-write /p")"
+check "pdfutil"            "yes" "$(swept "$B/Support/pdfutil mcp --root /p --writable")"
 check "mlx-agent"          "yes" "$(swept "$B/Support/MLX/mlx-agent acp --model m")"
 
 section "agent-vm: exec clients are swept"

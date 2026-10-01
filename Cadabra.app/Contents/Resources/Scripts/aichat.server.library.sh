@@ -81,7 +81,7 @@ forget_server_host_entry() {
 # Orphaned bundle-process reaping (registry-independent safety net)
 # ──────────────────────────────────────────────────────────────
 #
-# Four kinds of process run out of THIS app bundle and can outlive the session that
+# Five kinds of process run out of THIS app bundle and can outlive the session that
 # started them:
 #   • llama-server       ($OMC_APP_BUNDLE_PATH/Contents/Support/Llama.cpp/llama-server)
 #     — the model server, one per chat window, launched with '&' from the init handler
@@ -91,7 +91,9 @@ forget_server_host_entry() {
 #     — the time / search MCP servers, children of mlx-agent
 #   • replay             ($OMC_APP_BUNDLE_PATH/Contents/Support/replay) — the Local
 #     (files & shell) MCP server, a child of mlx-agent
-# A fifth kind runs out of the installed agent-vm (or the developer override) but is not a
+#   - pdfutil            ($OMC_APP_BUNDLE_PATH/Contents/Support/pdfutil) - the PDF MCP
+#     server, a child of mlx-agent
+# A sixth kind runs out of the installed agent-vm (or the developer override) but is not a
 # bundle process in the same sense: `agent-vm exec`, the client that runs one program in a
 # box for mlx-agent or the chat. Only that subcommand is swept; see _bundle_managed_process.
 #
@@ -125,7 +127,7 @@ forget_server_host_entry() {
 
 # _bundle_managed_process <args-string> [other agent-vm]
 # 0 if the command's executable lives in a swept bundle dir (llama-server, bundled
-# python, replay, or mlx-agent), or is an agent-vm exec client. Matches the START of the whole
+# python, replay, pdfutil, or mlx-agent), or is an agent-vm exec client. Matches the START of the whole
 # argument string, so a bundle path containing spaces is handled and a path that only appears
 # as a later argument is not mistaken for the executable.
 #
@@ -162,7 +164,7 @@ forget_server_host_entry() {
 # app). It is swept anyway for the case that self-teardown cannot cover - an agent wedged
 # mid-generation, or one whose own MCP children outlive it - since a survivor would hold the
 # session's MCP servers open. Sweeping it also reaps the agent's descendants (replay, the
-# bundled python servers), which the two classes above already match.
+# bundled python servers, pdfutil), which the classes above already match.
 _bundle_managed_process() {
     case "$1" in
         "$OMC_APP_BUNDLE_PATH/Contents/Library/Python/bin/python3 $OMC_APP_BUNDLE_PATH/Contents/Resources/Scripts/agentvm_job.py run "*)
@@ -170,6 +172,8 @@ _bundle_managed_process() {
         "$OMC_APP_BUNDLE_PATH/Contents/Library/Python/"*)                 return 0 ;;
         "$OMC_APP_BUNDLE_PATH/Contents/Support/replay"|\
         "$OMC_APP_BUNDLE_PATH/Contents/Support/replay "*)                 return 0 ;;
+        "$OMC_APP_BUNDLE_PATH/Contents/Support/pdfutil"|\
+        "$OMC_APP_BUNDLE_PATH/Contents/Support/pdfutil "*)                return 0 ;;
         "$OMC_APP_BUNDLE_PATH/Contents/Support/Llama.cpp/llama-server"|\
         "$OMC_APP_BUNDLE_PATH/Contents/Support/Llama.cpp/llama-server "*) return 0 ;;
         "$OMC_APP_BUNDLE_PATH/Contents/Support/MLX/mlx-agent"|\
