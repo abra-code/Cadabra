@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "description": "Homebrew and Node",
+  "description": "Homebrew",
   "steps": [
     {
       "name": "Homebrew folder, owned by the box user",
@@ -13,16 +13,18 @@
       "env": { "HOMEBREW_NO_ANALYTICS": "1" }
     },
     {
-      "name": "Node",
-      "run": "/opt/homebrew/bin/brew install node",
-      "env": { "HOMEBREW_NO_ANALYTICS": "1", "HOMEBREW_NO_ENV_HINTS": "1" },
-      "timeoutSeconds": 3600
-    },
-    {
       "name": "Homebrew in login shells",
       "copy": "files/zprofile",
       "to": "~/.zprofile"
     }
   ],
-  "checks": ["brew --version", "node --version", "npm --version"]
+  "update": [
+    {
+      "name": "Homebrew, and everything installed with it",
+      "run": "/opt/homebrew/bin/brew update --quiet && /opt/homebrew/bin/brew upgrade && /opt/homebrew/bin/brew cleanup --prune=all -s",
+      "env": { "HOMEBREW_NO_ANALYTICS": "1", "HOMEBREW_NO_ENV_HINTS": "1" },
+      "timeoutSeconds": 3600
+    }
+  ],
+  "checks": ["brew --version"]
 }
