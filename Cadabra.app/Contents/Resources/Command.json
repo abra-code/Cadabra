@@ -186,6 +186,74 @@
     },
     {
       "ACTIONUI_WINDOW" : {
+        "END_CANCEL_SUBCOMMAND_ID" : "aichat.review.close",
+        "END_OK_SUBCOMMAND_ID" : "aichat.review.close",
+        "INIT_SUBCOMMAND_ID" : "aichat.review.init",
+        "IS_BLOCKING" : false,
+        "JSON_NAME" : "aichat.review",
+        "WINDOW_TITLE" : "Review Changes"
+      },
+      "COMMAND_ID" : "aichat.review",
+      "EXECUTION_MODE" : "exe_shell_script",
+      "NAME" : "Cadabra"
+    },
+    {
+      "COMMAND_ID" : "aichat.review.init",
+      "EXECUTION_MODE" : "exe_script_file",
+      "NAME" : "Cadabra"
+    },
+    {
+      "COMMAND_ID" : "aichat.review.close",
+      "EXECUTION_MODE" : "exe_script_file",
+      "NAME" : "Cadabra"
+    },
+    {
+      "COMMAND_ID" : "aichat.review.selection.changed",
+      "EXECUTION_MODE" : "exe_script_file",
+      "NAME" : "Cadabra"
+    },
+    {
+      "COMMAND_ID" : "aichat.review.undo.selected",
+      "EXECUTION_MODE" : "exe_script_file",
+      "NAME" : "Cadabra"
+    },
+    {
+      "COMMAND_ID" : "aichat.review.undo.all",
+      "EXECUTION_MODE" : "exe_script_file",
+      "NAME" : "Cadabra"
+    },
+    {
+      "COMMAND_ID" : "aichat.review.keep",
+      "EXECUTION_MODE" : "exe_script_file",
+      "NAME" : "Cadabra"
+    },
+    {
+      "COMMAND_ID" : "aichat.review.reveal",
+      "EXECUTION_MODE" : "exe_script_file",
+      "NAME" : "Cadabra"
+    },
+    {
+      "COMMAND_ID" : "aichat.review.refresh",
+      "EXECUTION_MODE" : "exe_script_file",
+      "NAME" : "Cadabra"
+    },
+    {
+      "COMMAND_ID" : "aichat.review.done",
+      "EXECUTION_MODE" : "exe_script_file",
+      "NAME" : "Cadabra"
+    },
+    {
+      "COMMAND_ID" : "aichat.chat.review",
+      "EXECUTION_MODE" : "exe_script_file",
+      "NAME" : "Cadabra"
+    },
+    {
+      "COMMAND_ID" : "aichat.history.review",
+      "EXECUTION_MODE" : "exe_script_file",
+      "NAME" : "Cadabra"
+    },
+    {
+      "ACTIONUI_WINDOW" : {
         "END_CANCEL_SUBCOMMAND_ID" : "aichat.box.network.close",
         "END_OK_SUBCOMMAND_ID" : "aichat.box.network.close",
         "INIT_SUBCOMMAND_ID" : "aichat.box.network.init",
@@ -457,6 +525,21 @@
     },
     {
       "COMMAND_ID" : "aichat.mcp.servers.readonly.changed",
+      "EXECUTION_MODE" : "exe_script_file",
+      "NAME" : "Cadabra"
+    },
+    {
+      "COMMAND_ID" : "aichat.mcp.servers.box.sandbox",
+      "EXECUTION_MODE" : "exe_script_file",
+      "NAME" : "Cadabra"
+    },
+    {
+      "COMMAND_ID" : "aichat.mcp.servers.box.network",
+      "EXECUTION_MODE" : "exe_script_file",
+      "NAME" : "Cadabra"
+    },
+    {
+      "COMMAND_ID" : "aichat.mcp.servers.info.done",
       "EXECUTION_MODE" : "exe_script_file",
       "NAME" : "Cadabra"
     },

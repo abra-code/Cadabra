@@ -508,15 +508,18 @@ box_set readOnly true
 check "a kept box and read-only read back" "box:b1|yes" \
     "$(cad_call_lib aichat.mcp.servers.library.sh mcp_tools_run_in)|$(cad_call_lib aichat.mcp.servers.library.sh mcp_tools_read_only)"
 
-section "the box pane says what a kept box may reach"
+section "Network Rules... says what a kept box may reach"
 net_places="${TMPDIR:-/tmp}/cadabra-runin-places.nettest$$"
 printf 'available\nbox\tfenced\tallowlist\tpack:npm,opencode.ai\nbox\tbare\tallowlist\t-\nbox\tshut\toff\t-\nbox\twide\topen\t-\nbox\told\t-\t-\n' > "$net_places"
-net_line() { cad_call_lib aichat.mcp.servers.library.sh mcp_tools_box_network_line "nettest$$" "box:$1"; }
-check "an allowlist, its rules"           "Its network: allowlist - pack:npm, opencode.ai" "$(net_line fenced)"
-check "  none"                            "Its network: allowlist, no rules" "$(net_line bare)"
-check "  off"                             "Its network: off" "$(net_line shut)"
-check "  open"                            "Its network: open (any host, also on your local network)" "$(net_line wide)"
-check "  no mode recorded runs open in agent-vm, and says so" "Its network: open (any host, also on your local network)" "$(net_line old)"
+net_text() { cad_call_lib aichat.mcp.servers.library.sh mcp_tools_box_network_text "nettest$$" "$@" | /usr/bin/paste -sd'|' -; }
+check "an allowlist, its rules a list item each" 'Programs in it reach only these hosts and packs of hosts:||- `pack:npm`|- `opencode.ai`' "$(net_text box:fenced)"
+check "  none"                            "Its network is an **allowlist with no rules**: programs in it reach no host." "$(net_text box:bare)"
+check "  off"                             "Its network is **off**: programs in it reach no host." "$(net_text box:shut)"
+check "  open"                            "Its network is **open**: programs in it reach any host, also on your local network." "$(net_text box:wide)"
+check "  no mode recorded runs open in agent-vm, and says so" "Its network is **open**: programs in it reach any host, also on your local network." "$(net_text box:old)"
+check "a new box for tools"               "A new box reaches nothing, or any public host with **Internet** on." "$(net_text new:dev)"
+check "  and for an agent, with the agent's hosts" "1" "$(cad_has "$(net_text new:dev opencode)" 'the hosts the agent needs and those saved for it')"
+check "a box that is not listed: nothing" "" "$(net_text box:gone)"
 /bin/rm -f "$net_places"
 
 /bin/rm -rf "$TOOLS_ROOT" "$PYCACHE"

@@ -583,15 +583,6 @@
                       },
                       {
                         "type": "Text",
-                        "id": 529,
-                        "properties": {
-                          "text": "",
-                          "foregroundStyle": "secondary",
-                          "font": "caption"
-                        }
-                      },
-                      {
-                        "type": "Text",
                         "properties": {
                           "text": "The box sees only the project folder above, at the same path, .env files included.",
                           "foregroundStyle": "secondary",
@@ -639,18 +630,34 @@
                         },
                         "children": [
                           {
-                            "type": "Toggle",
-                            "id": 523,
-                            "properties": {
-                              "title": "Confine to the project",
-                              "isOn": false,
-                              "style": "checkbox"
-                            }
+                            "type": "HStack",
+                            "properties": { "spacing": 8 },
+                            "children": [
+                              {
+                                "type": "Toggle",
+                                "id": 523,
+                                "properties": {
+                                  "title": "Apply sandbox inside the VM box",
+                                  "isOn": false,
+                                  "style": "checkbox"
+                                }
+                              },
+                              {
+                                "type": "Button",
+                                "id": 530,
+                                "properties": {
+                                  "title": "Paths...",
+                                  "controlSize": "small",
+                                  "help": "Show what the sandbox lets these tools change and read",
+                                  "actionID": "aichat.mcp.servers.box.sandbox"
+                                }
+                              }
+                            ]
                           },
                           {
                             "type": "Text",
                             "properties": {
-                              "text": "Also keeps them out of the rest of the box, such as a kept box's logins.",
+                              "text": "Second barrier - usually unnecessary inside a VM box",
                               "foregroundStyle": "secondary",
                               "font": "caption",
                               "padding": {
@@ -811,6 +818,16 @@
                         }
                       }
                     ]
+                  },
+                  {
+                    "type": "Button",
+                    "id": 531,
+                    "properties": {
+                      "title": "Network Rules...",
+                      "controlSize": "small",
+                      "help": "Show which hosts programs in this box may reach",
+                      "actionID": "aichat.mcp.servers.box.network"
+                    }
                   },
                   {
                     "type": "Spacer"

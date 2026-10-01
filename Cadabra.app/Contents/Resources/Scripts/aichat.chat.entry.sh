@@ -136,6 +136,14 @@ else
         # that reached a turn with nothing held.
         history_marker_commit "$win" "$sid" "$CHAT_VIEW_ID" "$envelope" || \
             history_mark_and_show "$win" "$CHAT_VIEW_ID" "$sid" resumed "$(chat_engine_label "$win")"
+        # The conversation now goes on in this window, under the window's project snapshot taken
+        # before it was opened here: its record names that snapshot too, and the sidebar's Review
+        # Changes button, set by the click that opened it, follows.
+        if [ -f "$mcp_app_support/snapshot-sessions.tsv" ]; then
+            source "$OMC_APP_BUNDLE_PATH/Contents/Resources/Scripts/aichat.snapshot.library.sh"
+            snapshot_record_meta "$win"
+            history_review_button "$win" "$sid"
+        fi
     elif [ -n "$envelope_is_message" ] && [ -z "$resume_armed" ]; then
         # STILL HOLDING A LINE, WITH NO OTHER CONVERSATION CLAIMING IT. The element placed whatever
         # this window was holding in front of the message being recorded below, so it has to be
@@ -186,6 +194,7 @@ if [ -n "$newly_minted" ]; then
     if [ -z "$search_term" ]; then
         "$dialog" "$win" "$TABLE_ID" omc_select_row 0
         for b in $ROW_BUTTONS; do "$dialog" "$win" "$b" omc_enable; done
+        history_review_button "$win" "$sid"
     fi
     # And the facts line, which until this moment read "New conversation". Stated here as well
     # as in the case below because a session can be minted by an entry that is not a message -

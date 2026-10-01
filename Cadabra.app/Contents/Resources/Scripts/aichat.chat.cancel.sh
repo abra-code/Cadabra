@@ -37,9 +37,13 @@ srvlog "WINDOW-CANCEL exit hosts_after=[$(srvlog_hosts)] v2_servers_after=[$(srv
 # The window's project snapshot: its session ends once no window uses it, keeping the snapshot for
 # review and undo, or is discarded when the project did not change. Before the box question below,
 # which waits for the user. Only when the snapshot registry exists.
+# When the session it ended left changes flagged high (able to run code later on this Mac: a git
+# hook, a link out of the project), the user is offered a review now; Review Changes opens once
+# this handler ends (omc_next_command schedules it).
 if [ -f "$mcp_app_support/snapshot-sessions.tsv" ]; then
-    source "$OMC_APP_BUNDLE_PATH/Contents/Resources/Scripts/aichat.snapshot.library.sh"
+    source "$OMC_APP_BUNDLE_PATH/Contents/Resources/Scripts/aichat.review.library.sh"
     snapshot_release "$OMC_ACTIONUI_WINDOW_UUID"
+    review_offer_at_close
 fi
 
 # The window's agent-vm box, when its agent ran in one: a disposable box goes once no window uses

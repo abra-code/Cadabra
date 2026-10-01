@@ -51,6 +51,7 @@ label=$(chat_engine_label "$win")
 # Drop any selection and disable the row-action buttons (omc_deselect fires no actionID).
 "$dialog" "$win" "$TABLE_ID" omc_deselect
 for b in $ROW_BUTTONS; do "$dialog" "$win" "$b" omc_disable; done
+"$dialog" "$win" 525 omc_disable
 
 # Remove the Summarize checkbox if a conversation was loaded here before. It belongs to a
 # resume: there is no older half of a new conversation to summarize, and the slot collapses to

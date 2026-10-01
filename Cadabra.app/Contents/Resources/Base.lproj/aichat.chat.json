@@ -74,6 +74,19 @@
           { "type": "Spacer" },
           {
             "type": "Button",
+            "id": 525,
+            "properties": {
+              "systemImage": "clock.arrow.circlepath",
+              "imageScale": "medium",
+              "buttonStyle": "plain",
+              "actionID": "aichat.history.review",
+              "disabled": true,
+              "frame": { "width": 30, "height": 26 },
+              "help": "Review what this conversation's session changed in its project, and undo it"
+            }
+          },
+          {
+            "type": "Button",
             "id": 520,
             "properties": {
               "systemImage": "finder",

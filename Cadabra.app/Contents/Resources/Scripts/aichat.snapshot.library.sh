@@ -211,7 +211,14 @@ snapshot_record_meta() {
 # window's count and row do: otherwise a window could join the session between this count and its
 # end, and be left with a row on an ended (or discarded) session. A lock that cannot be had is
 # not waited for further: the window is going, and its session must still end.
+# A release that ended a session it kept (the project changed) leaves its id in
+# snapshot_released_session and its count of high-risk changes in snapshot_released_high, for the
+# window's close to offer a review; both are empty otherwise.
+snapshot_released_session=""
+snapshot_released_high=""
 snapshot_release() {
+    snapshot_released_session=""
+    snapshot_released_high=""
     local _row="$(snapshot_registry_row "$1")"
     if [ -z "$_row" ]; then
         return 0
@@ -257,6 +264,7 @@ _snapshot_session_end() {
 
 # _snapshot_discard_unchanged <session id>  ->  0. The session is discarded when its project did
 # not change, so there is nothing to review. A session ended or undone elsewhere counts the same.
+# A session kept sets snapshot_released_session and snapshot_released_high (see snapshot_release).
 _snapshot_discard_unchanged() {
     local _status
     local _summary
@@ -267,6 +275,10 @@ _snapshot_discard_unchanged() {
         return 0
     fi
     local _changes="$(printf '%s\n' "$_summary" | /usr/bin/cut -f1)"
+    if [ "$_changes" != "0" ]; then
+        snapshot_released_session="$1"
+        snapshot_released_high="$(printf '%s\n' "$_summary" | /usr/bin/cut -f2)"
+    fi
     if [ "$_changes" = "0" ]; then
         agentvm_session_discard "$1" >/dev/null
         _status=$?
@@ -358,12 +370,20 @@ EOF
     return 0
 }
 
+# The line's Changes... button (aichat.chat.review.sh opens Review Changes), last in the row of
+# either kind of line.
+snapshot_line_changes_id=547
+snapshot_line_changes_json="{\"type\":\"Button\",\"id\":$snapshot_line_changes_id,\"properties\":{\"title\":\"Changes...\",\"buttonStyle\":\"bordered\",\"controlSize\":\"small\",\"help\":\"Review what the session changed in the project since its snapshot, and undo all or part of it\",\"actionID\":\"aichat.chat.review\"}}"
+
 # snapshot_line_show <window>  ->  0. A window on this Mac with a snapshot gets the line, in the
 # box line's place (slot 543 of aichat.chat.json, the same ids: a window has one or the other).
-# A window whose box line is up instead has it restated, now with the changes.
+# A window whose box line is up instead has it restated, now with the changes, and gets the
+# Changes... button after its Network... one.
 snapshot_line_show() {
     local _box_line="$(pb_get "aichatv2_boxline_$1")"
     if [ -n "$_box_line" ]; then
+        "$dialog" "$1" "$snapshot_line_changes_id" omc_remove_element 2>/dev/null
+        "$dialog" "$1" "$boxsession_line_row_id" omc_insert_element "$snapshot_line_changes_json"
         boxsession_line_refresh "$1"
         return 0
     fi
@@ -379,7 +399,7 @@ snapshot_line_show() {
     esac
     pb_set "aichatv2_snapline_$1" "$_head"
     "$dialog" "$1" "$boxsession_line_row_id" omc_remove_element 2>/dev/null
-    "$dialog" "$1" "$boxsession_line_slot_id" omc_insert_element "{\"type\":\"HStack\",\"id\":$boxsession_line_row_id,\"properties\":{\"spacing\":8,\"padding\":{\"top\":0,\"leading\":14,\"bottom\":6,\"trailing\":14},\"frame\":{\"maxWidth\":\"infinity\",\"alignment\":\"leading\"}},\"children\":[{\"type\":\"Label\",\"id\":$boxsession_line_id,\"properties\":{\"title\":\"\",\"systemImage\":\"$snapshot_line_icon\",\"font\":\"footnote\",\"foregroundStyle\":\"secondary\",\"frame\":{\"maxWidth\":\"infinity\",\"alignment\":\"leading\"}}}]}"
+    "$dialog" "$1" "$boxsession_line_slot_id" omc_insert_element "{\"type\":\"HStack\",\"id\":$boxsession_line_row_id,\"properties\":{\"spacing\":8,\"padding\":{\"top\":0,\"leading\":14,\"bottom\":6,\"trailing\":14},\"frame\":{\"maxWidth\":\"infinity\",\"alignment\":\"leading\"}},\"children\":[{\"type\":\"Label\",\"id\":$boxsession_line_id,\"properties\":{\"title\":\"\",\"systemImage\":\"$snapshot_line_icon\",\"font\":\"footnote\",\"foregroundStyle\":\"secondary\",\"frame\":{\"maxWidth\":\"infinity\",\"alignment\":\"leading\"}}},$snapshot_line_changes_json]}"
     snapshot_line_refresh "$1"
 }
 

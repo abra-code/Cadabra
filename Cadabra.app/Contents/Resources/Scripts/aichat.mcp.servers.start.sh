@@ -127,6 +127,8 @@ fi
 pb_set "aichatv2_toolsrunin_${window_uuid}" ""
 # The boxes and images listed for Where tools run (agent_load_places).
 /bin/rm -f "${TMPDIR:-/tmp}/cadabra-runin-places.${window_uuid}"
+# And an information sheet's file, when the window goes with one up (mcp_info_sheet).
+/bin/rm -f "$(mcp_info_sheet_file "$window_uuid")"
 
 mcp_prefs_set_bool   allow-network          "${OMC_ACTIONUI_VIEW_240_VALUE:-true}"
 mcp_prefs_set_bool   servers/time/enabled   "${OMC_ACTIONUI_VIEW_210_VALUE:-true}"

@@ -1,0 +1,301 @@
+{
+  "type": "VStack",
+  "properties": {
+    "spacing": 10,
+    "alignment": "leading",
+    "padding": "default",
+    "frame": {
+      "minWidth": 980,
+      "idealWidth": 1160,
+      "minHeight": 560,
+      "idealHeight": 700
+    }
+  },
+  "children": [
+    {
+      "type": "Grid",
+      "properties": {
+        "alignment": "leading",
+        "horizontalSpacing": 10,
+        "verticalSpacing": 4
+      },
+      "rows": [
+        [
+          {
+            "type": "Text",
+            "properties": {
+              "text": "Project",
+              "foregroundStyle": "secondary"
+            }
+          },
+          {
+            "type": "Text",
+            "id": 901,
+            "properties": {
+              "text": "",
+              "textSelection": "enabled",
+              "frame": {
+                "maxWidth": "infinity",
+                "alignment": "leading"
+              }
+            }
+          }
+        ],
+        [
+          {
+            "type": "Text",
+            "properties": {
+              "text": "Snapshot",
+              "foregroundStyle": "secondary"
+            }
+          },
+          {
+            "type": "Text",
+            "id": 902,
+            "properties": {
+              "text": "",
+              "textSelection": "enabled",
+              "frame": {
+                "maxWidth": "infinity",
+                "alignment": "leading"
+              }
+            }
+          }
+        ],
+        [
+          {
+            "type": "Text",
+            "properties": {
+              "text": "Session",
+              "foregroundStyle": "secondary"
+            }
+          },
+          {
+            "type": "Text",
+            "id": 903,
+            "properties": {
+              "text": "",
+              "textSelection": "enabled",
+              "frame": {
+                "maxWidth": "infinity",
+                "alignment": "leading"
+              }
+            }
+          }
+        ],
+        [
+          {
+            "type": "Text",
+            "properties": {
+              "text": "Changes",
+              "foregroundStyle": "secondary"
+            }
+          },
+          {
+            "type": "Text",
+            "id": 904,
+            "properties": {
+              "text": "",
+              "textSelection": "enabled",
+              "frame": {
+                "maxWidth": "infinity",
+                "alignment": "leading"
+              }
+            }
+          }
+        ]
+      ]
+    },
+    {
+      "type": "Label",
+      "id": 905,
+      "properties": {
+        "title": "",
+        "systemImage": "exclamationmark.triangle",
+        "hidden": true,
+        "foregroundStyle": "secondary",
+        "frame": {
+          "maxWidth": "infinity",
+          "alignment": "leading"
+        }
+      }
+    },
+    {
+      "type": "HSplitView",
+      "properties": {
+        "frame": {
+          "maxWidth": "infinity",
+          "maxHeight": "infinity"
+        }
+      },
+      "children": [
+        {
+          "type": "Table",
+          "id": 910,
+          "properties": {
+            "columns": [
+              " ",
+              "Change",
+              "Path"
+            ],
+            "widths": [
+              26,
+              130,
+              420
+            ],
+            "minWidths": [
+              26,
+              90,
+              160
+            ],
+            "actionID": "aichat.review.selection.changed",
+            "frame": {
+              "minWidth": 480,
+              "idealWidth": 600,
+              "maxWidth": "infinity",
+              "minHeight": 240,
+              "maxHeight": "infinity"
+            }
+          }
+        },
+        {
+          "type": "VStack",
+          "properties": {
+            "spacing": 6,
+            "alignment": "leading",
+            "frame": {
+              "minWidth": 360,
+              "idealWidth": 520,
+              "maxWidth": "infinity",
+              "maxHeight": "infinity",
+              "alignment": "topLeading"
+            }
+          },
+          "children": [
+            {
+              "type": "Text",
+              "id": 920,
+              "properties": {
+                "text": "Select a change to see it.",
+                "font": "headline",
+                "frame": {
+                  "maxWidth": "infinity",
+                  "alignment": "leading"
+                }
+              }
+            },
+            {
+              "type": "Text",
+              "id": 921,
+              "properties": {
+                "text": "",
+                "foregroundStyle": "secondary",
+                "frame": {
+                  "maxWidth": "infinity",
+                  "alignment": "leading"
+                }
+              }
+            },
+            {
+              "type": "ScrollView",
+              "id": 923,
+              "properties": {
+                "hidden": true,
+                "frame": {
+                  "maxWidth": "infinity",
+                  "maxHeight": "infinity"
+                }
+              },
+              "content": {
+                "type": "Diff",
+                "id": 922,
+                "properties": {
+                  "contextLines": 3,
+                  "maxRenderedLines": 2000,
+                  "frame": {
+                    "maxWidth": "infinity",
+                    "alignment": "topLeading"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "HStack",
+      "properties": {
+        "spacing": 8,
+        "frame": {
+          "maxWidth": "infinity"
+        }
+      },
+      "children": [
+        {
+          "type": "Button",
+          "id": 930,
+          "properties": {
+            "title": "Undo This Change...",
+            "disabled": true,
+            "help": "Put the selected entry back as it was in the snapshot; what the session left there is kept in the session's folder",
+            "actionID": "aichat.review.undo.selected"
+          }
+        },
+        {
+          "type": "Button",
+          "id": 931,
+          "properties": {
+            "title": "Undo All...",
+            "disabled": true,
+            "help": "Put every changed entry back as it was in the snapshot; what the session left is kept in the session's folder",
+            "actionID": "aichat.review.undo.all"
+          }
+        },
+        {
+          "type": "Button",
+          "id": 932,
+          "properties": {
+            "title": "Keep Changes...",
+            "disabled": true,
+            "help": "Keep what the session changed and delete the snapshot; the changes can no longer be undone",
+            "actionID": "aichat.review.keep"
+          }
+        },
+        {
+          "type": "Button",
+          "id": 933,
+          "properties": {
+            "title": "Show in Finder",
+            "help": "Show the selected entry, or the project folder, in Finder",
+            "actionID": "aichat.review.reveal"
+          }
+        },
+        {
+          "type": "Spacer"
+        },
+        {
+          "type": "Button",
+          "id": 934,
+          "properties": {
+            "title": "Refresh",
+            "help": "Read what the project changed again",
+            "actionID": "aichat.review.refresh"
+          }
+        },
+        {
+          "type": "Button",
+          "id": 935,
+          "properties": {
+            "title": "Done",
+            "buttonStyle": "borderedProminent",
+            "keyboardShortcut": {
+              "key": "return"
+            },
+            "actionID": "aichat.review.done"
+          }
+        }
+      ]
+    }
+  ]
+}

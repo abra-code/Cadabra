@@ -136,7 +136,6 @@ TOOLS_RUNIN_PICKER_ID=292
 MAC_SERVERS_ID=150
 TOOLS_BOX_PANE_ID=520
 TOOLS_BOX_WHERE_TEXT_ID=521
-TOOLS_BOX_NETWORK_TEXT_ID=529
 TOOLS_BOX_LOCAL_TOGGLE_ID=522
 TOOLS_BOX_CONFINE_TOGGLE_ID=523
 TOOLS_BOX_PDF_TOGGLE_ID=524
@@ -198,7 +197,7 @@ if [ -n "$box_agent" ]; then
     case "$queued_tools" in
         true|readonly)
             source "$OMC_APP_BUNDLE_PATH/Contents/Resources/Scripts/aichat.select.external.agent.library.sh"
-            # For the kept box's network line; nothing is shown when boxes cannot be listed.
+            # For the Network Rules... button; it says so when boxes cannot be listed.
             agent_load_places refresh
             "$dialog" "$window_uuid" $TOOLS_BOX_LOCAL_TOGGLE_ID "$(mcp_box_setting local)"
             "$dialog" "$window_uuid" $TOOLS_BOX_CONFINE_TOGGLE_ID "$(mcp_box_setting confineLocal)"
@@ -215,11 +214,6 @@ if [ -n "$box_agent" ]; then
             case "$run_in" in
                 box:?*|new:?*) "$dialog" "$window_uuid" $TOOLS_BOX_WHERE_TEXT_ID "$where, with Cadabra's tools" ;;
                 *)             "$dialog" "$window_uuid" $TOOLS_BOX_WHERE_TEXT_ID "$where" ;;
-            esac
-            # A new agent box also gets the agent's own hosts, so the tools-only line would be wrong.
-            case "$run_in" in
-                new:?*) "$dialog" "$window_uuid" $TOOLS_BOX_NETWORK_TEXT_ID "A new box reaches the hosts the agent needs and those saved for it, and any public host with Internet on." ;;
-                *)      "$dialog" "$window_uuid" $TOOLS_BOX_NETWORK_TEXT_ID "$(mcp_tools_box_network_line "$window_uuid" "$run_in")" ;;
             esac
             "$dialog" "$window_uuid" $BOX_PANEL_ID omc_hide
             "$dialog" "$window_uuid" $TOOLS_BOX_PANE_ID omc_show

@@ -1266,3 +1266,26 @@ agentvm_session_summary() {
     _agentvm_need_session "$1" || return $?
     agentvm_rows report-summary session report "$1"
 }
+
+# agentvm_session_changes <id>  ->  one row per change, flagged first (agentvm_json.py "changes").
+agentvm_session_changes() {
+    _agentvm_need_session "$1" || return $?
+    agentvm_rows changes session report "$1"
+}
+
+# agentvm_session_undo <id> [path...]  ->  one row, what was put back (agentvm_json.py "undo").
+# With paths (relative to the project, as the report names them), only those entries and what is
+# under them; otherwise every change. Each path goes as --path=<path>, so one that starts with "-"
+# is still a value. What the session left is moved into the session's folder, never deleted.
+agentvm_session_undo() {
+    _agentvm_need_session "$1" || return $?
+    local _id="$1"
+    shift
+    local _path _count=0
+    for _path in "$@"; do
+        set -- "$@" "--path=$_path"
+        _count=$((_count + 1))
+    done
+    shift "$_count"
+    agentvm_rows undo session undo "$_id" "$@"
+}

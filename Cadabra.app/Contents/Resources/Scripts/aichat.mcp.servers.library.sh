@@ -414,22 +414,26 @@ mcp_snapshot_apply() {
 # THE TWO PANES. Agentic Session Tools shows the servers of this Mac (HStack 150: the server
 # toggles, Allow Network, the sandbox paths) or the tools box pane (GroupBox 520), never both;
 # they sit in one ZStack with the external agent's box panel (500). The ids are
-# aichat.mcp.servers.init.sh's MAC_SERVERS_ID, TOOLS_BOX_PANE_ID, TOOLS_BOX_WHERE_TEXT_ID and
-# TOOLS_BOX_NETWORK_TEXT_ID.
+# aichat.mcp.servers.init.sh's MAC_SERVERS_ID, TOOLS_BOX_PANE_ID and TOOLS_BOX_WHERE_TEXT_ID.
 mcp_mac_servers_view=150
 mcp_tools_box_pane_view=520
 mcp_tools_box_where_view=521
-mcp_tools_box_network_view=529
 
-# mcp_tools_box_network_line <window_uuid> <run-in>  ->  what a kept box may reach, from the
-# places Where tools run listed (agent_load_places): "Its network: allowlist - pack:npm,
-# opencode.ai", "... no rules", "... off" or "... open (any host, also on your local network)";
-# for a new box, what it will get. Nothing when the box is not among them. A box with no mode
-# recorded ("-", made before agent-vm had network rules) runs open: agent-vm's BoxNetwork.legacy.
-mcp_tools_box_network_line() {
+# mcp_tools_box_network_text <window_uuid> <run-in> [agent]  ->  what the box may reach, as
+# Markdown for the Network Rules... button's sheet (the pane itself says nothing of it: a rule list
+# is too much for its small print). A kept box's mode and rules, a list item each, from the places
+# Where tools run listed (agent_load_places); for a new box, what it will get, which with [agent]
+# (an agent's own box) includes the agent's hosts. Nothing when the box is not among the places.
+# A box with no mode recorded ("-", made before agent-vm had network rules) runs open: agent-vm's
+# BoxNetwork.legacy.
+mcp_tools_box_network_text() {
     case "$2" in
         new:?*)
-            printf '%s\n' "A new box reaches nothing, or any public host with Internet on."
+            if [ -n "${3:-}" ]; then
+                printf '%s\n' "A new box reaches the hosts the agent needs and those saved for it, and any public host with **Internet** on."
+            else
+                printf '%s\n' "A new box reaches nothing, or any public host with **Internet** on."
+            fi
             return 0 ;;
         box:?*) ;;
         *) return 0 ;;
@@ -438,18 +442,55 @@ mcp_tools_box_network_line() {
     [ -f "$file" ] || return 0
     /usr/bin/awk -F'\t' -v box="${2#box:}" '$1 == "box" && $2 == box {
         mode = $3; rules = $4
-        if (mode == "off") text = "off"
-        else if (mode == "open" || mode == "-" || mode == "") text = "open (any host, also on your local network)"
-        else if (mode != "allowlist") text = mode
-        else if (rules == "" || rules == "-") text = "allowlist, no rules"
-        else { gsub(/,/, ", ", rules); text = "allowlist - " rules }
-        print "Its network: " text
+        if (mode == "off") print "Its network is **off**: programs in it reach no host."
+        else if (mode == "open" || mode == "-" || mode == "") print "Its network is **open**: programs in it reach any host, also on your local network."
+        else if (mode != "allowlist") print "Its network mode is **" mode "**."
+        else if (rules == "" || rules == "-") print "Its network is an **allowlist with no rules**: programs in it reach no host."
+        else {
+            print "Programs in it reach only these hosts and packs of hosts:"
+            print ""
+            n = split(rules, list, ",")
+            for (i = 1; i <= n; i++) print "- `" list[i] "`"
+        }
         exit
     }' "$file"
 }
 
+# mcp_info_sheet <window_uuid> <markdown>  ->  0 once a sheet showing the Markdown (a RichText
+# view and a Done button, aichat.mcp.servers.info.done.sh) is presented on the window; 1 when its
+# JSON could not be written. The sheet is a file of the window's own under TMPDIR, written anew
+# each time, since omc_present_modal takes a resource or a path; its two ids (590, 591) are apart
+# from the window's.
+mcp_info_sheet_file() {
+    printf '%s\n' "${TMPDIR:-/tmp}/cadabra-tools-info.$1.json"
+}
+
+mcp_info_sheet() {
+    local file="$(mcp_info_sheet_file "$1")"
+    /usr/bin/jq -n --arg markdown "$2" '{
+        type: "VStack",
+        properties: { spacing: 12, alignment: "leading", padding: "default", frame: { width: 520 } },
+        children: [
+            { type: "RichText", id: 590,
+              properties: { markdown: $markdown, remoteImages: "never",
+                            frame: { maxWidth: "infinity", alignment: "leading" } } },
+            { type: "HStack", children: [
+                { type: "Spacer" },
+                { type: "Button", id: 591,
+                  properties: { title: "Done", buttonStyle: "borderedProminent",
+                                keyboardShortcut: { key: "return" },
+                                actionID: "aichat.mcp.servers.info.done" } } ] }
+        ]
+    }' > "$file" 2>/dev/null
+    local status=$?
+    if [ "$status" -ne 0 ]; then
+        return 1
+    fi
+    "$dialog" "$1" omc_window omc_present_modal "$file"
+}
+
 # mcp_tools_apply_run_in <window_uuid> <run-in>  ->  Agentic Session Tools follows where the tools
-# run: this Mac's servers, or the box pane saying which box and what it may reach.
+# run: this Mac's servers, or the box pane saying which box.
 mcp_tools_apply_run_in() {
     local where=""
     case "$2" in
@@ -464,7 +505,6 @@ mcp_tools_apply_run_in() {
         return 0
     fi
     "$dialog" "$1" $mcp_tools_box_where_view "$where"
-    "$dialog" "$1" $mcp_tools_box_network_view "$(mcp_tools_box_network_line "$1" "$2")"
     "$dialog" "$1" $mcp_mac_servers_view omc_hide
     "$dialog" "$1" $mcp_tools_box_pane_view omc_show
 }

@@ -588,10 +588,28 @@ omc_control "$MCP_TOOLS_RUNIN_PICKER_ID" new:dev
 omc_run aichat.mcp.servers.runin.changed
 check "choosing a box swaps this Mac's servers for the box pane" "0|1" "$(ui_visible "$MCP_MAC_SERVERS_ID")|$(ui_visible "$MCP_TOOLS_BOX_PANE_ID")"
 check "  saying which box"                "1" "$(cad_has "$(ui_value "$MCP_TOOLS_BOX_WHERE_TEXT_ID")" 'new disposable AgentVM box from dev')"
-check "  and what a new box reaches"      "1" "$(cad_has "$(ui_value "$MCP_TOOLS_BOX_NETWORK_TEXT_ID")" 'reaches nothing, or any public host with Internet on')"
+# sheet  ->  the Markdown of the information sheet last presented on the window.
+sheet() { /usr/bin/jq -r '.children[0].properties.markdown' "${TMPDIR:-/tmp}/cadabra-tools-info.$OMC_ACTIONUI_WINDOW_UUID.json" 2>/dev/null; }
+cad_journal_reset
+omc_run aichat.mcp.servers.box.network
+check "  Network Rules... presents a sheet" "1" "$(cad_has "$(cad_journal omc_window)" "omc_present_modal ${TMPDIR:-/tmp}/cadabra-tools-info.$OMC_ACTIONUI_WINDOW_UUID.json")"
+check "  saying what a new box reaches" "1|1" \
+    "$(cad_has "$(sheet)" '## Network of a new AgentVM box from dev')|$(cad_has "$(sheet)" 'reaches nothing, or any public host with **Internet** on')"
 omc_control "$MCP_TOOLS_RUNIN_PICKER_ID" box:cadabra-spike
 omc_run aichat.mcp.servers.runin.changed
-check "a kept box's own network is shown" "Its network: allowlist - pack:npm" "$(ui_value "$MCP_TOOLS_BOX_NETWORK_TEXT_ID")"
+omc_run aichat.mcp.servers.box.network
+check "a kept box's own rules are listed there, not in the pane" "1|1|1" \
+    "$(cad_has "$(sheet)" '## Network of the AgentVM box cadabra-spike')|$(cad_has "$(sheet)" 'reach only these hosts and packs of hosts')|$(cad_has "$(sheet)" '- `pack:npm`')"
+omc_control "$MCP_PROJECT_FIELD_ID" "/Users/me/src/app"
+omc_run aichat.mcp.servers.box.sandbox
+check "Paths... lists what the sandbox lets the tools change and read" "1|1|1|1" \
+    "$(cad_has "$(sheet)" '- `/Users/me/src/app` (the project)')|$(cad_has "$(sheet)" '- `/private/tmp`')|$(cad_has "$(sheet)" '- `/opt/homebrew`')|$(cad_has "$(sheet)" 'home folder')"
+check "  the sheet is valid JSON with a Done button" "aichat.mcp.servers.info.done" \
+    "$(/usr/bin/jq -r '.children[1].children[1].properties.actionID' "${TMPDIR:-/tmp}/cadabra-tools-info.$OMC_ACTIONUI_WINDOW_UUID.json")"
+cad_journal_reset
+omc_run aichat.mcp.servers.info.done
+check "Done dismisses it and removes its file" "1|gone" \
+    "$(cad_has "$(cad_journal omc_window)" 'omc_dismiss_modal')|$([ -f "${TMPDIR:-/tmp}/cadabra-tools-info.$OMC_ACTIONUI_WINDOW_UUID.json" ] && echo there || echo gone)"
 omc_control "$MCP_TOOLS_RUNIN_PICKER_ID" new:dev
 omc_run aichat.mcp.servers.runin.changed
 omc_control "$MCP_TOOLS_BOX_READ_ONLY_TOGGLE_ID" true

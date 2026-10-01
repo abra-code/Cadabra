@@ -27,6 +27,7 @@ sid="$OMC_ACTIONUI_TABLE_510_COLUMN_2_VALUE"
 
 if [ -z "$sid" ] || ! history_valid_sid "$sid"; then
     for b in $ROW_BUTTONS; do "$dialog" "$win" "$b" omc_disable; done
+    history_review_button "$win" ""
     exit 0
 fi
 
@@ -35,6 +36,7 @@ fi
 # loaded would only churn the display.
 if [ "$(pb_get "aichatv2_session_${win}")" = "$sid" ]; then
     for b in $ROW_BUTTONS; do "$dialog" "$win" "$b" omc_enable; done
+    history_review_button "$win" "$sid"
     exit 0
 fi
 
@@ -100,6 +102,7 @@ if [ "$loaded" -ne 0 ]; then
     # window usable. An alert would be a modal for a click the user can simply repeat.
     "$dialog" "$win" omc_window omc_present_toast "Could not open this conversation." 5
     for b in $ROW_BUTTONS; do "$dialog" "$win" "$b" omc_enable; done
+    history_review_button "$win" "$sid"
     exit 0
 fi
 # THE MARKERS HELD FOR THE CONVERSATION BEING LEFT GO FIRST, before this window is bound to the
@@ -146,6 +149,7 @@ summarize_show "$win" "$sid" "$resolved"
 # and truncated it (see aichat.library.sh).
 
 for b in $ROW_BUTTONS; do "$dialog" "$win" "$b" omc_enable; done
+history_review_button "$win" "$sid"
 
 # The facts line now describes the conversation that was just loaded. Called after the window
 # was rebound above, which is what makes it name this conversation rather than the last one.

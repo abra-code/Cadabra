@@ -805,3 +805,20 @@ summarize_show() {
     [ "$can" = "0" ] && "$dialog" "$win" "$CAD_SUMMARIZE_PICKER_ID" omc_disable
     return 0
 }
+
+# history_review_button <window> <sid or nothing>  ->  0. The sidebar's Review Changes button (525)
+# can be used for a conversation whose record names a project snapshot (meta.json "snapshots",
+# written by aichat.snapshot.library.sh); otherwise, and with no conversation, it cannot. Whether
+# that snapshot still exists is the review window's to say: asking agent-vm on every click would
+# slow the sidebar.
+history_review_button() {
+    local _count=0
+    if [ -n "$2" ] && [ -f "$history_root/$2/meta.json" ]; then
+        _count="$(/usr/bin/jq -r '(.snapshots // []) | length' "$history_root/$2/meta.json" 2>/dev/null)"
+    fi
+    case "$_count" in
+        ''|0|*[!0123456789]*) "$dialog" "$1" 525 omc_disable ;;
+        *) "$dialog" "$1" 525 omc_enable ;;
+    esac
+    return 0
+}

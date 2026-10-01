@@ -37,7 +37,7 @@ if [ "$(pb_get "aichatv2_session_${win}")" = "$sid" ]; then
     history_marker_clear "$win" 1
     pb_set "aichatv2_session_${win}" ""
     pb_set "aichatv2_resume_pending_${win}" ""
-    for b in 521 520 524; do "$dialog" "$win" "$b" omc_disable; done
+    for b in 521 520 524 525; do "$dialog" "$win" "$b" omc_disable; done
     # What is left driving this window once the conversation it was showing is gone. The same
     # end state as New Chat: an empty chat, unbound, with the model bar still naming the engine.
     # Nothing has to be un-named here any more - the window title reports nothing (see

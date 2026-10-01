@@ -24,6 +24,8 @@ Usage (the JSON on stdin):
     agentvm_json.py sizes     <- agent-vm image info <image> --json, or box info <box> --json
     agentvm_json.py sessions  <- agent-vm session list --json, or session start|end|discard --json
     agentvm_json.py report-summary <- agent-vm session report <id> --json
+    agentvm_json.py changes   <- agent-vm session report <id> --json
+    agentvm_json.py undo      <- agent-vm session undo <id> [--path P...] --json
     agentvm_json.py recipe <recipe.json>   an image recipe file, read directly
 The job-log readers at the end (log_progress, log_error) are for agentvm_job.py, which imports
 this file.
@@ -83,6 +85,17 @@ session itself), oldest first:
   the entries inside it (agent-vm's own summary counts the entries); warnings counts the report's warnings (a clock that moved, say). flagged is for people: the
   first REPORT_FLAGGED_SHOWN flagged changes, most severe first, each "path (reason)", joined
   with "; ", then "and N more" when there are more.
+"changes" emits one row per change of a session report, flagged first:
+    severity, change, path, why, type, size, previousSize, coveredBy, symlinkTarget, entriesInside
+  severity is "high" or "medium" (a change's most severe flag; for a folder whose change covers
+  flagged entries, theirs too); change is for people ("Added", "Deleted folder",
+  "Permissions"); why is the flag's reason, or for such a folder "holds N flagged entries, listed below
+  it"; coveredBy is that folder for an entry it covers, which is listed right after it and undone
+  with it. Changes are ordered by severity, then path, each folder's flagged entries after it.
+"undo" emits one row, what `session undo` did:
+    restored, remaining, failed, failures, state
+  restored and failed count entries; failures is for people ("path: reason; ..."); remaining
+  counts changes still undoable; state is the session's afterwards.
 "recipe" emits the recipe, then one row per input and per parameter, in the file's order:
     kind (recipe, input or parameter), name, required, default, description
   The recipe's own row carries commandLineTools in the default column (true, false, or "-" when
@@ -323,6 +336,73 @@ def report_summary_rows(data):
                len(warnings) if isinstance(warnings, list) else 0, "; ".join(shown)])
 
 
+KIND_WORDS = {"added": "Added", "deleted": "Deleted", "modified": "Modified",
+              "typeChanged": "Type changed", "metadata": "Permissions"}
+
+
+def change_rows(data):
+    data = need_object(data, "agent-vm session report --json")
+    changes = objects(need_list(data.get("changes"), "agent-vm session report --json changes"))
+    tops = {str(change.get("path")): change for change in changes
+            if change.get("coveredByAncestor") is not True}
+
+    def covering(change):
+        if change.get("coveredByAncestor") is not True:
+            return None
+        folder = str(change.get("path"))
+        while "/" in folder:
+            folder = folder.rsplit("/", 1)[0]
+            if folder in tops:
+                return folder
+        return None
+
+    def rank(flag):
+        return SEVERITY_RANK[flag["severity"]] if flag else len(SEVERITY_RANK)
+
+    # A change undo restores, ranked by its own flag and those of the flagged entries inside it,
+    # which follow it in the list.
+    group_rank = {path: rank(change_flag(change)) for path, change in tops.items()}
+    inside = {}
+    for change in changes:
+        folder = covering(change)
+        if folder is not None:
+            group_rank[folder] = min(group_rank[folder], rank(change_flag(change)))
+            inside[folder] = inside.get(folder, 0) + 1
+
+    def order(change):
+        folder = covering(change)
+        group = folder if folder is not None else str(change.get("path"))
+        return (group_rank.get(group, len(SEVERITY_RANK)), group, folder is not None, str(change.get("path")))
+
+    for change in sorted(changes, key=order):
+        flag = change_flag(change)
+        path = str(change.get("path"))
+        kind = change.get("kind")
+        word = KIND_WORDS.get(kind, kind)
+        if change.get("type") == "directory" and kind in ("added", "deleted", "typeChanged"):
+            word += " folder"
+        severity = flag["severity"] if flag else None
+        why = (flag.get("reason") or flag.get("rule")) if flag else None
+        if path in inside:
+            count = inside[path]
+            severity = severity or [name for name, value in SEVERITY_RANK.items() if value == group_rank[path]][0]
+            held = "holds %d flagged %s, listed below it" % (count, "entry" if count == 1 else "entries")
+            why = "%s; %s" % (why, held) if why else held
+        yield row([severity, word, path, why, change.get("type"), change.get("size"),
+                   change.get("previousSize"), covering(change), change.get("symlinkTarget"),
+                   change.get("entriesInside")])
+
+
+def undo_rows(data):
+    data = need_object(data, "agent-vm session undo --json")
+    restore = sub(data, "restore")
+    restored = restore.get("restored") if isinstance(restore.get("restored"), list) else []
+    failed = restore.get("failed") if isinstance(restore.get("failed"), dict) else {}
+    yield row([len(restored), restore.get("remaining", 0), len(failed),
+               "; ".join("%s: %s" % (path, reason) for path, reason in sorted(failed.items())),
+               sub(data, "session").get("state")])
+
+
 # -- A long command's stderr, as agentvm_job.py keeps it ----------------------------------
 # Under --json, agent-vm writes one JSON event per line to stderr while it works, and a failure
 # ends with "Error: <what failed and the fix>", possibly followed by more lines (a guest
@@ -405,7 +485,8 @@ def recipe_rows(path):
 COMMANDS = {"version": version_rows, "status": status_rows, "doctor": doctor_rows,
             "images": image_rows, "boxes": box_rows, "packs": pack_rows,
             "execlog": execlog_rows, "netlog": netlog_rows, "secrets": secret_rows,
-            "sizes": size_rows, "sessions": session_rows, "report-summary": report_summary_rows}
+            "sizes": size_rows, "sessions": session_rows, "report-summary": report_summary_rows,
+            "changes": change_rows, "undo": undo_rows}
 
 
 def main(argv):
