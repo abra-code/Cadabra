@@ -133,6 +133,7 @@ fi
 # stores the picker's choice and the box pane.
 TOOLS_RUNIN_ROW_ID=290
 TOOLS_RUNIN_PICKER_ID=292
+TOOLS_SETUP_BUTTON_ID=293
 MAC_SERVERS_ID=150
 TOOLS_BOX_PANE_ID=520
 TOOLS_BOX_WHERE_TEXT_ID=521
@@ -161,10 +162,14 @@ if [ "$tools_launch" = "yes" ]; then
     # Where boxes cannot be used the row still shows while a box is stored, offering This Mac
     # and the stored choice only: hiding it would leave every tools launch refused with no way
     # back to This Mac but Reset to Defaults.
-    if [ "$places_status" -ne 0 ] && [ "$tools_run_in" != "mac" ]; then
-        runin_boxes=""
-        runin_images=""
-        places_status=0
+    # It shows too, with This Mac and Set Up AgentVM..., where the AgentVM app is the next step
+    # (agent_load_places' runin_setup): agent-vm missing or too old, or no box and no image yet.
+    if [ "$places_status" -ne 0 ]; then
+        if [ "$tools_run_in" != "mac" ] || [ "$runin_setup" = "yes" ]; then
+            runin_boxes=""
+            runin_images=""
+            places_status=0
+        fi
     fi
     if [ "$places_status" -eq 0 ]; then
         "$dialog" "$window_uuid" $TOOLS_RUNIN_PICKER_ID omc_set_property options "$(agent_run_in_options "$tools_run_in")"
@@ -180,6 +185,9 @@ if [ "$tools_launch" = "yes" ]; then
             no) "$dialog" "$window_uuid" $TOOLS_BOX_READ_ONLY_TOGGLE_ID false ;;
             *)  "$dialog" "$window_uuid" $TOOLS_BOX_READ_ONLY_TOGGLE_ID true ;;
         esac
+        if [ "$runin_setup" = "yes" ]; then
+            "$dialog" "$window_uuid" $TOOLS_SETUP_BUTTON_ID omc_show
+        fi
         "$dialog" "$window_uuid" $TOOLS_RUNIN_ROW_ID omc_show
         mcp_tools_apply_run_in "$window_uuid" "$tools_run_in"
         pb_set "aichatv2_toolsrunin_${window_uuid}" "yes"

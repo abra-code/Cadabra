@@ -378,6 +378,16 @@
             }
           },
           {
+            "type": "Button",
+            "id": 37,
+            "properties": {
+              "title": "Set Up AgentVM...",
+              "hidden": true,
+              "help": "Open the AgentVM app, which installs AgentVM and makes the images and boxes that agents and tools can run in",
+              "actionID": "aichat.agentvm.app.open"
+            }
+          },
+          {
             "type": "Spacer"
           }
         ]

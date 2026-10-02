@@ -42,7 +42,7 @@ continue_with() {
 }
 
 section "the ids this file drives are the ones the window declares"
-check "the row, the two pickers and Keys..." "31 32 34 36" "$BOX_ROW_ID $RUN_IN_PICKER_ID $LEVEL_PICKER_ID $KEYS_BUTTON_ID"
+check "the row, the two pickers, Keys... and Set Up AgentVM..." "31 32 34 36 37" "$BOX_ROW_ID $RUN_IN_PICKER_ID $LEVEL_PICKER_ID $KEYS_BUTTON_ID $SETUP_BUTTON_ID"
 
 section "the window offers this Mac, the kept boxes and a disposable box from each ready image"
 cad_reset
@@ -86,6 +86,52 @@ omc_run aichat.select.external.agent.init
 check "the row is hidden"                "0" "$(ui_visible "$BOX_ROW_ID")"
 check "  and the picker holds nothing"   "" "$(ui_value "$RUN_IN_PICKER_ID")"
 fake_reset
+
+section "where the AgentVM app is the next step, the row shows This Mac and the way there"
+# No seam and no setting: the installed agent-vm, which the scratch home does not have.
+cad_reset
+fake_reset
+unset CADABRA_AGENT_VM
+ui_reset
+omc_run aichat.select.external.agent.init
+check "nothing installed: the row shows" "1" "$(ui_visible "$BOX_ROW_ID")"
+check "  offering this Mac only"         "mac" "$(options)"
+check "  and Set Up AgentVM..."          "1" "$(ui_visible "$SETUP_BUTTON_ID")"
+check "  agent-vm was never run"         "" "$(/bin/cat "$FAKE_AGENTVM_DIR/log" 2>/dev/null)"
+omc_run aichat.select.external.agent.cancel
+CADABRA_AGENT_VM="$FAKE"
+export CADABRA_AGENT_VM
+printf '[]\n' > "$FAKE_AGENTVM_DIR/box-list.json"
+printf '[]\n' > "$FAKE_AGENTVM_DIR/image-list.json"
+ui_reset
+omc_run aichat.select.external.agent.init
+check "no box and no image yet: the same" "1|mac|1" "$(ui_visible "$BOX_ROW_ID")|$(options)|$(ui_visible "$SETUP_BUTTON_ID")"
+omc_run aichat.select.external.agent.cancel
+fake_reset
+ui_reset
+omc_run aichat.select.external.agent.init
+check "with boxes to choose: no button"  "1|0" "$(ui_visible "$BOX_ROW_ID")|$(ui_visible "$SETUP_BUTTON_ID")"
+omc_run aichat.select.external.agent.cancel
+# The button's handler: the AgentVM app by its link, and nothing for a link with no window.
+OPENED="$OMCTEST_WORK/opened"
+CADABRA_OPEN="$OMCTEST_WORK/fake_open.sh"
+export CADABRA_OPEN
+printf '#!/bin/sh\nprintf "%%s\\n" "$*" >> "%s"\nexit 0\n' "$OPENED" > "$CADABRA_OPEN"
+/bin/chmod +x "$CADABRA_OPEN"
+/bin/rm -f "$OPENED"
+omc_run aichat.agentvm.app.open
+check "Set Up AgentVM... opens the app"  "agentvm://status" "$(/bin/cat "$OPENED" 2>/dev/null)"
+/bin/rm -f "$OPENED"
+saved_uuid="$OMC_ACTIONUI_WINDOW_UUID"
+OMC_ACTIONUI_WINDOW_UUID=""
+ACTIONUI_WINDOW_UUID=""
+export OMC_ACTIONUI_WINDOW_UUID ACTIONUI_WINDOW_UUID
+omc_run aichat.agentvm.app.open
+check "  run with no window, it opens nothing" "" "$(/bin/cat "$OPENED" 2>/dev/null)"
+OMC_ACTIONUI_WINDOW_UUID="$saved_uuid"
+ACTIONUI_WINDOW_UUID="$saved_uuid"
+export OMC_ACTIONUI_WINDOW_UUID ACTIONUI_WINDOW_UUID
+unset CADABRA_OPEN
 
 section "where boxes cannot be used, an agent set to a box can still be moved back to this Mac"
 cad_reset

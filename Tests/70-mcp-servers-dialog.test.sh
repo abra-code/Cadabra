@@ -540,12 +540,27 @@ omc_run aichat.mcp.servers.start
 check "  whose Save stores no share mode" "yes" "$(cad_call acp_agent_read_only claude-code-acp)"
 check "  and opens nothing"              "0" "$(chain_asked aichat.chat)"
 
-section "where a local model's tools run: offered only where boxes can be used"
+section "where a local model's tools run: with no agent-vm, This Mac and the way to the AgentVM app"
 cad_reset
+# No seam and no setting: the installed agent-vm, which the scratch home does not have.
+unset CADABRA_AGENT_VM
 fresh_window
 arm_launch "/models/tiny.gguf" "true"
 omc_run aichat.mcp.servers.init
-check "no agent-vm: the row stays hidden" "no" "$([ "$(ui_visible "$MCP_TOOLS_RUNIN_ROW_ID")" = 1 ] && echo yes || echo no)"
+check "no agent-vm installed: the row shows" "1" "$(ui_visible "$MCP_TOOLS_RUNIN_ROW_ID")"
+check "  offering this Mac only"          "1|0" "$(cad_has "$(ui_prop "$MCP_TOOLS_RUNIN_PICKER_ID" options)" '"tag":"mac"')|$(cad_has "$(ui_prop "$MCP_TOOLS_RUNIN_PICKER_ID" options)" 'section')"
+check "  with Set Up AgentVM..."          "1" "$(ui_visible "$MCP_TOOLS_SETUP_BUTTON_ID")"
+check "  this Mac's servers, not the box pane" "mac|1" "$(ui_value "$MCP_TOOLS_RUNIN_PICKER_ID")|$(ui_visible "$MCP_MAC_SERVERS_ID")"
+omc_run aichat.mcp.servers.cancel
+cad_call launch_queue_clear
+# An agent-vm that cannot be used and that the AgentVM app cannot fix: the seam at a file that
+# is not there, which is also what every other section of this file starts from.
+CADABRA_AGENT_VM="$OMCTEST_WORK/no-agent-vm-in-tests"
+export CADABRA_AGENT_VM
+fresh_window
+arm_launch "/models/tiny.gguf" "true"
+omc_run aichat.mcp.servers.init
+check "boxes that cannot be used here: the row stays hidden" "no" "$([ "$(ui_visible "$MCP_TOOLS_RUNIN_ROW_ID")" = 1 ] && echo yes || echo no)"
 check "  and Start has nothing to store"  "" "$(cad_pb_get "aichatv2_toolsrunin_$OMC_ACTIONUI_WINDOW_UUID")"
 omc_run aichat.mcp.servers.cancel
 cad_call launch_queue_clear
@@ -577,6 +592,7 @@ fresh_window
 arm_launch "/models/tiny.gguf" "true"
 omc_run aichat.mcp.servers.init
 check "a local model's launch shows the row" "1" "$(ui_visible "$MCP_TOOLS_RUNIN_ROW_ID")"
+check "  with no Set Up AgentVM...: there are boxes to choose" "no" "$([ "$(ui_visible "$MCP_TOOLS_SETUP_BUTTON_ID")" = 1 ] && echo yes || echo no)"
 check "  offering the places" \
     "mac |Kept AgentVM boxes box:cadabra-spike box:try1 |New disposable AgentVM box from new:dev new:dev-agents new:dev-node new:dev-xcode new:dev-xcode-ios" \
     "$(tools_options)"

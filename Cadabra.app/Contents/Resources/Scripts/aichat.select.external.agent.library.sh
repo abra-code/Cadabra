@@ -32,6 +32,8 @@ RUN_IN_PICKER_ID=32
 LEVEL_PICKER_ID=34
 # Keys...: the Keys window for the agent, shown in a box when the catalog names keys or a login.
 KEYS_BUTTON_ID=36
+# Set Up AgentVM...: shown in the Runs in row while there is no box to choose.
+SETUP_BUTTON_ID=37
 # The ZStack and its two children. Exactly one child is ever visible: they overlap, so showing
 # both draws the editor on top of the About text.
 ABOUT_PANE_ID=51
@@ -452,6 +454,9 @@ agent_has_keys() {
 # holds no value, which Continue reads as "leave the stored choice alone". An agent set to a box
 # gets the row with This Mac and its stored place only, so the user can move it back to this Mac;
 # kept in the box, it fails at chat start with the reason, rather than quietly running here.
+# Where the AgentVM app can change that (runin_setup: agent-vm is missing or too old, or there
+# is neither a kept box nor a ready image yet), the row shows with This Mac and a Set Up
+# AgentVM... button, so that boxes can be found from here.
 #
 # SPLIT FROM THE PAINT FOR THE PANE-OWNER PROTOCOL. This is the slow half - agent-vm's version,
 # box list and image list, about 2.5 s together on a Mac with a few images - and the picker is a
@@ -466,13 +471,15 @@ runin_level="free"
 runin_keys="no"
 runin_boxes=""
 runin_images=""
+runin_setup="no"
 
 # THE PLACES ARE READ ONCE PER WINDOW. agentvm_available, box list and image list take about
 # 2.5 s together (image list alone 1.9 s), and every click on a row would otherwise pay it again
 # before the pane can update. So init reads them ("refresh") into a file named after the window,
 # and every later handler reuses it ("cached"), reading it again only when it is missing. A box
 # made or deleted in the AgentVM app meanwhile shows the next time this window opens.
-#   line 1: "available" or "unavailable"; then "box<TAB>name<TAB>network mode<TAB>rules" and
+#   line 1: "available", "setup" (agent-vm is missing or too old, which the AgentVM app fixes)
+#   or "unavailable"; then "box<TAB>name<TAB>network mode<TAB>rules" and
 #   "image<TAB>name" lines (the rules comma-joined, "-" for none; Agentic Session Tools shows a
 #   kept box's network from them).
 agent_places_file() {
@@ -480,14 +487,18 @@ agent_places_file() {
 }
 
 # agent_load_places <refresh|cached>  ->  0 with runin_boxes (kept boxes) and runin_images (ready
-# images) set, one name per line; 1 when boxes cannot be used here.
+# images) set, one name per line; 1 when boxes cannot be used here. runin_setup is "yes" when
+# the AgentVM app is where to go next: agent-vm is missing or too old, or it has no kept box and
+# no ready image.
 agent_load_places() {
     local file="$(agent_places_file)"
     if [ "$1" != "cached" ] || [ ! -f "$file" ]; then
         local tmp="$file.$$"
         agentvm_available >/dev/null
         local status=$?
-        if [ "$status" -ne 0 ]; then
+        if [ "$status" -eq "$agentvm_not_installed" ] || [ "$status" -eq "$agentvm_too_old" ]; then
+            printf 'setup\n' > "$tmp"
+        elif [ "$status" -ne 0 ]; then
             printf 'unavailable\n' > "$tmp"
         else
             {
@@ -500,11 +511,16 @@ agent_load_places() {
         /bin/mv -f "$tmp" "$file"
     fi
     local first="$(/usr/bin/head -n 1 "$file" 2>/dev/null)"
+    runin_setup="no"
     if [ "$first" != "available" ]; then
+        [ "$first" = "setup" ] && runin_setup="yes"
         return 1
     fi
     runin_boxes="$(/usr/bin/awk -F'\t' '$1 == "box" { print $2 }' "$file")"
     runin_images="$(/usr/bin/awk -F'\t' '$1 == "image" { print $2 }' "$file")"
+    if [ -z "$runin_boxes" ] && [ -z "$runin_images" ]; then
+        runin_setup="yes"
+    fi
     return 0
 }
 
@@ -524,7 +540,7 @@ agent_prepare_run_in() {
     # Where boxes cannot be used, the row still shows for an agent set to a box, offering This Mac
     # and its stored place only: hiding it would leave every launch of the agent refused, with no
     # way back to This Mac in this window.
-    if [ "$status" -ne 0 ] && [ "$stored" = "mac" ]; then
+    if [ "$status" -ne 0 ] && [ "$stored" = "mac" ] && [ "$runin_setup" != "yes" ]; then
         return 0
     fi
     if [ "$status" -ne 0 ]; then
@@ -558,6 +574,11 @@ agent_paint_run_in() {
     "$dialog_tool" "$window_uuid" $RUN_IN_PICKER_ID omc_set_property options "$runin_options"
     "$dialog_tool" "$window_uuid" $RUN_IN_PICKER_ID "$runin_value"
     "$dialog_tool" "$window_uuid" $LEVEL_PICKER_ID "$runin_level"
+    if [ "$runin_setup" = "yes" ]; then
+        "$dialog_tool" "$window_uuid" $SETUP_BUTTON_ID omc_show
+    else
+        "$dialog_tool" "$window_uuid" $SETUP_BUTTON_ID omc_hide
+    fi
     "$dialog_tool" "$window_uuid" $BOX_ROW_ID omc_show
     agent_apply_run_in "$runin_value" "$runin_keys"
 }
