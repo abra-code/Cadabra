@@ -275,7 +275,8 @@ cad_pb_set "aichatv2_agent_" "SENTINEL"
 # The loading overlay is inserted into declared slot 550 and removed again, so its own id is
 # only ever known at runtime. Declared here rather than silently tripping the undeclared-id
 # check, which no other file reaches because none of them loads an engine.
-ui_declare_ids "$BASE_CHAT_OVERLAY_ELEM_ID" "$HL_CAD_SUMMARIZE_PICKER_ID"
+# The same for the Allow a Folder... button, put into slot 548 after a load and a switch.
+ui_declare_ids "$BASE_CHAT_OVERLAY_ELEM_ID" "$HL_CAD_SUMMARIZE_PICKER_ID" "$(cad_lib_var allow_folder_button_id aichat.allow.folder.library.sh)"
 cad_journal_reset
 eng chat_engine_load "$ENGWIN" "$MLXDIR" false false
 check_status "the engine loads"  0

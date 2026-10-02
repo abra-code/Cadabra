@@ -774,7 +774,16 @@ $mcp_box_args
 EOF
                 generate_stdio_mcp_config "$cfg" "$@" 1>&2
             else
-                generate_stdio_mcp_config "$cfg" 1>&2
+                # Tools on this Mac. A local model's window keeps the folders the user allowed
+                # for it during the conversation (Allow a Folder..., the file beside the config),
+                # so an in-place model switch does not take them away. Not for an external
+                # agent: the folders were allowed for the bundled agent's servers.
+                local window_folders="$(aichat_session_config_dir "$window_uuid")/window-folders.json"
+                if [ "$engine" != "external" ] && [ -f "$window_folders" ]; then
+                    generate_stdio_mcp_config "$cfg" --window-folders "$window_folders" 1>&2
+                else
+                    generate_stdio_mcp_config "$cfg" 1>&2
+                fi
             fi
             ;;
         *)

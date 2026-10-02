@@ -155,6 +155,12 @@
                       "help": "Choose which model answers in this window"
                     }
                   },
+                  {
+                    "type": "HStack",
+                    "id": 548,
+                    "properties": { "spacing": 0 },
+                    "children": [ { "type": "EmptyView" } ]
+                  },
                   { "type": "Spacer" },
                   {
                     "type": "Text",

@@ -10,6 +10,7 @@
 #            <out_json> <app_bundle> <tz> [<mcp_prefs_plist>]
 #            [--box NAME --agent-vm PATH [--agent-vm-home DIR] --project DIR [--read-only]
 #             --guest-tools DIR --guest-pycache DIR [--client mac|in-box]]
+#            [--window-folders FILE]
 #
 # BOX MODE (--box): the servers run in an agent-vm box while the model stays on this Mac. Each
 # server's command becomes `agent-vm exec --box NAME --project DIR [--read-only] [--env N=V ...]
@@ -60,6 +61,7 @@
 import argparse
 import concurrent.futures
 import fcntl
+import hashlib
 import json
 import os
 import plistlib
@@ -105,8 +107,16 @@ _box_parser.add_argument("--read-only", action="store_true")
 _box_parser.add_argument("--guest-tools", default="")
 _box_parser.add_argument("--guest-pycache", default="")
 _box_parser.add_argument("--client", default="mac", choices=("mac", "in-box"))
+_box_parser.add_argument("--window-folders", default="")
 box = _box_parser.parse_args(_box_words)
-if _box_words and not box.box:
+# --window-folders FILE is the one option of a window whose tools run on this Mac, and it
+# comes alone: a box sees one folder of this Mac, its project, fixed when the box starts.
+if box.window_folders:
+    if len(_box_words) != 2:
+        sys.exit("generate_mcp_configs: --window-folders cannot be combined with box options")
+    if not box.window_folders.startswith("/"):
+        sys.exit("generate_mcp_configs: --window-folders must be an absolute path")
+elif _box_words and not box.box:
     sys.exit("generate_mcp_configs: box options need --box")
 if box.box:
     for _name, _value in (("--agent-vm", box.agent_vm), ("--project", box.project),
@@ -129,6 +139,36 @@ if mcp_prefs_plist and os.path.isfile(mcp_prefs_plist):
             prefs = plistlib.load(fh)
     except Exception as e:
         print(f"  warning: could not read MCP prefs ({e}); using defaults")
+
+# ── The window's own folders (--window-folders) ──────────────────────────────
+# Folders the user allowed for one chat window while its conversation ran, on top of the
+# settings: {"read_only": [...], "read_write": [...]}. The file is Cadabra's own, written only
+# from the window's folder chooser. A file that is given but cannot be read ends the script with
+# no config: leaving the folders out would restart the servers without what the user allowed.
+window_read_only = []
+window_read_write = []
+if box.window_folders:
+    try:
+        with open(box.window_folders, "r", encoding="utf-8") as fh:
+            _window = json.load(fh)
+        if not isinstance(_window, dict):
+            raise ValueError("not an object")
+        # Read-only first: a folder in both lists (the applet never writes one so) is read-only.
+        for _key, _into in (("read_only", window_read_only), ("read_write", window_read_write)):
+            for _folder in _window.get(_key) or []:
+                if not isinstance(_folder, str) or not _folder.startswith("/"):
+                    raise ValueError(f"{_key} holds something that is not an absolute path")
+                # The user allowed a real folder, checked against the folders that are never
+                # allowed. A path that has since become a link (or passes through one), or is
+                # no longer a folder, is left out: replay and pdfutil follow links, so a tool
+                # that can write beside the folder could otherwise point it anywhere.
+                if os.path.realpath(_folder) != _folder or not os.path.isdir(_folder):
+                    print(f"  warning: the window's folder {_folder!r} is no longer the folder that was allowed; leaving it out")
+                    continue
+                if _folder not in window_read_write and _folder not in window_read_only:
+                    _into.append(_folder)
+    except (OSError, ValueError) as e:
+        sys.exit(f"generate_mcp_configs: cannot read --window-folders {box.window_folders}: {e}")
 
 def srv_enabled(name: str) -> bool:
     return prefs.get("servers", {}).get(name, {}).get("enabled", True)
@@ -170,6 +210,7 @@ if not box.box and srv_enabled("local"):
     # /usr/lib and /System/Library; the app bundle is not needed because replay
     # self-sandboxes at startup and the local server has no playlist to re-read.)
     allowed_read = [directory for directory in (local_prefs.get("allowed-read") or []) if directory]
+    allowed_read += [directory for directory in window_read_only if directory not in allowed_read]
 
     # Project workspace: the prominent read-write directory chosen by the user.
     # It is passed as the single explicit --allow-write so replay treats it as the
@@ -185,7 +226,7 @@ if not box.box and srv_enabled("local"):
     # the soft MCP path layer stays in sync with the kernel sandbox either way.
     # additional read-write dirs (everything the user added beyond the project):
     profile_read_write = []
-    for directory in (local_prefs.get("allowed-write") or []):
+    for directory in (local_prefs.get("allowed-write") or []) + window_read_write:
         if directory and directory != user_project and directory not in profile_read_write:
             profile_read_write.append(directory)
     # Per-login-session temp dir ($TMPDIR, e.g. /var/folders/xx/.../T): granted
@@ -224,14 +265,22 @@ if not box.box and srv_enabled("local"):
     # need to be inside any granted directory.
     if profile_read_only or profile_read_write:
         os.makedirs(session_dir, exist_ok=True)
-        sandbox_profile_path = os.path.join(session_dir, "mcp-replay-sandbox.json")
         sandbox_profile = {}
         if profile_read_only:
             sandbox_profile["read_only"] = profile_read_only
         if profile_read_write:
             sandbox_profile["read_write"] = profile_read_write
+        profile_text = json.dumps(sandbox_profile, indent=2)
+        # With the window's own folders the profile gets a name of its own, from its content:
+        # mlx-agent restarts a server on a reload only when its command line changed, and replay
+        # reads the profile once, at its start. It also leaves the profile a running session's
+        # replay may still be about to read untouched until the new config replaces the old.
+        profile_name = "mcp-replay-sandbox.json"
+        if window_read_only or window_read_write:
+            profile_name = "mcp-replay-sandbox-%s.json" % hashlib.sha256(profile_text.encode("utf-8")).hexdigest()[:12]
+        sandbox_profile_path = os.path.join(session_dir, profile_name)
         with open(sandbox_profile_path, "w") as profile_file:
-            json.dump(sandbox_profile, profile_file, indent=2)
+            profile_file.write(profile_text)
         replay_args += ["--sandbox-profile", sandbox_profile_path]
 
     servers["local"] = {
@@ -279,6 +328,8 @@ if not box.box and srv_enabled("pdf"):
     for directory in (pdf_local_prefs.get("allowed-write") or []):
         _add_pdf_root(directory)
     for directory in (pdf_local_prefs.get("allowed-read") or []):
+        _add_pdf_root(directory)
+    for directory in window_read_write + window_read_only:
         _add_pdf_root(directory)
     if pdf_local_prefs.get("include-session-tmpdir", True):
         _add_pdf_root(os.environ.get("TMPDIR", ""))

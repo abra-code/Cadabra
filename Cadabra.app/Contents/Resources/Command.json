@@ -253,6 +253,15 @@
       "NAME" : "Cadabra"
     },
     {
+      "CHOOSE_FOLDER_DIALOG" : {
+        "MESSAGE" : "Choose a folder the tools of this window may use",
+        "SHOW_INVISIBLE_ITEMS" : true
+      },
+      "COMMAND_ID" : "aichat.chat.allow.folder",
+      "EXECUTION_MODE" : "exe_script_file",
+      "NAME" : "Cadabra"
+    },
+    {
       "COMMAND_ID" : "aichat.history.review",
       "EXECUTION_MODE" : "exe_script_file",
       "NAME" : "Cadabra"

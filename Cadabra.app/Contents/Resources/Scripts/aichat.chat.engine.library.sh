@@ -26,6 +26,7 @@ source "$OMC_APP_BUNDLE_PATH/Contents/Resources/Scripts/aichat.server.library.sh
 source "$OMC_APP_BUNDLE_PATH/Contents/Resources/Scripts/aichat.model.library.sh"
 source "$OMC_APP_BUNDLE_PATH/Contents/Resources/Scripts/aichat.acp.agents.library.sh"
 source "$OMC_APP_BUNDLE_PATH/Contents/Resources/Scripts/aichat.boxsession.library.sh"
+source "$OMC_APP_BUNDLE_PATH/Contents/Resources/Scripts/aichat.allow.folder.library.sh"
 # For history_marker_lead: a window that can answer holds a line saying what is answering it,
 # ready for its first message. Both callers already source this; the guard inside makes that free.
 source "$OMC_APP_BUNDLE_PATH/Contents/Resources/Scripts/aichat.history.library.sh"
@@ -919,6 +920,7 @@ chat_engine_load() {
 	if [ "$engine_ready" = 0 ]; then
 		"$dialog" "$win" "$CHAT_ELEMENT_ID" omc_set_state config "$chat_config"
 		chat_model_bar_set "$win" "$model_label"
+		allow_folder_button "$win"
 		echo "chat ready ($engine, $model_label) - injected states[config]"
 		# THE CONVERSATION'S OPENING LINE, minted at the moment its model becomes known - this
 		# window can answer as of the line above - and HELD for the first message, which is the
@@ -1262,6 +1264,8 @@ Cadabra's tools are set to run in an AgentVM box, and this conversation started 
 	pb_set "aichatv2_tools_${win}" "$use_tools"
 	chat_engine_remember_recent "$model_path"
 	chat_model_bar_set "$win" "$model_label"
+	# After the tools stamp above: a switch may have turned the window's tools on or off.
+	allow_folder_button "$win"
 
 	# The handover, recorded in the conversation it happened in. This is the case the info pane
 	# cannot describe at all: it names the model the session STARTED with, and an in-place switch
