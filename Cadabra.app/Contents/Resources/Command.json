@@ -613,7 +613,7 @@
         "IS_BLOCKING" : false,
         "JSON_NAME" : "aichat.boxes",
         "WINDOW_DID_ACTIVATE_SUBCOMMAND_ID" : "aichat.boxes.activated",
-        "WINDOW_TITLE" : "AgentVM"
+        "WINDOW_TITLE" : "AgentVM Boxes"
       },
       "COMMAND_ID" : "aichat.boxes",
       "EXECUTION_MODE" : "exe_shell_script",
@@ -635,62 +635,17 @@
       "NAME" : "Cadabra"
     },
     {
+      "COMMAND_ID" : "aichat.boxes.activated",
+      "EXECUTION_MODE" : "exe_script_file",
+      "NAME" : "Cadabra"
+    },
+    {
       "COMMAND_ID" : "aichat.boxes.refresh",
       "EXECUTION_MODE" : "exe_script_file",
       "NAME" : "Cadabra"
     },
     {
-      "COMMAND_ID" : "aichat.boxes.kind.changed",
-      "EXECUTION_MODE" : "exe_script_file",
-      "NAME" : "Cadabra"
-    },
-    {
       "COMMAND_ID" : "aichat.boxes.poll",
-      "EXECUTION_MODE" : "exe_script_file",
-      "NAME" : "Cadabra"
-    },
-    {
-      "COMMAND_ID" : "aichat.boxes.reveal",
-      "EXECUTION_MODE" : "exe_script_file",
-      "NAME" : "Cadabra"
-    },
-    {
-      "COMMAND_ID" : "aichat.boxes.image.selection.changed",
-      "ENVIRONMENT_VARIABLES" : {
-        "OMC_ACTIONUI_TABLE_200_COLUMN_1_VALUE" : ""
-      },
-      "EXECUTION_MODE" : "exe_script_file",
-      "NAME" : "Cadabra"
-    },
-    {
-      "COMMAND_ID" : "aichat.boxes.image.new.box",
-      "ENVIRONMENT_VARIABLES" : {
-        "OMC_ACTIONUI_TABLE_200_COLUMN_1_VALUE" : ""
-      },
-      "EXECUTION_MODE" : "exe_script_file",
-      "NAME" : "Cadabra"
-    },
-    {
-      "COMMAND_ID" : "aichat.boxes.image.update.guest",
-      "ENVIRONMENT_VARIABLES" : {
-        "OMC_ACTIONUI_TABLE_200_COLUMN_1_VALUE" : ""
-      },
-      "EXECUTION_MODE" : "exe_script_file",
-      "NAME" : "Cadabra"
-    },
-    {
-      "COMMAND_ID" : "aichat.boxes.image.setup",
-      "ENVIRONMENT_VARIABLES" : {
-        "OMC_ACTIONUI_TABLE_200_COLUMN_1_VALUE" : ""
-      },
-      "EXECUTION_MODE" : "exe_script_file",
-      "NAME" : "Cadabra"
-    },
-    {
-      "COMMAND_ID" : "aichat.boxes.image.delete",
-      "ENVIRONMENT_VARIABLES" : {
-        "OMC_ACTIONUI_TABLE_200_COLUMN_1_VALUE" : ""
-      },
       "EXECUTION_MODE" : "exe_script_file",
       "NAME" : "Cadabra"
     },
@@ -727,170 +682,10 @@
       "NAME" : "Cadabra"
     },
     {
-      "COMMAND_ID" : "aichat.boxes.box.control",
+      "COMMAND_ID" : "aichat.boxes.agentvm.open",
       "ENVIRONMENT_VARIABLES" : {
         "OMC_ACTIONUI_TABLE_300_COLUMN_1_VALUE" : ""
       },
-      "EXECUTION_MODE" : "exe_script_file",
-      "NAME" : "Cadabra"
-    },
-    {
-      "COMMAND_ID" : "aichat.boxes.box.shell",
-      "ENVIRONMENT_VARIABLES" : {
-        "OMC_ACTIONUI_TABLE_300_COLUMN_1_VALUE" : ""
-      },
-      "EXECUTION_MODE" : "exe_script_file",
-      "NAME" : "Cadabra"
-    },
-    {
-      "COMMAND_ID" : "aichat.boxes.box.delete",
-      "ENVIRONMENT_VARIABLES" : {
-        "OMC_ACTIONUI_TABLE_300_COLUMN_1_VALUE" : ""
-      },
-      "EXECUTION_MODE" : "exe_script_file",
-      "NAME" : "Cadabra"
-    },
-    {
-      "COMMAND_ID" : "aichat.boxes.box.recreate",
-      "ENVIRONMENT_VARIABLES" : {
-        "OMC_ACTIONUI_TABLE_300_COLUMN_1_VALUE" : "",
-        "OMC_ACTIONUI_TABLE_300_COLUMN_3_VALUE" : ""
-      },
-      "EXECUTION_MODE" : "exe_script_file",
-      "NAME" : "Cadabra"
-    },
-    {
-      "COMMAND_ID" : "aichat.boxes.job.selection.changed",
-      "ENVIRONMENT_VARIABLES" : {
-        "OMC_ACTIONUI_TABLE_400_COLUMN_1_VALUE" : "",
-        "OMC_ACTIONUI_TABLE_400_COLUMN_4_VALUE" : ""
-      },
-      "EXECUTION_MODE" : "exe_script_file",
-      "NAME" : "Cadabra"
-    },
-    {
-      "COMMAND_ID" : "aichat.boxes.job.cancel",
-      "ENVIRONMENT_VARIABLES" : {
-        "OMC_ACTIONUI_TABLE_400_COLUMN_1_VALUE" : "",
-        "OMC_ACTIONUI_TABLE_400_COLUMN_4_VALUE" : ""
-      },
-      "EXECUTION_MODE" : "exe_script_file",
-      "NAME" : "Cadabra"
-    },
-    {
-      "COMMAND_ID" : "aichat.boxes.job.forget",
-      "ENVIRONMENT_VARIABLES" : {
-        "OMC_ACTIONUI_TABLE_400_COLUMN_4_VALUE" : ""
-      },
-      "EXECUTION_MODE" : "exe_script_file",
-      "NAME" : "Cadabra"
-    },
-    {
-      "ACTIONUI_WINDOW" : {
-        "INIT_SUBCOMMAND_ID" : "aichat.boxes.box.new.init",
-        "IS_BLOCKING" : false,
-        "JSON_NAME" : "aichat.boxes.box.new",
-        "WINDOW_TITLE" : "AgentVM - New Box"
-      },
-      "COMMAND_ID" : "aichat.boxes.box.new",
-      "EXECUTION_MODE" : "exe_shell_script",
-      "NAME" : "Cadabra"
-    },
-    {
-      "COMMAND_ID" : "aichat.boxes.box.new.init",
-      "EXECUTION_MODE" : "exe_script_file",
-      "NAME" : "Cadabra"
-    },
-    {
-      "COMMAND_ID" : "aichat.boxes.box.new.create",
-      "EXECUTION_MODE" : "exe_script_file",
-      "NAME" : "Cadabra"
-    },
-    {
-      "COMMAND_ID" : "aichat.boxes.box.new.cancel",
-      "EXECUTION_MODE" : "exe_script_file",
-      "NAME" : "Cadabra"
-    },
-    {
-      "COMMAND_ID" : "aichat.boxes.activated",
-      "EXECUTION_MODE" : "exe_script_file",
-      "NAME" : "Cadabra"
-    },
-    {
-      "COMMAND_ID" : "aichat.boxes.images.update.all",
-      "EXECUTION_MODE" : "exe_script_file",
-      "NAME" : "Cadabra"
-    },
-    {
-      "COMMAND_ID" : "aichat.boxes.agentvm.install",
-      "EXECUTION_MODE" : "exe_script_file",
-      "NAME" : "Cadabra"
-    },
-    {
-      "COMMAND_ID" : "aichat.boxes.image.new.from",
-      "ENVIRONMENT_VARIABLES" : {
-        "OMC_ACTIONUI_TABLE_200_COLUMN_1_VALUE" : ""
-      },
-      "EXECUTION_MODE" : "exe_script_file",
-      "NAME" : "Cadabra"
-    },
-    {
-      "ACTIONUI_WINDOW" : {
-        "INIT_SUBCOMMAND_ID" : "aichat.boxes.image.new.init",
-        "IS_BLOCKING" : false,
-        "JSON_NAME" : "aichat.boxes.image.new",
-        "WINDOW_TITLE" : "AgentVM - New Image"
-      },
-      "COMMAND_ID" : "aichat.boxes.image.new",
-      "EXECUTION_MODE" : "exe_shell_script",
-      "NAME" : "Cadabra"
-    },
-    {
-      "COMMAND_ID" : "aichat.boxes.image.new.init",
-      "EXECUTION_MODE" : "exe_script_file",
-      "NAME" : "Cadabra"
-    },
-    {
-      "COMMAND_ID" : "aichat.boxes.image.new.source.changed",
-      "EXECUTION_MODE" : "exe_script_file",
-      "NAME" : "Cadabra"
-    },
-    {
-      "COMMAND_ID" : "aichat.boxes.image.new.recipe.changed",
-      "EXECUTION_MODE" : "exe_script_file",
-      "NAME" : "Cadabra"
-    },
-    {
-      "CHOOSE_FILE_DIALOG" : {
-        "MESSAGE" : "Choose a macOS restore file (.ipsw)"
-      },
-      "COMMAND_ID" : "aichat.boxes.image.new.ipsw.browse",
-      "EXECUTION_MODE" : "exe_script_file",
-      "NAME" : "Cadabra"
-    },
-    {
-      "CHOOSE_FILE_DIALOG" : {
-        "MESSAGE" : "Choose an image recipe (recipe.json)"
-      },
-      "COMMAND_ID" : "aichat.boxes.image.new.recipe.browse",
-      "EXECUTION_MODE" : "exe_script_file",
-      "NAME" : "Cadabra"
-    },
-    {
-      "CHOOSE_FILE_DIALOG" : {
-        "MESSAGE" : "Choose the file for the recipe's input"
-      },
-      "COMMAND_ID" : "aichat.boxes.image.new.input.browse",
-      "EXECUTION_MODE" : "exe_script_file",
-      "NAME" : "Cadabra"
-    },
-    {
-      "COMMAND_ID" : "aichat.boxes.image.new.create",
-      "EXECUTION_MODE" : "exe_script_file",
-      "NAME" : "Cadabra"
-    },
-    {
-      "COMMAND_ID" : "aichat.boxes.image.new.cancel",
       "EXECUTION_MODE" : "exe_script_file",
       "NAME" : "Cadabra"
     },

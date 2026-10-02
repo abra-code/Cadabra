@@ -208,7 +208,7 @@ boxnet_allow_in_box() {
     fi
     local _mode="$(printf '%s\n' "$_boxes" | /usr/bin/awk -F'\t' -v box="$boxnet_box" '$1 == box { print $17; exit }')"
     if [ "$_mode" = "off" ]; then
-        printf '%s\n' "Allowed $2 in AgentVM box $boxnet_box, but the box's network is off, so nothing gets through until it is turned on in Tools > AgentVM while the box is stopped."
+        printf '%s\n' "Allowed $2 in AgentVM box $boxnet_box, but the box's network is off, so nothing gets through until it is turned on in the AgentVM app while the box is stopped."
     else
         printf '%s\n' "Allowed $2 in AgentVM box $boxnet_box. The agent's next try gets through; earlier refusals stay listed."
     fi

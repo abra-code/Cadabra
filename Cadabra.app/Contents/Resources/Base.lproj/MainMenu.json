@@ -43,7 +43,7 @@
           "actionID": "aichat.mcp.inspect"
       } },
       { "type": "Button", "properties": {
-          "title": "AgentVM",
+          "title": "AgentVM Boxes",
           "actionID": "aichat.boxes.open"
       } }
     ]

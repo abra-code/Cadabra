@@ -4,8 +4,7 @@
 # shares the project, the transport that runs the agent there, and the registry that releases
 # the box when its window goes. agent-vm is fake_agent_vm.sh, as in tests 45-47.
 #
-# Needs the sandbox off (the release's stop job runs detached through agentvm_job.py, which
-# uses ps). POSIX sh only. Validate with "sh -n", never "bash -n".
+# Needs the sandbox off. POSIX sh only. Validate with "sh -n", never "bash -n".
 . "${OMCTEST_LIB:?set OMCTEST_LIB, or run via: appletbuilder test}"
 . "$OMCTEST_TESTS/lib.test.cadabra.sh"
 
@@ -299,11 +298,11 @@ fake_reset
 box=$(with_fake boxsession_start w1 new:dev claude-code-acp "$PROJECT" no)
 /bin/cp "$FIXTURES/box-status-running.json" "$FAKE_AGENTVM_DIR/box-$box.json"
 with_fake boxsession_release w1
-check "a running one is stopped by a job" "box stop $box --json" "$(wait_for_log 'box stop')"
+check "a running one is stopped by a job" "job start --json -- box stop $box" "$(wait_for_log 'job start --json -- box stop')"
 fake_reset
 with_fake boxsession_start w1 box:b1 claude-code-acp "$PROJECT" no >/dev/null
 with_fake boxsession_release w1
-check "a kept box is left alone"         "" "$(logged 'box stop')$(logged 'box delete')"
+check "a kept box is left alone"         "" "$(logged 'job start --json -- box stop')$(logged 'box delete')"
 check "  its row removed"                "" "$(/bin/cat "$REGISTRY")"
 with_fake boxsession_release no-such-window
 check "a window with no row releases nothing" "0" "$?"
@@ -325,10 +324,10 @@ kept_box() {
     alerts_reset
     alert_answers_reset
 }
-# stop_jobs  ->  how many stop jobs box b1 has had, from the job list (a job starts detached, so
-# its absence from the fake's log right after the call proves nothing).
+# stop_jobs  ->  how many stop jobs box b1 has had: the ones the fake agent-vm was asked to start.
 stop_jobs() {
-    cad_call_lib aichat.agentvm.library.sh agentvm_jobs | /usr/bin/awk -F'\t' '$2 == "box-stop" && $3 == "box:b1" { n++ } END { print n + 0 }'
+    [ -f "$FAKE_AGENTVM_DIR/jobs" ] || { echo 0; return 0; }
+    /usr/bin/awk -F'\t' '$2 == "box stop b1" { n++ } END { print n + 0 }' "$FAKE_AGENTVM_DIR/jobs"
 }
 fake_reset
 kept_box running 0 999999
@@ -337,7 +336,7 @@ with_fake boxsession_close w1
 check "it asks"                          "1" "$(alerts_mention 'Stop the AgentVM box b1?')"
 check "  naming the slot and the memory" "1" "$(alerts_mention 'two virtual machine slots on this Mac and 4 GB of memory')"
 check "  and that a box Cadabra did not start keeps running" "1" "$(alerts_mention 'Cadabra did not start it, so it keeps running')"
-check "Stop Box stops it with a job"     "box stop b1 --json" "$(wait_for_log 'box stop')"
+check "Stop Box stops it with a job"     "job start --json -- box stop b1" "$(wait_for_log 'job start --json -- box stop')"
 check "  and the row is gone"            "" "$(/bin/cat "$REGISTRY")"
 fake_reset
 kept_box running 0 999999
@@ -364,7 +363,7 @@ fake_reset
 kept_box running 1
 alert_answer 2
 with_fake boxsession_close w1
-check "  while the other one stops it"   "box stop b1 --json" "$(wait_for_log 'box stop')"
+check "  while the other one stops it"   "job start --json -- box stop b1" "$(wait_for_log 'job start --json -- box stop')"
 check "  one program, said once"         "1" "$(alerts_mention '1 program Cadabra did not start runs in it right now')"
 fake_reset
 kept_box running 1

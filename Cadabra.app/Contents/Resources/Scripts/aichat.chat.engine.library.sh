@@ -151,8 +151,8 @@ chat_engine_box_memory_check() {
 
 # chat_engine_agentvm_ready <what>  ->  0 when boxes can be used, else 1 after an alert that
 # starts "<what> set to run in an AgentVM box" ("This agent is", "Cadabra's tools are"). A
-# missing or old AgentVM is one click away: the same install job as the Box Manager's Install
-# AgentVM..., followed there. The conversation still does not start now.
+# missing or old agent-vm is one click away: Open AgentVM opens the AgentVM app, which installs
+# and updates it. The conversation still does not start now.
 chat_engine_agentvm_ready() {
 	local what="$1"
 	local unavailable
@@ -162,30 +162,25 @@ chat_engine_agentvm_ready() {
 		return 0
 	fi
 	echo "box: agent-vm unavailable: $unavailable"
-	local mode="" verb=""
+	local fixable=""
 	case "$available_status" in
-		"$agentvm_not_installed") mode="install"; verb="Install" ;;
-		"$agentvm_too_old")       mode="update";  verb="Update" ;;
+		"$agentvm_not_installed"|"$agentvm_too_old") fixable="yes" ;;
 	esac
-	if [ -z "$mode" ]; then
+	if [ -z "$fixable" ]; then
 		"$alert" --level "stop" --title "$APPLET_NAME" --ok "OK" \
 			"$what set to run in an AgentVM box, and boxes cannot be used here.
 
 $unavailable"
 		return 1
 	fi
-	"$alert" --level "caution" --title "$APPLET_NAME" --ok "$verb AgentVM" --cancel "Cancel" \
+	"$alert" --level "caution" --title "$APPLET_NAME" --ok "Open AgentVM" --cancel "Cancel" \
 		"$what set to run in an AgentVM box, and boxes cannot be used yet.
 
 $unavailable
 
-$verb AgentVM downloads its newest release from GitHub, checks that Apple notarized it and AgentVM's developer signed it, and installs it for your user account, with no administrator password. The AgentVM window shows the progress. Start the conversation again when it is done."
+Start the conversation again when it is done."
 	if [ $? -eq 0 ]; then
-		source "$OMC_APP_BUNDLE_PATH/Contents/Resources/Scripts/aichat.boxes.library.sh"
-		boxes_install_agentvm_elsewhere "$mode"
-		if [ $? -eq 0 ]; then
-			"$next_command" "$OMC_CURRENT_COMMAND_GUID" "aichat.boxes.open"
-		fi
+		agentvm_app_show
 	fi
 	return 1
 }

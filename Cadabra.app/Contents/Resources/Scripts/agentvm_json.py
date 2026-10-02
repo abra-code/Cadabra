@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Turn agent-vm's --json output into tab-separated rows for the shell library.
 
-aichat.agentvm.library.sh runs agent-vm and pipes its JSON here; nothing else in Cadabra reads
-agent-vm's output. agent-vm's human text is for people and changes freely, while its --json
+aichat.agentvm.library.sh runs agent-vm and pipes its JSON here. Nothing else in Cadabra reads
+agent-vm's output, except that library's own jq filters for `agent-vm status`. agent-vm's human text is for people and changes freely, while its --json
 output is a contract, so the shell never parses the text and this file never guesses at it.
 
 THE SAME INVARIANT AS acp_catalog.py: every emitted field is non-empty and contains no tab,
@@ -12,26 +12,18 @@ control characters inside a value become "?" (a path that holds one is shown man
 than splitting a row). Booleans are "true" or "false"; lists are comma-joined.
 
 Usage (the JSON on stdin):
-    agentvm_json.py version   <- agent-vm version --json
     agentvm_json.py status    <- agent-vm box status <box> --json
     agentvm_json.py doctor    <- agent-vm doctor --json
     agentvm_json.py images    <- agent-vm image list --json
     agentvm_json.py boxes     <- agent-vm box list --json
-    agentvm_json.py packs     <- agent-vm box packs --json
     agentvm_json.py execlog   <- agent-vm box execlog <box> --json
     agentvm_json.py netlog    <- agent-vm box netlog <box> --json
     agentvm_json.py secrets   <- agent-vm secret list --json
-    agentvm_json.py sizes     <- agent-vm image info <image> --json, or box info <box> --json
     agentvm_json.py sessions  <- agent-vm session list --json, or session start|end|discard --json
     agentvm_json.py report-summary <- agent-vm session report <id> --json
     agentvm_json.py changes   <- agent-vm session report <id> --json
     agentvm_json.py undo      <- agent-vm session undo <id> [--path P...] --json
-    agentvm_json.py recipe <recipe.json>   an image recipe file, read directly
-The job-log readers at the end (log_progress, log_error) are for agentvm_job.py, which imports
-this file.
 
-"version" emits one row:
-    version, path, guestVersion, guestFeatures, guestDigest, guestError
 "status" emits one row:
     state, pid, supervisorVersion, supervisorPath, startedAt, project, projectReadOnly,
     activeExecs, guestVersion, guestFeatures, image, statusError, ownerPid, memoryGB
@@ -42,18 +34,14 @@ this file.
 "images" emits one row per image:
     name, state, failure, macOS, basedOn, ownSize, needs, recipe, created, guestVersion,
     cpus, memoryGB, diskGB, path, needKinds
-  macOS is "27.0 (26A428)"; ownSize is "-" (agent-vm's lists measure nothing; "sizes"
-  reads image info), and is kept so the later columns keep their places; needs is
+  macOS is "27.0 (26A428)"; ownSize is "-" (agent-vm's lists measure nothing), and is kept
+  so the later columns keep their places; needs is
   for people ("guest update, Full Disk Access"), needKinds for code ("guest-update,...").
 "boxes" emits one row per box:
     name, state, image, network, cpus, memoryGB, ownSize, pid, project, projectReadOnly,
     activeExecs, disposable, ownerPid, startedAt, supervisorVersion, path, netMode, rules
   network is for people ("allowlist, 2 rules"); rules is the allow list, comma-joined; ownSize
   is "-", as for images.
-"packs" emits one row per pack:
-    name, hosts, problem
-  problem is agent-vm's reason a user pack cannot be used; such a pack has no hosts. "-" for a
-  usable pack.
 "execlog" emits one row per program run, oldest first:
     started, status, seconds, program, prompts, stoppedOnPrompt
   status is "no end recorded" while the run goes on, and also when its client died without
@@ -62,11 +50,6 @@ this file.
   macOS privacy prompts the run waited on, joined with "; ".
 "netlog" emits one row per entry, oldest first:
     time, decision, host, port, method, reason
-"sizes" emits one row, the space an image or a box takes (agent-vm measures it only in
-`image info` and `box info`; the lists leave it out to stay quick):
-    ownSize, totalSize, addedOverBase, addedSize
-  ownSize is what deleting it frees ("280 MB"), totalSize all it holds, shared or not; for an
-  image built from another, addedOverBase names that image and addedSize what the disk added.
 "secrets" emits one row per Keychain secret agent-vm keeps (names only; agent-vm never prints a
 value):
     name, readable
@@ -96,11 +79,6 @@ session itself), oldest first:
     restored, remaining, failed, failures, state
   restored and failed count entries; failures is for people ("path: reason; ..."); remaining
   counts changes still undoable; state is the session's afterwards.
-"recipe" emits the recipe, then one row per input and per parameter, in the file's order:
-    kind (recipe, input or parameter), name, required, default, description
-  The recipe's own row carries commandLineTools in the default column (true, false, or "-" when
-  the recipe leaves it to agent-vm). Inputs are always required; a parameter is required when it
-  has no default. An empty default is shown as "-", like any empty field.
 Input that is not JSON, or JSON of the wrong shape, is reported on stderr and exits 1 with
 nothing on stdout, so a caller never reads a plausible-looking partial row.
 """
@@ -178,14 +156,6 @@ def day(timestamp):
     return timestamp[:10] if isinstance(timestamp, str) and len(timestamp) >= 10 else None
 
 
-def version_rows(data):
-    data = need_object(data, "agent-vm version --json")
-    daemon = sub(data, "guestDaemon")
-    yield row([data.get("version"), data.get("path"),
-               daemon.get("version"), daemon.get("features"), daemon.get("digest"),
-               daemon.get("error")])
-
-
 def status_rows(data):
     data = need_object(data, "agent-vm box status --json")
     record = sub(data, "box")
@@ -243,11 +213,6 @@ def box_rows(data):
                    mode, rules])
 
 
-def pack_rows(data):
-    for pack in objects(need_list(data, "agent-vm box packs --json")):
-        yield row([pack.get("name"), pack.get("hosts"), pack.get("problem")])
-
-
 def execlog_rows(data):
     for entry in objects(need_list(data, "agent-vm box execlog --json")):
         argv = entry.get("argv")
@@ -257,13 +222,6 @@ def execlog_rows(data):
         yield row([entry.get("started"), "no end recorded" if status is None else status,
                    entry.get("seconds"), program, "; ".join(prompts),
                    entry.get("stoppedOnPrompt", False)])
-
-
-def size_rows(data):
-    data = need_object(data, "agent-vm image info / box info --json")
-    added = sub(data, "addedOverBase")
-    yield row([own_size(data), size_text(sub(data, "diskUsage").get("bytes")),
-               added.get("image"), size_text(added.get("bytes"))])
 
 
 def secret_rows(data):
@@ -403,100 +361,15 @@ def undo_rows(data):
                sub(data, "session").get("state")])
 
 
-# -- A long command's stderr, as agentvm_job.py keeps it ----------------------------------
-# Under --json, agent-vm writes one JSON event per line to stderr while it works, and a failure
-# ends with "Error: <what failed and the fix>", possibly followed by more lines (a guest
-# program's output). A crash or a signal can leave neither.
-
-LOG_TAIL_BYTES = 1 << 20
-
-
-def read_log(path):
-    """(events, error lines, other lines) of a job log; only the last megabyte is read."""
-    events, error, other = [], [], []
-    with open(path, "rb") as log:
-        log.seek(0, 2)
-        size = log.tell()
-        log.seek(max(0, size - LOG_TAIL_BYTES))
-        data = log.read()
-    if size > LOG_TAIL_BYTES:
-        data = data.split(b"\n", 1)[1] if b"\n" in data else b""
-    for line in data.decode("utf-8", errors="replace").splitlines():
-        if error:
-            error.append(line)
-        elif line.startswith("Error: "):
-            error.append(line[len("Error: "):])
-        elif line.startswith("{"):
-            try:
-                event = json.loads(line)
-            except ValueError:
-                other.append(line)
-                continue
-            if isinstance(event, dict):
-                events.append(event)
-        elif line.strip():
-            other.append(line)
-    return events, error, other
-
-
-def log_progress(path):
-    """[step, fraction, message, notice]: the last progress event and the last notice."""
-    events, _, _ = read_log(path)
-    progress = [event for event in events if event.get("event") == "progress"]
-    notices = [event for event in events if event.get("event") == "notice"]
-    last = progress[-1] if progress else {}
-    return [last.get("step"), last.get("fraction"), last.get("message"),
-            notices[-1].get("message") if notices else None]
-
-
-def log_error(path):
-    """The error at the end of a job log, without "Error: ", as agent-vm wrote it (several
-    lines when it wrote several). Without such a line, the last lines that are not events."""
-    _, error, other = read_log(path)
-    lines = error if error else other[-20:]
-    while lines and not lines[-1].strip():
-        lines.pop()
-    return "\n".join(lines)
-
-
-# -- An image recipe, for the New Image window -------------------------------------------
-
-def recipe_rows(path):
-    """A recipe file's description, inputs and parameters (see the docstring's "recipe")."""
-    try:
-        with open(path, encoding="utf-8") as source:
-            recipe = json.load(source)
-    except OSError as problem:
-        raise ValueError(f"cannot read {path}: {problem.strerror}")
-    recipe = need_object(recipe, path)
-    tools = recipe.get("commandLineTools")
-    yield row(["recipe", None, None, tools if isinstance(tools, bool) else None,
-               recipe.get("description")])
-    for name, spec in sub(recipe, "inputs").items():
-        spec = spec if isinstance(spec, dict) else {}
-        yield row(["input", name, True, None, spec.get("description")])
-    for name, spec in sub(recipe, "parameters").items():
-        spec = spec if isinstance(spec, dict) else {}
-        has_default = "default" in spec
-        yield row(["parameter", name, not has_default, spec.get("default") if has_default else None,
-                   spec.get("description")])
-
-
-COMMANDS = {"version": version_rows, "status": status_rows, "doctor": doctor_rows,
-            "images": image_rows, "boxes": box_rows, "packs": pack_rows,
+COMMANDS = {"status": status_rows, "doctor": doctor_rows,
+            "images": image_rows, "boxes": box_rows,
             "execlog": execlog_rows, "netlog": netlog_rows, "secrets": secret_rows,
-            "sizes": size_rows, "sessions": session_rows, "report-summary": report_summary_rows,
+            "sessions": session_rows, "report-summary": report_summary_rows,
             "changes": change_rows, "undo": undo_rows}
 
 
 def main(argv):
-    if len(argv) == 3 and argv[1] == "recipe":
-        try:
-            lines = list(recipe_rows(argv[2]))
-        except (ValueError, UnicodeDecodeError) as problem:
-            sys.stderr.write(f"agentvm_json.py recipe: {problem}\n")
-            return 1
-    elif len(argv) == 2 and argv[1] in COMMANDS:
+    if len(argv) == 2 and argv[1] in COMMANDS:
         try:
             data = json.load(sys.stdin)
             lines = list(COMMANDS[argv[1]](data))
@@ -504,8 +377,7 @@ def main(argv):
             sys.stderr.write(f"agentvm_json.py {argv[1]}: {problem}\n")
             return 1
     else:
-        sys.stderr.write("usage: agentvm_json.py " + "|".join(COMMANDS) + " < agent-vm-output.json\n"
-                         "       agentvm_json.py recipe <recipe.json>\n")
+        sys.stderr.write("usage: agentvm_json.py " + "|".join(COMMANDS) + " < agent-vm-output.json\n")
         return 2
     for line in lines:
         sys.stdout.write(line + "\n")

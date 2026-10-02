@@ -1,29 +1,19 @@
 #!/bin/sh
 # aichat.boxes.init.sh
-# Opens the Box Manager: checks that agent-vm can be used, then lists the images, boxes and
-# jobs. A poll loop starts when jobs are running (see aichat.boxes.library.sh).
+# Opens the AgentVM Boxes window: shows the boxes and their states, and starts the poll loop that
+# keeps them current (see aichat.boxes.library.sh).
 
 source "$OMC_APP_BUNDLE_PATH/Contents/Resources/Scripts/aichat.boxes.library.sh"
 
 echo "[$(/usr/bin/basename "$0")]"
 
 window_uuid="$OMC_ACTIONUI_WINDOW_UUID"
-"$pasteboard" "$BOXES_MANAGER_KEY" set "$window_uuid"
-# No poll loop runs for a window that just opened.
+[ -n "$window_uuid" ] || exit 0
+"$pasteboard" "$BOXES_WINDOW_KEY" set "$window_uuid"
+# No poll loop runs for a window that just opened, nothing is selected, and nothing is painted.
 "$pasteboard" "$(boxes_key cadabra_boxes_poll "$window_uuid")" set ""
-boxes_clear_detail "$window_uuid"
-boxes_show_kind "$window_uuid" images
-boxes_show_header "$window_uuid"
-if [ $? -ne 0 ]; then
-    # The jobs still show: an install of AgentVM runs as one, and so may a job from before.
-    running="$(boxes_show_jobs_only "$window_uuid")"
-    if [ "$running" -gt 0 ]; then
-        "$next_command" "$OMC_CURRENT_COMMAND_GUID" "aichat.boxes.poll"
-    fi
-    exit 0
-fi
-boxes_populate "$window_uuid" images
-running="$(boxes_running_count "$window_uuid")"
-if [ "$running" -gt 0 ]; then
-    "$next_command" "$OMC_CURRENT_COMMAND_GUID" "aichat.boxes.poll"
-fi
+"$pasteboard" "$(boxes_key cadabra_boxes_selected "$window_uuid")" set ""
+"$pasteboard" "$(boxes_key cadabra_boxes_watch "$window_uuid")" set ""
+/bin/rm -f "$(boxes_cache "$window_uuid" cards)"
+boxes_refresh "$window_uuid"
+boxes_ensure_poll "$window_uuid"

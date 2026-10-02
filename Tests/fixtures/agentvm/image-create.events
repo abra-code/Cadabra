@@ -1,9 +1,0 @@
-{"event": "progress", "image": "dev-node", "message": "Cloning dev", "step": "clone"}
-{"event": "progress", "image": "dev-node", "message": "Booting dev-node", "step": "boot"}
-{"event": "progress", "image": "dev-node", "message": "Recipe: Homebrew and Node", "step": "recipe"}
-{"count": 4, "event": "progress", "fraction": 0.25, "image": "dev-node", "index": 1, "message": "[1/4] Homebrew folder, owned by the box user", "step": "recipe-step"}
-{"count": 4, "event": "progress", "fraction": 0.5, "image": "dev-node", "index": 2, "message": "[2/4] Homebrew", "step": "recipe-step"}
-{"event": "log", "image": "dev-node", "message": "==> Updating Homebrew...", "output": true}
-{"count": 4, "event": "progress", "fraction": 0.75, "image": "dev-node", "index": 3, "message": "[3/4] Node", "step": "recipe-step"}
-{"count": 4, "event": "progress", "fraction": 1, "image": "dev-node", "index": 4, "message": "[4/4] Homebrew in login shells", "step": "recipe-step"}
-{"event": "progress", "image": "dev-node", "message": "Shutting dev-node down", "step": "shutdown"}

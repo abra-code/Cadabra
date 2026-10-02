@@ -5,8 +5,7 @@
 # its exec-run switch, `exec` runs the program on this Mac with the scratch $HOME as the box
 # user's home, so the real copy script and the real servers run.
 #
-# Needs the sandbox off (a release's stop job runs detached through agentvm_job.py, which uses
-# ps). POSIX sh only. Validate with "sh -n", never "bash -n".
+# Needs the sandbox off. POSIX sh only. Validate with "sh -n", never "bash -n".
 . "${OMCTEST_LIB:?set OMCTEST_LIB, or run via: appletbuilder test}"
 . "$OMCTEST_TESTS/lib.test.cadabra.sh"
 

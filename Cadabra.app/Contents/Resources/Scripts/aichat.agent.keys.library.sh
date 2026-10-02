@@ -212,7 +212,7 @@ keys_paint_login() {
                 return 0
             fi ;;
         new:?*)
-            _text="The agent runs in a new disposable AgentVM box for each conversation, and a login made in one is deleted with it. To log in, choose a kept box in Runs in, or make one in Tools > AgentVM." ;;
+            _text="The agent runs in a new disposable AgentVM box for each conversation, and a login made in one is deleted with it. To log in, choose a kept box in Runs in, or make one in the AgentVM app." ;;
         *)
             _text="The agent runs on this Mac, where it uses its own login." ;;
     esac

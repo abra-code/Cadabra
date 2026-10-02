@@ -277,6 +277,8 @@ cad_pb_set "aichatv2_agent_" "SENTINEL"
 # check, which no other file reaches because none of them loads an engine.
 # The same for the Allow a Folder... button, put into slot 548 after a load and a switch.
 ui_declare_ids "$BASE_CHAT_OVERLAY_ELEM_ID" "$HL_CAD_SUMMARIZE_PICKER_ID" "$(cad_lib_var allow_folder_button_id aichat.allow.folder.library.sh)"
+# And for the box line's row, which chat init removes before it puts a new one in.
+ui_declare_ids "$(cad_lib_var boxsession_line_row_id aichat.boxsession.library.sh)"
 cad_journal_reset
 eng chat_engine_load "$ENGWIN" "$MLXDIR" false false
 check_status "the engine loads"  0

@@ -471,7 +471,7 @@ runin_images=""
 # 2.5 s together (image list alone 1.9 s), and every click on a row would otherwise pay it again
 # before the pane can update. So init reads them ("refresh") into a file named after the window,
 # and every later handler reuses it ("cached"), reading it again only when it is missing. A box
-# made or deleted in the Box Manager meanwhile shows the next time this window opens.
+# made or deleted in the AgentVM app meanwhile shows the next time this window opens.
 #   line 1: "available" or "unavailable"; then "box<TAB>name<TAB>network mode<TAB>rules" and
 #   "image<TAB>name" lines (the rules comma-joined, "-" for none; Agentic Session Tools shows a
 #   kept box's network from them).

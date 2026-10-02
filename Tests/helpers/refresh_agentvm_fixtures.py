@@ -13,7 +13,7 @@ Usage:
 
 AGENT_VM is the agent-vm to ask, for example ~/Development/agent-vm/.build/signed/release/agent-vm.
 
-The first form writes version.json, doctor.json, image-list.json, box-list.json, packs.json and
+The first form writes doctor.json, status.json, image-list.json, box-list.json and
 box-status-stopped.json, and execlog.json and netlog.json from STOPPED_BOX's logs (so pick a
 box that has run a program and tried the network). RUNNING_BOX, when given, must be running
 with a project shared and a program running in it, so the fixture carries every field; it
@@ -28,8 +28,8 @@ box-create.json, box-start.json and the progress events of the start and the sto
 once, so do it when no other work needs a slot.
 
 --import sanitizes a capture made by hand (a JSON document, or JSON lines for a .events file)
-and writes it as the fixture NAME. update-guest.events and box-status-unresponsive.json are
-made this way (see the README).
+and writes it as the fixture NAME. box-status-unresponsive.json is made this way (see the
+README).
 
 Needs the Claude Code sandbox off (agent-vm reads its store and talks to supervisors over their
 control sockets). The user's home folder is replaced with /Users/you in every string, so the
@@ -117,11 +117,10 @@ def not_empty(data):
 
 def queries(agent_vm, stopped_box, running_box):
     os.makedirs(FIXTURES, exist_ok=True)
-    ok = capture(agent_vm, ["version"], "version.json")
-    ok = capture(agent_vm, ["doctor"], "doctor.json") and ok
+    ok = capture(agent_vm, ["doctor"], "doctor.json")
+    ok = capture(agent_vm, ["status"], "status.json") and ok
     ok = capture(agent_vm, ["image", "list"], "image-list.json") and ok
     ok = capture(agent_vm, ["box", "list"], "box-list.json") and ok
-    ok = capture(agent_vm, ["box", "packs"], "packs.json") and ok
     ok = capture(agent_vm, ["box", "status", stopped_box], "box-status-stopped.json", stopped) and ok
     ok = capture(agent_vm, ["box", "execlog", stopped_box, "--last", "5"], "execlog.json",
                  not_empty) and ok

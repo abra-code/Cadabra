@@ -11,16 +11,18 @@
 #   home       REWRITTEN each invocation: AGENT_VM_HOME as the fake saw it, or "(unset)".
 #   exit       when present, every invocation prints the file "stderr" (if any) to stderr and
 #              exits with this status, before looking at its arguments.
-#   fail-<a>-<b>  when present, the command "<a> <b>" (fail-box-delete, fail-image-setup)
+#   fail-<a>-<b>  when present, the command "<a> <b>" (fail-box-delete, fail-job-start)
 #              prints "Error: " and the file's text to stderr and exits 1, or with the status in
 #              fail-<a>-<b>-status when that is present (75 for agent-vm's "no free VM slot").
 #   version    what --version prints (default: AGENTVM_MIN_VERSION from the library, the oldest
-#              version Cadabra accepts, so raising it needs no change here), and then also the
-#              version in version --json's answer, unless version.json overrides that.
+#              version Cadabra accepts, so raising it needs no change here).
 #   delay      seconds between the progress events of a long command (default 0).
 #   <key>.json the answer to one query, overriding the fixture of that name:
-#              version, doctor, image-list, box-list, packs, execlog, netlog, box-create,
-#              secret-list, image-info, box-info.
+#              doctor, image-list, box-list, execlog, netlog, box-create, secret-list, status.
+#   job-id     the id `job start` answers with (default 20261002-101500-00000<n>, counting the
+#              jobs started so far). The job itself never runs: a test moves it on by leaving
+#              a status.json that lists it.
+#   jobs       APPENDED to by `job start`: one "<id><TAB><the job's command, space-joined>" line.
 #   exec-error when present, `exec` prints "Error: " and the file's text and exits 1 (agent-vm's
 #              refusal of a share, say); otherwise exec runs nothing and exits 0, unless:
 #   exec-run   when present, `exec` runs the program after "--" on this Mac, as the box would:
@@ -39,19 +41,17 @@
 #              Without it, `session` commands fail with 64.
 #
 # -- What it implements ---------------------------------------------------------
-#   --version, version --json, doctor --json, image list --json, box list --json,
-#   box packs --json, box status|execlog|netlog <name> ... --json,
+#   --version, doctor --json, status --json, image list --json, box list --json,
+#   job start --json -- <command...> (records it and answers with its id),
+#   box status|execlog|netlog <name> ... --json,
 #   box create <name> --image <image> ... --json (creates box-<name>.json),
-#   box delete <name> --json (removes it), box recreate <name> --json (a stopped record again),
-#   image delete <name> --json, box view <name> ... --json,
-#   image info <name> --json and box info <name> --json (the box must exist),
+#   box delete <name> --json (removes it), box view <name> ... --json,
 #   box shell <name>, box network <name> ... --json (changes nothing), secret list --json, secret set <name> (value on stdin),
 #   secret delete <name>, exec --box <name> ... -- <argv> (runs nothing), session ... (see
 #   session-agent-vm),
 #   and the long ones, which print progress events on stderr like agent-vm
 #   and exit 130 (SIGINT) or 143 (SIGTERM) when stopped:
-#   box start <name> [--owner-pid N] --json, box stop <name> --json,
-#   image update <name>... --guest --json, image setup <name> --json, image create <name> ... --json.
+#   box start <name> [--owner-pid N] --json, box stop <name> --json.
 # Anything else fails with status 64, so a test that reaches an unimplemented command finds out.
 
 state="${FAKE_AGENTVM_DIR:?fake_agent_vm: FAKE_AGENTVM_DIR is not set}"
@@ -132,21 +132,26 @@ case "$1 $2" in
         else
             /usr/bin/sed -n 's/^AGENTVM_MIN_VERSION="\(.*\)"$/\1/p' "$agentvm_library"
         fi ;;
-    "version --json")
-        # The same version --version prints, when the "version" file sets it, as agent-vm would.
-        if [ -f "$state/version" ] && [ ! -f "$state/version.json" ]; then
-            /usr/bin/jq --arg v "$(/bin/cat "$state/version")" '.version = $v' "$fixtures/version.json"
-        else
-            answer version
-        fi ;;
     "doctor --json")
         answer doctor ;;
+    "status --json")
+        answer status ;;
+    "job start")
+        if [ "$3" != "--json" ] || [ "$4" != "--" ]; then
+            printf 'Error: fake_agent_vm: job start is implemented as "job start --json -- <command>"\n' >&2
+            exit 64
+        fi
+        shift 4
+        count=0
+        [ -f "$state/jobs" ] && count="$(/usr/bin/awk 'END { print NR }' "$state/jobs")"
+        id="20261002-101500-00000$((count + 1))"
+        [ -f "$state/job-id" ] && id="$(/bin/cat "$state/job-id")"
+        printf '%s\t%s\n' "$id" "$*" >> "$state/jobs"
+        printf '{"id": "%s", "state": "running"}\n' "$id" ;;
     "image list")
         answer image-list ;;
     "box list")
         answer box-list ;;
-    "box packs")
-        answer packs ;;
     "secret list")
         secrets_json ;;
     "secret set")
@@ -165,11 +170,6 @@ case "$1 $2" in
         /bin/mv -f "$state/secrets.new" "$state/secrets"
         /bin/rm -f "$state/secret-$3"
         printf 'Deleted secret %s\n' "$3" ;;
-    "image info")
-        answer image-info ;;
-    "box info")
-        need_box "$3"
-        answer box-info ;;
     "exec --box")
         need_box "$3"
         if [ -f "$state/exec-error" ]; then
@@ -211,12 +211,6 @@ case "$1 $2" in
     "box delete")
         need_box "$3"
         /bin/rm -f "$state/box-$3.json" ;;
-    "box recreate")
-        need_box "$3"
-        /bin/cp "$fixtures/box-status-stopped.json" "$state/box-$3.json"
-        answer box-create ;;
-    "image delete")
-        ;;
     "box view")
         need_box "$3" ;;
     "box network")
@@ -232,12 +226,6 @@ case "$1 $2" in
     "box stop")
         need_box "$3"
         progress "$fixtures/box-stop.events" "stopping $3" ;;
-    "image update")
-        progress "$fixtures/update-guest.events" "the guest update of $3" ;;
-    "image setup")
-        progress "$fixtures/update-guest.events" "the setup of $3" ;;
-    "image create")
-        progress "$fixtures/image-create.events" "the build of $3" ;;
     "session "*)
         if [ ! -f "$state/session-agent-vm" ]; then
             printf 'Error: fake_agent_vm: session commands need the file session-agent-vm\n' >&2

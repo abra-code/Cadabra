@@ -1,78 +1,52 @@
 #!/bin/sh
 # aichat.boxes.library.sh
 #
-# The Box Manager window (Tools > Boxes..., aichat.boxes.json): the agent-vm images and boxes on
-# this Mac, what each one is, the jobs that work on them, and the buttons that act on them.
-# Everything that talks to agent-vm goes through aichat.agentvm.library.sh; this file only turns
-# its rows into the window.
+# The AgentVM Boxes window (Tools > AgentVM Boxes, aichat.boxes.json): the boxes on this Mac and
+# their states, with Start, Stop and View for the selected one. That is all Cadabra does to a box
+# outside a conversation: making, changing and deleting boxes, images, and installing or updating
+# agent-vm belong to the AgentVM app, which the window's Open AgentVM button opens (at the
+# selected box, when one is selected). Everything that talks to agent-vm goes through
+# aichat.agentvm.library.sh; this file only turns its rows into the window.
 #
-# STATE. Handlers overlap and their environment is a snapshot taken at dispatch, so each one
-# acts on the row selected when it was dispatched, and the pieces of state that must outlive a
-# handler live outside it:
-#   - the rows last read from agent-vm, in cache files beside the handler's TMPDIR, so a
-#     selection shows an image's details without asking agent-vm again (`image list` costs about
-#     0.3 s per derived image);
-#   - on the pasteboard, per window: which table is shown, what the detail pane shows (so a
-#     finished job can repaint it), and the token of the one poll loop allowed to run;
-#   - globally, the uuid of the open Box Manager, so the New Box window can refresh it.
+# STATE. Handlers overlap and their environment is a snapshot taken at dispatch, so each one acts
+# on the box selected when it was dispatched, and what must outlive a handler lives outside it:
+#   - the rows last read from `agent-vm status`, in cache files of the window (boxes, jobs, vms,
+#     and the list as last painted);
+#   - on the pasteboard, per window: the selected box, the jobs this window started (so a start
+#     that fails is reported once, here), and the token of the one poll loop allowed to run;
+#   - globally, the uuid of the open window, so Tools > AgentVM Boxes brings it to the front.
 #
-# THE POLL LOOP (aichat.boxes.poll) runs only while jobs run: it repaints the jobs table once a
-# second and refreshes the lists when a job ends. Each start of it takes over by writing its own
-# token; an older loop sees another token and exits, and closing the window writes "closed".
+# THE POLL LOOP (aichat.boxes.poll) runs while the window is open, since boxes change from
+# elsewhere: a conversation starts one, the AgentVM app or Terminal stops one. `status` takes a
+# few hundredths of a second. Each start of the loop takes over by writing its own token; an
+# older loop sees another token and exits, and closing the window writes "closed".
 [ -n "${__AICHAT_BOXES_LIB:-}" ] && return 0
 __AICHAT_BOXES_LIB=1
 
 source "$OMC_APP_BUNDLE_PATH/Contents/Resources/Scripts/aichat.agentvm.library.sh"
 
-BOXES_HEADER_ID=100
-BOXES_NOTES_ID=101
-BOXES_INSTALL_ID=134
-BOXES_KIND_ID=110
+BOXES_STATUS_ID=100
 BOXES_REFRESH_ID=120
-BOXES_NEW_BOX_ID=121
-BOXES_IMAGES_ID=200
-BOXES_BOXES_ID=300
-BOXES_JOBS_ID=400
-BOXES_JOB_CANCEL_ID=401
-BOXES_JOB_FORGET_ID=402
-BOXES_PROGRESS_ID=405
-BOXES_TITLE_ID=500
-BOXES_SUBTITLE_ID=501
-BOXES_DETAIL_ID=510
-BOXES_IMAGE_BUTTONS_ID=540
-BOXES_IMAGE_NEW_BOX_ID=541
-BOXES_IMAGE_UPDATE_ID=542
-BOXES_IMAGE_SETUP_ID=543
-BOXES_IMAGE_REVEAL_ID=544
-BOXES_IMAGE_DELETE_ID=545
-BOXES_BOX_BUTTONS_ID=550
-BOXES_BOX_START_ID=551
-BOXES_BOX_STOP_ID=552
-BOXES_BOX_VIEW_ID=553
-BOXES_BOX_CONTROL_ID=554
-BOXES_BOX_SHELL_ID=555
-BOXES_BOX_REVEAL_ID=556
-BOXES_BOX_DELETE_ID=557
-BOXES_BOX_RECREATE_ID=558
+BOXES_APP_ID=130
+BOXES_LIST_ID=300
+BOXES_START_ID=551
+BOXES_STOP_ID=552
+BOXES_VIEW_ID=553
 
-BOXES_IMAGE_ACTION_IDS="$BOXES_IMAGE_NEW_BOX_ID $BOXES_IMAGE_UPDATE_ID $BOXES_IMAGE_SETUP_ID $BOXES_IMAGE_REVEAL_ID $BOXES_IMAGE_DELETE_ID"
-BOXES_BOX_ACTION_IDS="$BOXES_BOX_START_ID $BOXES_BOX_STOP_ID $BOXES_BOX_VIEW_ID $BOXES_BOX_CONTROL_ID $BOXES_BOX_SHELL_ID $BOXES_BOX_REVEAL_ID $BOXES_BOX_DELETE_ID $BOXES_BOX_RECREATE_ID"
+# The open window's uuid, for Tools > AgentVM Boxes. Keyed by this process, so a uuid left behind
+# by a Cadabra that quit or crashed with the window open is never read.
+BOXES_WINDOW_KEY="cadabra_boxes_window_${OMC_APP_PROCESS_ID}"
 
-# The open Box Manager's window uuid, for Tools > Boxes... and the windows that change what it
-# lists. Keyed by this process, so a uuid left behind by a Cadabra that quit or crashed with the
-# window open is never read.
-BOXES_MANAGER_KEY="cadabra_boxes_manager_window_${OMC_APP_PROCESS_ID}"
-
-# CADABRA_OPEN is the test seam for /usr/bin/open (Reveal), as in aichat.agentvm.library.sh.
-boxes_open="${CADABRA_OPEN:-/usr/bin/open}"
-
-boxes_tab="$(printf '\t')"
+# Seconds between two readings: while a job works on a box, and otherwise. CADABRA_BOXES_POLL_BUSY
+# and _IDLE are test seams, and CADABRA_BOXES_POLL_PASSES ends the loop after that many readings.
+boxes_poll_busy="${CADABRA_BOXES_POLL_BUSY:-1}"
+boxes_poll_idle="${CADABRA_BOXES_POLL_IDLE:-4}"
 
 # -- Small helpers ---------------------------------------------------------------------------
 
 boxes_key() { printf '%s_%s\n' "$1" "$2"; }
 
-# boxes_cache <uuid> <images|boxes|jobs>  ->  the file holding the rows last read.
+# boxes_cache <uuid> <boxes|jobs|vms|cards>  ->  the file holding the rows last read or painted.
 boxes_cache() {
     cadabra_run_file "boxes.$1.$2"
 }
@@ -87,7 +61,7 @@ boxes_enable() {
 
 # boxes_store <file>  ->  stdin's non-empty lines become the cache file, replaced in one step:
 # other handlers read the caches while the poll loop rewrites them, and a file truncated for
-# rewriting reads as "no such row" (the detail pane clears) or "no job runs" (buttons enable).
+# rewriting reads as "no such box".
 boxes_store() {
     /usr/bin/awk 'NF' > "$1.$$"
     local _status=$?
@@ -98,17 +72,11 @@ boxes_store() {
     /bin/mv -f "$1.$$" "$1"
 }
 
-# boxes_line <label> <value> [unit]  ->  one aligned detail line, or nothing when the value is
-# unknown (agent-vm left the field out).
-boxes_line() {
-    [ -n "$2" ] || return 0
-    printf '%-15s%s%s\n' "$1" "$2" "${3:+ $3}"
-}
-
-# boxes_row <file> <name>  ->  the cached row whose first field is name.
+# boxes_row <uuid> <name>  ->  the cached row of that box (agentvm_status_box_rows).
 boxes_row() {
-    [ -f "$1" ] || return 0
-    /usr/bin/awk -F'\t' -v name="$2" '$1 == name { print; exit }' "$1"
+    local _file="$(boxes_cache "$1" boxes)"
+    [ -f "$_file" ] || return 0
+    /usr/bin/awk -F'\t' -v name="$2" '$1 == name { print; exit }' "$_file"
 }
 
 # boxes_field <row> <n>  ->  field n of a row, "" for "-".
@@ -118,1291 +86,355 @@ boxes_field() {
     printf '%s\n' "$_value"
 }
 
-# boxes_busy_word <kind>  ->  what a running job of that kind is doing, for the State column.
-boxes_busy_word() {
-    case "$1" in
-        box-start)    echo "starting..." ;;
-        box-stop)     echo "stopping..." ;;
-        update-guest) echo "updating..." ;;
-        image-setup)  echo "setting up..." ;;
-        image-create) echo "building..." ;;
-        *)            echo "busy..." ;;
-    esac
-}
-
 # boxes_alert_error <title> <status>  ->  agent-vm's message (or the library's) in an alert.
 boxes_alert_error() {
     local _message="$(agentvm_last_error "$2")"
     "$alert" --level stop --title "$1" "$_message"
 }
 
-# -- The header ------------------------------------------------------------------------------
+# boxes_selected <uuid>  ->  the selected box's name, or nothing.
+boxes_selected() {
+    "$pasteboard" "$(boxes_key cadabra_boxes_selected "$1")" get
+}
 
-# boxes_show_header <uuid>  ->  0 when agent-vm can be used, and the controls are enabled;
-# otherwise the header says why, the controls are disabled, and it returns agentvm_available's
-# status. When AgentVM is missing or too old, Install AgentVM... or Update AgentVM... is shown
-# beside the reason, disabled while an install job runs. Refresh stays enabled either way, so
-# an AgentVM installed from elsewhere (Terminal, AgentVM.app) is found without reopening. When
-# agent-vm can be used and a newer release is out (agentvm_update_available, which asks GitHub
-# at most once a day), Update AgentVM... is shown beside the version, with a note.
-boxes_show_header() {
+# -- Reading -----------------------------------------------------------------------------------
+
+# boxes_unusable_text <agentvm_available's status> <its reason>  ->  the one line the window
+# shows when boxes cannot be used; the whole reason is the line's tooltip.
+boxes_unusable_text() {
+    case "$1" in
+        "$agentvm_not_installed") echo "AgentVM is not set up on this Mac. Open AgentVM to set it up." ;;
+        "$agentvm_too_old")       echo "AgentVM on this Mac needs an update. Open AgentVM to update it." ;;
+        *)                        printf '%s\n' "$2" ;;
+    esac
+}
+
+# boxes_read <uuid>  ->  0 once the caches hold what `agent-vm status` says now. Otherwise the
+# reason is left in the cache "problem" (line 1: what the window shows; line 2: the whole reason;
+# line 3: "macos" when this Mac's macOS is too old for boxes and for the AgentVM app alike), and
+# it returns 1. The caches are emptied when boxes cannot be used at all, and kept as last read
+# when only this `status` failed.
+boxes_read() {
     local _uuid="$1"
+    local _problem="$(boxes_cache "$_uuid" problem)"
     local _reason
     _reason="$(agentvm_available)"
     local _status=$?
-    local _id
     if [ "$_status" -ne 0 ]; then
-        local _header="Boxes are not available" _button=""
-        case "$_status" in
-            "$agentvm_not_installed") _header="AgentVM is not installed"; _button="Install AgentVM..." ;;
-            "$agentvm_too_old")       _header="AgentVM needs an update";  _button="Update AgentVM..." ;;
-        esac
-        if [ -n "$_button" ]; then
-            "$dialog" "$_uuid" "$BOXES_INSTALL_ID" omc_set_property title "$_button"
-            "$dialog" "$_uuid" "$BOXES_INSTALL_ID" omc_show
-            agentvm_installing
-            if [ $? -eq 0 ]; then
-                _header="Installing AgentVM..."
-                "$dialog" "$_uuid" "$BOXES_INSTALL_ID" omc_disable
+        local _macos=""
+        [ -n "$(agentvm_macos_reason "$(/usr/bin/sw_vers -productVersion 2>/dev/null)")" ] && _macos="macos"
+        printf '%s\n%s\n%s\n' "$(boxes_unusable_text "$_status" "$_reason")" "$_reason" "$_macos" > "$_problem"
+        : | boxes_store "$(boxes_cache "$_uuid" boxes)"
+        : | boxes_store "$(boxes_cache "$_uuid" jobs)"
+        : | boxes_store "$(boxes_cache "$_uuid" vms)"
+        return 1
+    fi
+    local _json
+    _json="$(agentvm_status)"
+    _status=$?
+    if [ "$_status" -ne 0 ]; then
+        _reason="$(agentvm_last_error "$_status" | /usr/bin/tr '\n' ' ')"
+        printf '%s\n%s\n\n' "The boxes could not be read." "$_reason" > "$_problem"
+        return 1
+    fi
+    /bin/rm -f "$_problem"
+    printf '%s\n' "$_json" | agentvm_status_box_rows | boxes_store "$(boxes_cache "$_uuid" boxes)"
+    printf '%s\n' "$_json" | agentvm_status_job_rows | boxes_store "$(boxes_cache "$_uuid" jobs)"
+    printf '%s\n' "$_json" | agentvm_status_vm_row | boxes_store "$(boxes_cache "$_uuid" vms)"
+    return 0
+}
+
+# boxes_held <uuid> <name>  ->  what a job is doing to the box (Starting, Stopping, Busy, or
+# Waiting for a job queued behind another), or nothing when no job holds it. A job that runs
+# wins over one that waits.
+boxes_held() {
+    local _file="$(boxes_cache "$1" jobs)"
+    [ -f "$_file" ] || return 0
+    /usr/bin/awk -F'\t' -v target="box:$2" '
+        $3 != target { next }
+        $2 == "queued" && held == "" { held = "Waiting" }
+        $2 == "running" { held = ($4 == "box start") ? "Starting" : ($4 == "box stop") ? "Stopping" : "Busy" }
+        END { if (held != "") print held }' "$_file"
+}
+
+# boxes_moving <uuid>  ->  0 while a job works on a box or waits to, or a box is between states.
+boxes_moving() {
+    local _jobs="$(boxes_cache "$1" jobs)" _boxes="$(boxes_cache "$1" boxes)"
+    [ -f "$_jobs" ] || return 1
+    local _count="$(/usr/bin/awk -F'\t' '
+        FILENAME == jobs && ($2 == "running" || $2 == "queued") && $3 ~ /^box:/ { n++ }
+        FILENAME != jobs && ($2 == "starting" || $2 == "stopping") { n++ }
+        END { print n + 0 }' jobs="$_jobs" "$_jobs" "$_boxes" 2>/dev/null)"
+    [ "${_count:-0}" -gt 0 ]
+}
+
+# -- Painting ----------------------------------------------------------------------------------
+
+# boxes_card_rows <uuid>  ->  the list's rows, one per box:
+#   1 name   2 the state's symbol   3 the state in words, the image and the memory
+#   4 the symbol's color
+# A box a job holds looks as a box between states does, and its line begins with what the job
+# does.
+boxes_card_rows() {
+    local _boxes="$(boxes_cache "$1" boxes)" _jobs="$(boxes_cache "$1" jobs)"
+    [ -f "$_boxes" ] || return 0
+    [ -f "$_jobs" ] || _jobs=/dev/null
+    /usr/bin/awk -F'\t' -v jobs="$_jobs" '
+        BEGIN {
+            while ((getline line < jobs) > 0) {
+                split(line, job, "\t")
+                if (job[3] !~ /^box:/) continue
+                name = substr(job[3], 5)
+                if (job[2] == "queued" && !(name in held)) held[name] = "Waiting"
+                if (job[2] == "running")
+                    held[name] = (job[4] == "box start") ? "Starting" : (job[4] == "box stop") ? "Stopping" : "Busy"
+            }
+        }
+        {
+            symbol = "questionmark.circle"; color = "#8E8E93"; words = $2
+            if ($2 == "running")           { symbol = "play.circle.fill"; color = "#2E9E4F"; words = "Running" }
+            else if ($2 == "stopped")      { symbol = "stop.circle"; words = "Stopped" }
+            else if ($2 == "starting")     { symbol = "circle.dotted"; color = "#0A84FF"; words = "Starting" }
+            else if ($2 == "stopping")     { symbol = "circle.dotted"; color = "#0A84FF"; words = "Stopping" }
+            else if ($2 == "unresponsive") { symbol = "exclamationmark.circle.fill"; color = "#E8861A"; words = "Not responding" }
+            if ($1 in held) { symbol = "circle.dotted"; color = "#0A84FF"; words = held[$1] }
+            if ($2 == "running" && !($1 in held) && $5 ~ /^[0-9]+$/ && $5 > 0)
+                words = words ", " $5 ($5 == 1 ? " program" : " programs")
+            caption = words " - " $3
+            if ($4 != "-") caption = caption ", " $4 " GB"
+            if ($7 == "true") caption = caption ", disposable"
+            printf "%s\t%s\t%s\t%s\n", $1, symbol, caption, color
+        }' "$_boxes"
+}
+
+# boxes_status_text <uuid>  ->  the window's one line when boxes can be used.
+boxes_status_text() {
+    local _boxes="$(boxes_cache "$1" boxes)"
+    local _count=0
+    [ -f "$_boxes" ] && _count="$(/usr/bin/awk 'NF { n++ } END { print n + 0 }' "$_boxes")"
+    if [ "$_count" -eq 0 ]; then
+        echo "No boxes yet. Open AgentVM to make one."
+        return 0
+    fi
+    local _vms="$(/bin/cat "$(boxes_cache "$1" vms)" 2>/dev/null)"
+    local _running="$(boxes_field "$_vms" 1)" _limit="$(boxes_field "$_vms" 2)"
+    if [ -z "$_running" ] || [ -z "$_limit" ]; then
+        echo ""
+        return 0
+    fi
+    printf 'Virtual machines running on this Mac: %s of %s\n' "$_running" "$_limit"
+}
+
+# boxes_paint_buttons <uuid>  ->  Start, Stop and View for the selected box, as its state allows.
+# A box a job holds takes no button until the job is done.
+boxes_paint_buttons() {
+    local _uuid="$1"
+    local _name="$(boxes_selected "$_uuid")"
+    local _row=""
+    [ -n "$_name" ] && _row="$(boxes_row "$_uuid" "$_name")"
+    local _start=0 _stop=0 _view=0
+    if [ -n "$_row" ]; then
+        local _state="$(boxes_field "$_row" 2)"
+        local _held="$(boxes_held "$_uuid" "$_name")"
+        if [ -z "$_held" ]; then
+            [ "$_state" = "stopped" ] && _start=1
+            [ "$_state" != "stopped" ] && _stop=1
+        fi
+        [ "$_state" = "running" ] && _view=1
+    fi
+    boxes_enable "$_uuid" "$BOXES_START_ID" "$_start"
+    boxes_enable "$_uuid" "$BOXES_STOP_ID" "$_stop"
+    boxes_enable "$_uuid" "$BOXES_VIEW_ID" "$_view"
+}
+
+# boxes_paint <uuid>  ->  the window from the caches. The list is set again only when its rows
+# changed since they were last painted: a list set again loses its scroll position, and a poll
+# loop that changed nothing must not be seen. A selected box that is gone is deselected.
+boxes_paint() {
+    local _uuid="$1"
+    local _problem="$(boxes_cache "$_uuid" problem)"
+    local _line="" _help="" _macos=""
+    if [ -f "$_problem" ]; then
+        _line="$(/usr/bin/sed -n 1p "$_problem")"
+        _help="$(/usr/bin/sed -n 2p "$_problem")"
+        _macos="$(/usr/bin/sed -n 3p "$_problem")"
+    else
+        _line="$(boxes_status_text "$_uuid")"
+    fi
+    "$dialog" "$_uuid" "$BOXES_STATUS_ID" "$_line"
+    "$dialog" "$_uuid" "$BOXES_STATUS_ID" omc_set_property help "$_help"
+    # The AgentVM app needs the same macOS as boxes do, so on an older one it would not open.
+    boxes_enable "$_uuid" "$BOXES_APP_ID" "$([ "$_macos" = "macos" ] && echo 0 || echo 1)"
+    local _cards="$(boxes_cache "$_uuid" cards)"
+    local _rows="$(boxes_card_rows "$_uuid")"
+    local _painted=""
+    [ -f "$_cards" ] && _painted="$(/bin/cat "$_cards")"
+    if [ ! -f "$_cards" ] || [ "$_rows" != "$_painted" ]; then
+        printf '%s\n' "$_rows" | /usr/bin/awk 'NF' | "$dialog" "$_uuid" "$BOXES_LIST_ID" omc_table_set_rows_from_stdin
+        printf '%s\n' "$_rows" > "$_cards"
+        local _name="$(boxes_selected "$_uuid")"
+        if [ -n "$_name" ]; then
+            if [ -n "$(boxes_row "$_uuid" "$_name")" ]; then
+                # The verb fires no action.
+                "$dialog" "$_uuid" "$BOXES_LIST_ID" omc_select_row_with_content "$_name" 1
             else
-                "$dialog" "$_uuid" "$BOXES_INSTALL_ID" omc_enable
+                "$pasteboard" "$(boxes_key cadabra_boxes_selected "$_uuid")" set ""
             fi
-        else
-            "$dialog" "$_uuid" "$BOXES_INSTALL_ID" omc_hide
         fi
-        "$dialog" "$_uuid" "$BOXES_HEADER_ID" "$_header"
-        "$dialog" "$_uuid" "$BOXES_NOTES_ID" "$_reason"
-        for _id in $BOXES_KIND_ID $BOXES_NEW_BOX_ID $BOXES_HEADER_NEW_IMAGE_ID; do
-            "$dialog" "$_uuid" "$_id" omc_disable
-        done
-        return "$_status"
     fi
-    for _id in $BOXES_KIND_ID $BOXES_NEW_BOX_ID $BOXES_HEADER_NEW_IMAGE_ID; do
-        "$dialog" "$_uuid" "$_id" omc_enable
-    done
-    local _version="$(agentvm_version_info | /usr/bin/cut -f1)"
-    local _origin="$(agentvm_origin)"
-    local _where="installed"
-    case "$_origin" in
-        developer) _where="developer build: $(agentvm_bin)" ;;
-        test)      _where="test double" ;;
+    boxes_paint_buttons "$_uuid"
+}
+
+# -- Jobs this window started --------------------------------------------------------------------
+
+# boxes_no_slot_text: what a start that agent-vm refused for want of a virtual machine slot says,
+# in place of agent-vm's own words, which point to a Terminal command.
+boxes_no_slot_text="No virtual machine slot was free: macOS runs at most two macOS virtual machines at once, and that many were running. Stop a box, or a virtual machine in another application, then try again."
+
+# boxes_watched <uuid>  ->  the ids of the jobs this window started and still follows.
+boxes_watched() {
+    "$pasteboard" "$(boxes_key cadabra_boxes_watch "$1")" get
+}
+
+# boxes_note_jobs <uuid> <watched>  ->  the jobs this window started that have ended are
+# forgotten, and one that failed is told in an alert, once: the start or stop went on in the
+# background, so nothing else would say that it did not work. A canceled job (canceled from the
+# AgentVM app or Terminal) is somebody's decision and is not reported. A job `status` no longer
+# lists ended more than an hour ago and is forgotten too.
+# <watched> is the watch list as it was BEFORE the status in the cache was read (boxes_refresh):
+# every job in it existed when agent-vm answered. A job that Start or Stop adds while a reading
+# is under way is in the list now but not in that answer, and judged by it would be forgotten
+# as long gone, with its failure never told. So only the jobs of <watched> are judged, and only
+# those that ended are taken off the list as it is now, which keeps what was added meanwhile.
+boxes_note_jobs() {
+    local _uuid="$1" _watched="${2:-}"
+    case "$_watched" in
+        *[!\ ]*) ;;
+        *) return 0 ;;
     esac
-    "$dialog" "$_uuid" "$BOXES_HEADER_ID" "agent-vm ${_version:-?} ($_where)"
-    # A newer release than the installed one (looked up at most once a day): Update AgentVM...
-    # beside the version, and a first note saying so.
-    local _newer="$(agentvm_update_available "$_version")"
-    local _notes=""
-    if [ -n "$_newer" ]; then
-        _notes="AgentVM $_newer is available; this Mac has $_version. Boxes that are running keep their version until they are stopped."
-        "$dialog" "$_uuid" "$BOXES_INSTALL_ID" omc_set_property title "Update AgentVM..."
-        "$dialog" "$_uuid" "$BOXES_INSTALL_ID" omc_show
-        agentvm_installing
-        if [ $? -eq 0 ]; then
-            _notes="Installing AgentVM $_newer..."
-            "$dialog" "$_uuid" "$BOXES_INSTALL_ID" omc_disable
-        else
-            "$dialog" "$_uuid" "$BOXES_INSTALL_ID" omc_enable
+    local _jobs="$(boxes_cache "$_uuid" jobs)"
+    [ -f "$_jobs" ] || return 0
+    local _id _row _state _ended="" _failed=""
+    # The ids are agent-vm job ids, so word splitting is safe.
+    for _id in $_watched; do
+        _row="$(/usr/bin/awk -F'\t' -v id="$_id" '$1 == id { print; exit }' "$_jobs")"
+        _state="$(boxes_field "$_row" 2)"
+        case "$_state" in
+            queued|running) ;;
+            failed|lost)    _ended="$_ended $_id"; _failed="$_failed $_id" ;;
+            *)              _ended="$_ended $_id" ;;
+        esac
+    done
+    [ -n "$_ended" ] || return 0
+    # Forgotten before any alert: an alert waits for its answer, and a job must be told once.
+    # A failed job that is no longer on the list was taken off by another reading (the poll loop
+    # and a handler overlap), which tells it.
+    local _key="$(boxes_key cadabra_boxes_watch "$_uuid")"
+    local _now="$(boxes_watched "$_uuid")"
+    local _left="" _mine=""
+    for _id in $_now; do
+        case " $_ended " in
+            *" $_id "*) ;;
+            *) _left="$_left $_id"
+               continue ;;
+        esac
+        case " $_failed " in
+            *" $_id "*) _mine="$_mine $_id" ;;
+        esac
+    done
+    "$pasteboard" "$_key" set "$_left"
+    local _what _name _title _text
+    for _id in $_mine; do
+        _row="$(/usr/bin/awk -F'\t' -v id="$_id" '$1 == id { print; exit }' "$_jobs")"
+        _what="$(boxes_field "$_row" 4)"
+        _name="$(boxes_field "$_row" 3)"
+        _name="${_name#box:}"
+        _title="Could not start $_name"
+        [ "$_what" = "box stop" ] && _title="Could not stop $_name"
+        _text="$(boxes_field "$_row" 6)"
+        if [ "$(boxes_field "$_row" 5)" = "$agentvm_no_slot_status" ]; then
+            _text="$boxes_no_slot_text"
         fi
-    else
-        "$dialog" "$_uuid" "$BOXES_INSTALL_ID" omc_hide
-    fi
-    # Doctor's warnings and failures, as it words them: a full set of VM slots, low disk space,
-    # a signature that will not run elsewhere.
-    local _doctor="$(agentvm_doctor | /usr/bin/awk -F'\t' '$2 == "warning" || $2 == "failure" { printf "%s%s: %s", sep, $1, $3; sep = "\n" }')"
-    if [ -n "$_notes" ] && [ -n "$_doctor" ]; then
-        _notes="$_notes
-$_doctor"
-    else
-        _notes="$_notes$_doctor"
-    fi
-    "$dialog" "$_uuid" "$BOXES_NOTES_ID" "$_notes"
-    return 0
-}
-
-# -- The tables ------------------------------------------------------------------------------
-
-# boxes_read_jobs <uuid>  ->  refreshes the jobs cache; returns agentvm_jobs' status.
-boxes_read_jobs() {
-    local _file="$(boxes_cache "$1" jobs)"
-    local _rows
-    _rows="$(agentvm_jobs)"
-    local _status=$?
-    if [ "$_status" -ne 0 ]; then
-        agentvm_last_error "$_status" >/dev/null
-        return "$_status"
-    fi
-    printf '%s\n' "$_rows" | boxes_store "$_file"
-    return 0
-}
-
-# boxes_busy_kind <uuid> <target>  ->  the kind of the running job on target, from the cache.
-# A job on several images names them all in one target ("image:dev,dev-node"), so an image is
-# busy when its name is one of them.
-boxes_busy_kind() {
-    local _file="$(boxes_cache "$1" jobs)"
-    [ -f "$_file" ] || return 0
-    /usr/bin/awk -F'\t' -v target="$2" '
-        $5 != "running" { next }
-        $3 == target { print $2; exit }
-        {
-            split($3, side, ":"); split(target, want, ":")
-            if (side[1] != want[1]) next
-            n = split(substr($3, length(side[1]) + 2), name, ",")
-            for (i = 1; i <= n; i++) if (side[1] ":" name[i] == target) { print $2; exit }
-        }' "$_file"
-}
-
-# boxes_show_jobs <uuid>  ->  the jobs table and the progress bar of the newest running job.
-# Rows: Job, State, Progress, then the job id hidden in column 4. A failed job shows the first line
-# of its error, except one agent-vm refused for want of a virtual machine slot (its status 75),
-# whose words point to a Terminal command: that says so in Cadabra's (boxes_no_slot_text).
-boxes_show_jobs() {
-    local _uuid="$1"
-    local _file="$(boxes_cache "$_uuid" jobs)"
-    [ -f "$_file" ] || : > "$_file"
-    /usr/bin/awk -F'\t' -v no_slot="$agentvm_no_slot_status" '
-        {
-            progress = $11
-            if ($5 == "running" && $10 != "-") progress = sprintf("%d%% %s", $10 * 100, progress)
-            if ($5 == "failed" || $5 == "lost") progress = $13
-            if ($5 == "failed" && $6 == no_slot) progress = "no free virtual machine slot"
-            if ($5 == "done" && progress == "-") progress = "finished"
-            printf "%s\t%s\t%s\t%s\n", $4, $5, progress, $1
-        }' "$_file" | "$dialog" "$_uuid" "$BOXES_JOBS_ID" omc_table_set_rows_from_stdin
-    # The bar follows the newest running job that reported how far it is (an install, recipe
-    # steps). A job without a fraction has its last step in the table instead.
-    local _percent="$(/usr/bin/awk -F'\t' '$5 == "running" && $10 != "-" { last = $10 } END { if (last != "") printf "%d", last * 100 }' "$_file")"
-    if [ -z "$_percent" ]; then
-        "$dialog" "$_uuid" "$BOXES_PROGRESS_ID" omc_hide
-        return 0
-    fi
-    "$dialog" "$_uuid" "$BOXES_PROGRESS_ID" "$_percent"
-    "$dialog" "$_uuid" "$BOXES_PROGRESS_ID" omc_show
-}
-
-# boxes_running_count <uuid>  ->  how many cached jobs run.
-boxes_running_count() {
-    local _file="$(boxes_cache "$1" jobs)"
-    [ -f "$_file" ] || { echo 0; return 0; }
-    /usr/bin/awk -F'\t' '$5 == "running" { n++ } END { print n + 0 }' "$_file"
-}
-
-# boxes_read_images <uuid>  ->  refreshes the images cache (agentvm_images rows).
-boxes_read_images() {
-    local _rows
-    _rows="$(agentvm_images)"
-    local _status=$?
-    if [ "$_status" -ne 0 ]; then
-        "$dialog" "$1" "$BOXES_NOTES_ID" "Could not list the images: $(agentvm_last_error "$_status")"
-        return "$_status"
-    fi
-    printf '%s\n' "$_rows" | boxes_store "$(boxes_cache "$1" images)"
-}
-
-# boxes_read_boxes <uuid>  ->  refreshes the boxes cache (agentvm_boxes rows).
-boxes_read_boxes() {
-    local _rows
-    _rows="$(agentvm_boxes)"
-    local _status=$?
-    if [ "$_status" -ne 0 ]; then
-        "$dialog" "$1" "$BOXES_NOTES_ID" "Could not list the boxes: $(agentvm_last_error "$_status")"
-        return "$_status"
-    fi
-    printf '%s\n' "$_rows" | boxes_store "$(boxes_cache "$1" boxes)"
-}
-
-# boxes_busy_table <uuid>  ->  "target=kind" for every running job, space-separated, for the State
-# columns. One line, because awk -v refuses a newline in a value. A job on several images
-# ("image:dev,dev-node") gives one pair per image.
-boxes_busy_table() {
-    local _file="$(boxes_cache "$1" jobs)"
-    [ -f "$_file" ] || return 0
-    /usr/bin/awk -F'\t' '$5 == "running" {
-        split($3, side, ":")
-        n = split(substr($3, length(side[1]) + 2), name, ",")
-        for (i = 1; i <= n; i++) printf "%s:%s=%s ", side[1], name[i], $2
-    }' "$_file"
-}
-
-# boxes_show_images <uuid>  ->  the images table from the cache.
-# Rows: Name, State, macOS, Based on, Needs. No size: agent-vm measures it only for one image at
-# a time (image info), so the detail pane shows it (boxes_size_lines).
-boxes_show_images() {
-    local _uuid="$1"
-    local _file="$(boxes_cache "$_uuid" images)"
-    [ -f "$_file" ] || : > "$_file"
-    # "-" stays in empty cells, as in the other tables: a row is split on tabs.
-    /usr/bin/awk -F'\t' -v held="$(boxes_busy_table "$_uuid")" '
-        BEGIN {
-            n = split(held, pair, " ")
-            for (i = 1; i <= n; i++) {
-                split(pair[i], part, "=")
-                if (part[1] ~ /^image:/) kind[substr(part[1], 7)] = part[2]
-            }
-        }
-        {
-            state = $2
-            if ($3 != "-") state = state " (" $3 ")"
-            if ($1 in kind) state = kind[$1] == "update-guest" ? "updating..." : (kind[$1] == "image-setup" ? "setting up..." : (kind[$1] == "image-create" ? "building..." : "busy..."))
-            printf "%s\t%s\t%s\t%s\t%s\n", $1, state, $4, $5, $7
-        }' "$_file" | "$dialog" "$_uuid" "$BOXES_IMAGES_ID" omc_table_set_rows_from_stdin
-    boxes_show_updates "$_uuid"
-}
-
-# boxes_show_boxes <uuid>  ->  the boxes table from the cache.
-# Rows: Name, State, Image, Network, CPUs, Memory. No size, as for images (box info).
-boxes_show_boxes() {
-    local _uuid="$1"
-    local _file="$(boxes_cache "$_uuid" boxes)"
-    [ -f "$_file" ] || : > "$_file"
-    /usr/bin/awk -F'\t' -v held="$(boxes_busy_table "$_uuid")" '
-        BEGIN {
-            n = split(held, pair, " ")
-            for (i = 1; i <= n; i++) {
-                split(pair[i], part, "=")
-                if (part[1] ~ /^box:/) kind[substr(part[1], 5)] = part[2]
-            }
-        }
-        {
-            state = $2
-            if ($12 == "true") state = state ", disposable"
-            if ($1 in kind) state = kind[$1] == "box-start" ? "starting..." : (kind[$1] == "box-stop" ? "stopping..." : "busy...")
-            memory = $6 == "-" ? "-" : $6 " GB"
-            printf "%s\t%s\t%s\t%s\t%s\t%s\n", $1, state, $3, $4, $5, memory
-        }' "$_file" | "$dialog" "$_uuid" "$BOXES_BOXES_ID" omc_table_set_rows_from_stdin
-}
-
-# boxes_show_kind <uuid> <images|boxes>  ->  shows that table and its buttons, hides the other.
-boxes_show_kind() {
-    local _uuid="$1"
-    if [ "$2" = "boxes" ]; then
-        "$dialog" "$_uuid" "$BOXES_IMAGES_ID" omc_hide
-        "$dialog" "$_uuid" "$BOXES_BOXES_ID" omc_show
-    else
-        "$dialog" "$_uuid" "$BOXES_BOXES_ID" omc_hide
-        "$dialog" "$_uuid" "$BOXES_IMAGES_ID" omc_show
-    fi
-}
-
-# boxes_populate <uuid> [images]  ->  reads everything again and repaints the tables. Images
-# are read only when asked ("images"): they are the slow list, and change only through jobs
-# and deletes.
-boxes_populate() {
-    local _uuid="$1"
-    boxes_read_jobs "$_uuid"
-    if [ "${2:-}" = "images" ] || [ ! -f "$(boxes_cache "$_uuid" images)" ]; then
-        boxes_read_images "$_uuid"
-    fi
-    boxes_read_boxes "$_uuid"
-    boxes_show_jobs "$_uuid"
-    boxes_show_images "$_uuid"
-    boxes_show_boxes "$_uuid"
-}
-
-# -- The detail pane -------------------------------------------------------------------------
-
-# boxes_clear_detail <uuid> [title]  ->  nothing selected: no text, no buttons.
-boxes_clear_detail() {
-    local _uuid="$1"
-    "$pasteboard" "$(boxes_key cadabra_boxes_selected "$_uuid")" set ""
-    "$dialog" "$_uuid" "$BOXES_TITLE_ID" "${2:-Select an image, a box or a job.}"
-    "$dialog" "$_uuid" "$BOXES_SUBTITLE_ID" ""
-    "$dialog" "$_uuid" "$BOXES_DETAIL_ID" ""
-    "$dialog" "$_uuid" "$BOXES_IMAGE_BUTTONS_ID" omc_hide
-    "$dialog" "$_uuid" "$BOXES_BOX_BUTTONS_ID" omc_hide
-    "$dialog" "$_uuid" "$BOXES_JOB_CANCEL_ID" omc_disable
-    "$dialog" "$_uuid" "$BOXES_JOB_FORGET_ID" omc_disable
-}
-
-# boxes_select_only <uuid> [table id]  ->  the other tables (all three without an id) lose
-# their selection. The detail pane shows one item; a row left highlighted in another table
-# could not be clicked to show it again, since a click on the selected row changes nothing and
-# fires no action. omc_deselect fires no action either.
-boxes_select_only() {
-    local _id
-    for _id in $BOXES_IMAGES_ID $BOXES_BOXES_ID $BOXES_JOBS_ID; do
-        [ "$_id" = "${2:-}" ] || "$dialog" "$1" "$_id" omc_deselect
+        "$alert" --level stop --title "$_title" "${_text:-agent-vm gave no reason.}"
     done
 }
 
-# boxes_need_text <needKinds>  ->  what each need means and how to meet it.
-boxes_need_text() {
-    local _kinds=",$1,"
-    case "$_kinds" in
-        *,guest-update,*)
-            printf '%s\n' "- Guest update: the image's agent-vm-guest is older than the one Cadabra runs with. Press Update Guest (it boots the image for a minute or two)." ;;
-    esac
-    case "$_kinds" in
-        *,full-disk-access,*)
-            printf '%s\n' "- Full Disk Access: programs in boxes of this image cannot read the shared project yet. Press Full Disk Access... and follow the steps shown." ;;
-    esac
-}
-
-# boxes_size_lines <image|box> <name>  ->  the detail pane's size lines. agent-vm measures an
-# image's or a box's space only in `image info` / `box info` (about 0.1-0.4 s, once per
-# selection); when that fails, the own size is unknown.
-boxes_size_lines() {
-    local _sizes
-    if [ "$1" = "image" ]; then
-        _sizes="$(agentvm_image_sizes "$2" 2>/dev/null)"
-    else
-        _sizes="$(agentvm_box_sizes "$2" 2>/dev/null)"
-    fi
-    local _status=$?
-    if [ "$_status" -ne 0 ] || [ -z "$_sizes" ]; then
-        /bin/rm -f "$agentvm_err_file"
-        printf 'Own size:      unknown\n'
-        return 0
-    fi
-    local _own="$(boxes_field "$_sizes" 1)"
-    local _total="$(boxes_field "$_sizes" 2)"
-    printf 'Own size:      %s (what deleting it frees)\n' "${_own:-unknown}"
-    printf 'Total size:    %s (most of it shared with other images and boxes)\n' "${_total:-unknown}"
-    local _base="$(boxes_field "$_sizes" 3)"
-    if [ -n "$_base" ]; then
-        printf 'Added:         %s over %s\n' "$(boxes_field "$_sizes" 4)" "$_base"
+# boxes_refresh <uuid>  ->  reads, paints and reports. The watch list is taken before the
+# reading (see boxes_note_jobs), and a reading that failed says nothing about any job.
+boxes_refresh() {
+    local _watched="$(boxes_watched "$1")"
+    boxes_read "$1"
+    local _read=$?
+    boxes_paint "$1"
+    if [ "$_read" -eq 0 ]; then
+        boxes_note_jobs "$1" "$_watched"
     fi
 }
 
-# boxes_still_selected <uuid> <image:name|box:name>  ->  0 when the detail pane still belongs to
-# it. The detail text asks agent-vm (image info, box info, the logs), which takes a moment, and
-# handlers can overlap: a click on another row meanwhile makes this one stale, and it must not
-# paint over the newer selection.
-boxes_still_selected() {
-    local _selected="$("$pasteboard" "$(boxes_key cadabra_boxes_selected "$1")" get)"
-    [ "$_selected" = "$2" ]
-}
-
-# boxes_show_image <uuid> <name>  ->  the image's details and the buttons that apply to it.
-boxes_show_image() {
-    local _uuid="$1" _name="$2"
-    local _row="$(boxes_row "$(boxes_cache "$_uuid" images)" "$_name")"
-    if [ -z "$_row" ]; then
-        boxes_clear_detail "$_uuid"
-        return 0
-    fi
-    "$pasteboard" "$(boxes_key cadabra_boxes_selected "$_uuid")" set "image:$_name"
-    local _state="$(boxes_field "$_row" 2)"
-    local _failure="$(boxes_field "$_row" 3)"
-    local _path="$(boxes_field "$_row" 14)"
-    local _kinds="$(boxes_field "$_row" 15)"
-    local _busy="$(boxes_busy_kind "$_uuid" "image:$_name")"
-    "$dialog" "$_uuid" "$BOXES_TITLE_ID" "Image $_name"
-    if [ -n "$_busy" ]; then
-        "$dialog" "$_uuid" "$BOXES_SUBTITLE_ID" "$(boxes_busy_word "$_busy")"
-    else
-        "$dialog" "$_uuid" "$BOXES_SUBTITLE_ID" "$_state${_failure:+ ($_failure)}"
-    fi
-    local _text
-    _text="$(
-        printf 'macOS:         %s\n' "$(boxes_field "$_row" 4)"
-        printf 'Based on:      %s\n' "$(boxes_field "$_row" 5)"
-        printf 'Recipe:        %s\n' "$(boxes_field "$_row" 8)"
-        printf 'Created:       %s\n' "$(boxes_field "$_row" 9)"
-        printf 'Guest daemon:  %s\n' "$(boxes_field "$_row" 10)"
-        boxes_line 'CPUs:' "$(boxes_field "$_row" 11)"
-        boxes_line 'Memory:' "$(boxes_field "$_row" 12)" GB
-        boxes_line 'Disk:' "$(boxes_field "$_row" 13)" GB
-        boxes_size_lines image "$_name"
-        printf 'Folder:        %s\n' "$_path"
-        if [ -n "$_kinds" ]; then
-            printf '\nNeeds:\n'
-            boxes_need_text "$_kinds"
-        fi
-    )"
-    boxes_still_selected "$_uuid" "image:$_name" || return 0
-    "$dialog" "$_uuid" "$BOXES_DETAIL_ID" "$_text"
-    "$dialog" "$_uuid" "$BOXES_BOX_BUTTONS_ID" omc_hide
-    "$dialog" "$_uuid" "$BOXES_IMAGE_BUTTONS_ID" omc_show
-    "$dialog" "$_uuid" "$BOXES_JOB_CANCEL_ID" omc_disable
-    "$dialog" "$_uuid" "$BOXES_JOB_FORGET_ID" omc_disable
-    local _ready=0 _free=0
-    [ "$_state" = "ready" ] && _ready=1
-    [ -z "$_busy" ] && _free=1
-    boxes_enable "$_uuid" "$BOXES_IMAGE_NEW_BOX_ID" "$_ready"
-    boxes_enable "$_uuid" "$BOXES_IMAGE_NEW_FROM_ID" "$_ready"
-    boxes_enable "$_uuid" "$BOXES_IMAGE_UPDATE_ID" "$((_ready * _free))"
-    boxes_enable "$_uuid" "$BOXES_IMAGE_SETUP_ID" "$((_ready * _free))"
-    boxes_enable "$_uuid" "$BOXES_IMAGE_REVEAL_ID" "$([ -n "$_path" ] && echo 1 || echo 0)"
-    boxes_enable "$_uuid" "$BOXES_IMAGE_DELETE_ID" "$_free"
-}
-
-# boxes_show_box <uuid> <name>  ->  the box's details, its recent programs and refused hosts,
-# and the buttons that apply to it.
-boxes_show_box() {
-    local _uuid="$1" _name="$2"
-    local _row="$(boxes_row "$(boxes_cache "$_uuid" boxes)" "$_name")"
-    if [ -z "$_row" ]; then
-        boxes_clear_detail "$_uuid"
-        return 0
-    fi
-    "$pasteboard" "$(boxes_key cadabra_boxes_selected "$_uuid")" set "box:$_name"
-    local _state="$(boxes_field "$_row" 2)"
-    local _path="$(boxes_field "$_row" 16)"
-    local _busy="$(boxes_busy_kind "$_uuid" "box:$_name")"
-    local _shown="$_state"
-    [ "$(boxes_field "$_row" 12)" = "true" ] && _shown="$_shown, disposable (deleted once it stops)"
-    [ -n "$_busy" ] && _shown="$(boxes_busy_word "$_busy")"
-    "$dialog" "$_uuid" "$BOXES_TITLE_ID" "Box $_name"
-    "$dialog" "$_uuid" "$BOXES_SUBTITLE_ID" "$_shown"
-    local _project="$(boxes_field "$_row" 9)"
-    [ -n "$_project" ] && [ "$(boxes_field "$_row" 10)" = "true" ] && _project="$_project (read-only)"
-    local _text
-    _text="$(
-        printf 'Image:         %s\n' "$(boxes_field "$_row" 3)"
-        boxes_line 'CPUs:' "$(boxes_field "$_row" 5)"
-        boxes_line 'Memory:' "$(boxes_field "$_row" 6)" GB
-        boxes_size_lines box "$_name"
-        local _mode="$(boxes_field "$_row" 17)"
-        printf 'Network:       %s\n' "$_mode"
-        if [ "$_mode" = "allowlist" ]; then
-            printf '%s\n' "$(boxes_field "$_row" 18)" | /usr/bin/tr ',' '\n' | /usr/bin/awk 'NF { print "  allowed:     " $0 }'
-        fi
-        if [ "$_state" = "running" ]; then
-            printf 'Project:       %s\n' "${_project:-none shared}"
-            printf 'Programs:      %s running\n' "$(boxes_field "$_row" 11)"
-            printf 'Started:       %s\n' "$(boxes_field "$_row" 14)"
-            printf 'Supervisor:    pid %s, agent-vm %s\n' "$(boxes_field "$_row" 8)" "$(boxes_field "$_row" 15)"
-            [ -n "$(boxes_field "$_row" 13)" ] && printf 'Stops when:    process %s exits\n' "$(boxes_field "$_row" 13)"
-        fi
-        printf 'Folder:        %s\n' "$_path"
-        local _runs="$(agentvm_execlog "$_name" 8 2>/dev/null | /usr/bin/awk -F'\t' '{
-            line = $1 "  " $4 "  -> " ($2 ~ /^[0123456789]+$/ ? "status " $2 : $2)
-            if ($5 != "-") line = line "  (waited on: " $5 ")"
-            print "  " line }')"
-        printf '\nRecent programs:\n%s\n' "${_runs:-  none}"
-        local _refused="$(agentvm_netlog "$_name" 8 denied 2>/dev/null | /usr/bin/awk -F'\t' '{ print "  " $1 "  " $3 ":" $4 "  (" $6 ")" }')"
-        printf '\nRecently refused hosts:\n%s\n' "${_refused:-  none}"
-    )"
-    agentvm_last_error >/dev/null
-    boxes_still_selected "$_uuid" "box:$_name" || return 0
-    "$dialog" "$_uuid" "$BOXES_DETAIL_ID" "$_text"
-    "$dialog" "$_uuid" "$BOXES_IMAGE_BUTTONS_ID" omc_hide
-    "$dialog" "$_uuid" "$BOXES_BOX_BUTTONS_ID" omc_show
-    "$dialog" "$_uuid" "$BOXES_JOB_CANCEL_ID" omc_disable
-    "$dialog" "$_uuid" "$BOXES_JOB_FORGET_ID" omc_disable
-    local _free=0 _running=0 _stopped=0
-    [ -z "$_busy" ] && _free=1
-    [ "$_state" = "running" ] && _running=1
-    [ "$_state" = "stopped" ] && _stopped=1
-    boxes_enable "$_uuid" "$BOXES_BOX_START_ID" "$((_stopped * _free))"
-    boxes_enable "$_uuid" "$BOXES_BOX_STOP_ID" "$(( (1 - _stopped) * _free ))"
-    boxes_enable "$_uuid" "$BOXES_BOX_VIEW_ID" "$_running"
-    boxes_enable "$_uuid" "$BOXES_BOX_CONTROL_ID" "$_running"
-    boxes_enable "$_uuid" "$BOXES_BOX_SHELL_ID" "$_running"
-    boxes_enable "$_uuid" "$BOXES_BOX_REVEAL_ID" "$([ -n "$_path" ] && echo 1 || echo 0)"
-    boxes_enable "$_uuid" "$BOXES_BOX_DELETE_ID" "$((_stopped * _free))"
-    # Recreate only for a kept box. A stopped disposable box is waiting to be collected, or was just
-    # made for a chat window that is about to start it; a fresh record would keep the first around
-    # and could pull the second out from under its window.
-    local _kept=1
-    [ "$(boxes_field "$_row" 12)" = "true" ] && _kept=0
-    boxes_enable "$_uuid" "$BOXES_BOX_RECREATE_ID" "$((_stopped * _free * _kept))"
-}
-
-# What a job agent-vm refused for want of a virtual machine slot says in its details, in place of
-# agent-vm's own words, which point to `agent-vm box list` in Terminal. Every job that boots a
-# virtual machine can meet it: a start, a guest update, a setup, a build.
-boxes_no_slot_text="No virtual machine slot was free: macOS runs at most two macOS virtual machines at once, and that many were running. Stop a box in the Boxes list, or a virtual machine in another application, then try again."
-
-# boxes_show_job <uuid> <id>  ->  the job's details: what it runs, how far it got, its error.
-boxes_show_job() {
-    local _uuid="$1" _id="$2"
-    local _row="$(/usr/bin/awk -F'\t' -v id="$_id" '$1 == id { print; exit }' "$(boxes_cache "$_uuid" jobs)" 2>/dev/null)"
-    if [ -z "$_row" ]; then
-        boxes_clear_detail "$_uuid"
-        return 0
-    fi
-    "$pasteboard" "$(boxes_key cadabra_boxes_selected "$_uuid")" set "job:$_id"
-    local _state="$(boxes_field "$_row" 5)"
-    local _kind="$(boxes_field "$_row" 2)"
-    "$dialog" "$_uuid" "$BOXES_TITLE_ID" "$(boxes_field "$_row" 4)"
-    "$dialog" "$_uuid" "$BOXES_SUBTITLE_ID" "$_state"
-    local _text
-    _text="$(
-        printf 'Started:       %s\n' "$(boxes_field "$_row" 7)"
-        [ -n "$(boxes_field "$_row" 8)" ] && printf 'Ended:         %s\n' "$(boxes_field "$_row" 8)"
-        [ -n "$(boxes_field "$_row" 6)" ] && printf 'Exit status:   %s\n' "$(boxes_field "$_row" 6)"
-        [ -n "$(boxes_field "$_row" 11)" ] && printf 'Last step:     %s\n' "$(boxes_field "$_row" 11)"
-        [ -n "$(boxes_field "$_row" 12)" ] && printf 'Note:          %s\n' "$(boxes_field "$_row" 12)"
-        if [ "$_state" = "failed" ] && [ "$(boxes_field "$_row" 6)" = "$agentvm_no_slot_status" ]; then
-            printf '\n%s\n' "$boxes_no_slot_text"
-        elif [ "$_state" = "failed" ] || [ "$_state" = "lost" ]; then
-            printf '\n%s\n' "$(agentvm_job_error "$_id" 2>/dev/null)"
-        fi
-        if [ "$_state" = "running" ] && [ "$_kind" = "image-setup" ]; then
-            printf '\n%s\n' "In the image's window: open System Settings > Privacy & Security > Full Disk Access, drag agent-vm-guest into the list (it is in /usr/local/libexec), turn it on, enter the password if asked (the window's Type Password button types it), then close the window."
-        fi
-    )"
-    agentvm_last_error >/dev/null
-    "$dialog" "$_uuid" "$BOXES_DETAIL_ID" "$_text"
-    "$dialog" "$_uuid" "$BOXES_IMAGE_BUTTONS_ID" omc_hide
-    "$dialog" "$_uuid" "$BOXES_BOX_BUTTONS_ID" omc_hide
-    local _running=0
-    [ "$_state" = "running" ] && _running=1
-    boxes_enable "$_uuid" "$BOXES_JOB_CANCEL_ID" "$_running"
-    boxes_enable "$_uuid" "$BOXES_JOB_FORGET_ID" "$((1 - _running))"
-}
-
-# boxes_show_selected <uuid>  ->  repaints the detail pane for whatever it last showed.
-boxes_show_selected() {
-    local _selected="$("$pasteboard" "$(boxes_key cadabra_boxes_selected "$1")" get)"
-    case "$_selected" in
-        image:*) boxes_show_image "$1" "${_selected#image:}" ;;
-        box:*)   boxes_show_box "$1" "${_selected#box:}" ;;
-        job:*)   boxes_show_job "$1" "${_selected#job:}" ;;
-    esac
-}
-
-# -- Jobs and the poll loop ------------------------------------------------------------------
-
-# boxes_after_job_start <uuid> <job id>  ->  shows the new job and makes sure a poll loop runs.
-# The job is put on the loop's watch list: one that ends before the loop's first pass (a quick
-# failure) must still count as ended, so the lists it changed are read again.
+# boxes_after_job_start <uuid> <job id>  ->  the job is watched and the window shows it at once.
 boxes_after_job_start() {
-    local _watch="$(boxes_key cadabra_boxes_watch "$1")"
-    "$pasteboard" "$_watch" set "$("$pasteboard" "$_watch" get) $2"
-    boxes_read_jobs "$1"
-    boxes_show_jobs "$1"
-    boxes_show_images "$1"
-    boxes_show_boxes "$1"
-    boxes_show_selected "$1"
-    "$next_command" "$OMC_CURRENT_COMMAND_GUID" "aichat.boxes.poll"
+    local _key="$(boxes_key cadabra_boxes_watch "$1")"
+    "$pasteboard" "$_key" set "$("$pasteboard" "$_key" get) $2"
+    boxes_read "$1"
+    boxes_paint "$1"
+    boxes_ensure_poll "$1"
 }
 
-# boxes_poll <uuid>  ->  repaints the jobs while any runs; returns when none does, when a newer
-# loop took over, or when the window closed. When a job ends, the lists it changed are read
-# again: images after an image job or an AgentVM install, boxes after every job. The header is
-# shown again too, which enables the window once an install has made agent-vm usable.
+# -- The poll loop -----------------------------------------------------------------------------
+
+# boxes_ensure_poll <uuid>  ->  starts a poll loop when none runs for the window: no loop holds
+# the token, or the one that holds it ("poll-<its pid>") is gone without giving it up.
+boxes_ensure_poll() {
+    local _holder="$("$pasteboard" "$(boxes_key cadabra_boxes_poll "$1")" get)"
+    local _start=0
+    case "$_holder" in
+        '') _start=1 ;;
+        poll-*[!0123456789]*|poll-) ;;
+        poll-*)
+            kill -0 "${_holder#poll-}" 2>/dev/null
+            [ $? -ne 0 ] && _start=1 ;;
+    esac
+    if [ "$_start" = "1" ]; then
+        "$next_command" "$OMC_CURRENT_COMMAND_GUID" "aichat.boxes.poll"
+    fi
+}
+
+# boxes_app_alive  ->  0 while the Cadabra that owns the window runs (or OMC gave no pid).
+boxes_app_alive() {
+    case "${OMC_APP_PROCESS_ID:-}" in
+        ''|*[!0123456789]*) return 0 ;;
+    esac
+    kill -0 "$OMC_APP_PROCESS_ID" 2>/dev/null
+}
+
+# boxes_poll <uuid>  ->  reads and repaints until the window closes, a newer loop takes over, or
+# Cadabra goes away.
 boxes_poll() {
     local _uuid="$1"
     local _key="$(boxes_key cadabra_boxes_poll "$_uuid")"
     local _token="poll-$$"
     # A loop chained by a handler that was still running when the window closed must not take
-    # the token over "closed" and repaint a window that is gone for as long as the job runs.
+    # the token over "closed" and poll a window that is gone.
     local _current="$("$pasteboard" "$_key" get)"
     [ "$_current" = "closed" ] && return 0
     "$pasteboard" "$_key" set "$_token"
-    # Seeded with the jobs just started, whatever their state now; taken, so a later loop does
-    # not count them again. Also seeded with what the loop this one takes over saw running on
-    # its last pass (the "seen" key): a job that ended after that pass, and before this loop's
-    # first, is an ended job to this loop, or neither loop would read the lists it changed.
-    local _watch="$(boxes_key cadabra_boxes_watch "$_uuid")"
-    local _seen="$(boxes_key cadabra_boxes_seen "$_uuid")"
-    local _was="$("$pasteboard" "$_watch" get) $("$pasteboard" "$_seen" get) "
-    "$pasteboard" "$_watch" set ""
-    local _now _ended _kinds _built _extra
-    local _holder
-    while :; do
+    local _passes=0
+    local _holder _wait
+    while boxes_app_alive; do
+        _wait="$boxes_poll_idle"
+        boxes_moving "$_uuid" && _wait="$boxes_poll_busy"
+        # Wait first: whatever chained the loop has just painted.
+        /bin/sleep "$_wait"
         _holder="$("$pasteboard" "$_key" get)"
         [ "$_holder" = "$_token" ] || return 0
-        boxes_read_jobs "$_uuid"
-        _now="$(/usr/bin/awk -F'\t' '$5 == "running" { printf "%s ", $1 }' "$(boxes_cache "$_uuid" jobs)")"
-        "$pasteboard" "$_seen" set "$_now"
-        # Jobs that ran on the last pass and do not now, with their kinds.
-        _ended="$(/usr/bin/awk -F'\t' -v was=" $_was" '$5 != "running" && index(was, " " $1 " ") { print $2 }' "$(boxes_cache "$_uuid" jobs)")"
-        if [ -n "$_ended" ]; then
-            _kinds="$(printf '%s\n' "$_ended" | /usr/bin/tr '\n' ' ')"
-            case " $_kinds" in
-                *" update-guest "*|*" image-setup "*|*" image-create "*|*" agentvm-install "*) boxes_read_images "$_uuid" ;;
-            esac
-            boxes_read_boxes "$_uuid"
-            boxes_show_header "$_uuid" >/dev/null
+        boxes_app_alive || break
+        boxes_refresh "$_uuid"
+        _passes=$((_passes + 1))
+        if [ -n "${CADABRA_BOXES_POLL_PASSES:-}" ] && [ "$_passes" -ge "$CADABRA_BOXES_POLL_PASSES" ]; then
+            break
         fi
-        boxes_show_jobs "$_uuid"
-        boxes_show_images "$_uuid"
-        boxes_show_boxes "$_uuid"
-        boxes_reselect "$_uuid"
-        if [ -n "$_ended" ]; then
-            boxes_show_selected "$_uuid"
-            # A build or guest update may leave the image without Full Disk Access (a new guest
-            # daemon has never been granted it): offer the setup now. A guest update that failed
-            # partway still changed the images before the failure; their Needs say which.
-            _built="$(/usr/bin/awk -F'\t' -v was=" $_was" '
-                ($5 == "done" && ($2 == "image-create" || $2 == "update-guest") || $5 == "failed" && $2 == "update-guest") && index(was, " " $1 " ") {
-                    n = split(substr($3, 7), name, ",")
-                    # Once per image, however many finished jobs covered it.
-                    for (i = 1; i <= n; i++) if (!(name[i] in seen)) { seen[name[i]] = 1; printf "%s ", name[i] }
-                }' "$(boxes_cache "$_uuid" jobs)")"
-            if [ -n "$_built" ]; then
-                # The names are agent-vm names, so word splitting is safe.
-                boxes_offer_setup "$_uuid" $_built
-                # A setup the offer started is polled like any job: it joins this pass's set.
-                _extra="$("$pasteboard" "$_watch" get)"
-                "$pasteboard" "$_watch" set ""
-                _now="$_now$_extra "
-                case "$_now" in
-                    *[!\ ]*) ;;
-                    *) _now="" ;;
-                esac
-            fi
-        fi
-        [ -z "$_now" ] && break
-        _was="$_now"
-        /bin/sleep 1
     done
     _holder="$("$pasteboard" "$_key" get)"
     [ "$_holder" = "$_token" ] && "$pasteboard" "$_key" set ""
     return 0
-}
-
-# boxes_reselect <uuid>  ->  highlights the selected row again after a repaint. A row whose
-# text changed (a State or a Progress) is a new row to the table, which drops its highlight.
-# The verb fires no action, so the detail pane is left as it is.
-boxes_reselect() {
-    local _selected="$("$pasteboard" "$(boxes_key cadabra_boxes_selected "$1")" get)"
-    case "$_selected" in
-        image:*) "$dialog" "$1" "$BOXES_IMAGES_ID" omc_select_row_with_content "${_selected#image:}" 1 ;;
-        box:*)   "$dialog" "$1" "$BOXES_BOXES_ID" omc_select_row_with_content "${_selected#box:}" 1 ;;
-        job:*)   "$dialog" "$1" "$BOXES_JOBS_ID" omc_select_row_with_content "${_selected#job:}" 4 ;;
-    esac
-}
-
-# -- Refreshing from other windows -----------------------------------------------------------
-
-# boxes_refresh_manager  ->  the open Box Manager (if any) reads its boxes again.
-boxes_refresh_manager() {
-    local _uuid="$("$pasteboard" "$BOXES_MANAGER_KEY" get)"
-    [ -n "$_uuid" ] || return 0
-    boxes_read_jobs "$_uuid"
-    boxes_read_boxes "$_uuid"
-    boxes_show_boxes "$_uuid"
-}
-
-# -- The New Box window (aichat.boxes.box.new.json) -------------------------------------------
-
-BOXES_NEW_NAME_ID=600
-BOXES_NEW_IMAGE_ID=601
-BOXES_NEW_CPUS_ID=602
-BOXES_NEW_MEMORY_ID=603
-BOXES_NEW_NETWORK_ID=604
-BOXES_NEW_RULES_ID=605
-BOXES_NEW_PACKS_ID=606
-BOXES_NEW_DISPOSABLE_ID=607
-BOXES_NEW_STATUS_ID=608
-BOXES_NEW_CREATE_ID=609
-
-# The image New Box... was pressed on, handed to the window it opens; read once.
-BOXES_NEW_IMAGE_KEY="cadabra_boxes_new_image"
-
-# boxes_new_images  ->  the ready images, one name per line: from the open Box Manager's cache
-# when there is one, since `image list` is slow, else from agent-vm.
-boxes_new_images() {
-    local _manager="$("$pasteboard" "$BOXES_MANAGER_KEY" get)"
-    local _cache=""
-    [ -n "$_manager" ] && _cache="$(boxes_cache "$_manager" images)"
-    if [ -n "$_cache" ] && [ -s "$_cache" ]; then
-        /usr/bin/awk -F'\t' '$2 == "ready" { print $1 }' "$_cache"
-        return 0
-    fi
-    local _rows
-    _rows="$(agentvm_images)"
-    local _status=$?
-    if [ "$_status" -ne 0 ]; then
-        return "$_status"
-    fi
-    printf '%s\n' "$_rows" | /usr/bin/awk -F'\t' '$2 == "ready" { print $1 }'
-}
-
-# boxes_new_init <uuid>  ->  fills the window. The image picker's value is a 1-based index, so
-# the ordered names are kept on the pasteboard for Create.
-boxes_new_init() {
-    local _uuid="$1"
-    local _wanted="$("$pasteboard" "$BOXES_NEW_IMAGE_KEY" get)"
-    "$pasteboard" "$BOXES_NEW_IMAGE_KEY" set ""
-    local _images
-    _images="$(boxes_new_images)"
-    local _status=$?
-    if [ "$_status" -ne 0 ]; then
-        "$dialog" "$_uuid" "$BOXES_NEW_STATUS_ID" "Could not list the images: $(agentvm_last_error "$_status")"
-        "$dialog" "$_uuid" "$BOXES_NEW_CREATE_ID" omc_disable
-        return 0
-    fi
-    if [ -z "$_images" ]; then
-        "$dialog" "$_uuid" "$BOXES_NEW_STATUS_ID" "There is no ready image to make a box from."
-        "$dialog" "$_uuid" "$BOXES_NEW_CREATE_ID" omc_disable
-        return 0
-    fi
-    "$pasteboard" "$(boxes_key cadabra_boxes_new_images "$_uuid")" set "$_images"
-    # Names are agent-vm names (letters, digits, ".", "_", "-"), so they need no JSON escaping.
-    local _options="$(printf '%s\n' "$_images" | /usr/bin/awk 'NF { printf "%s\"%s\"", sep, $0; sep = "," } END { print "" }')"
-    "$dialog" "$_uuid" "$BOXES_NEW_IMAGE_ID" omc_set_property options "[$_options]"
-    local _index="$(printf '%s\n' "$_images" | /usr/bin/awk -v want="$_wanted" '$0 == want { print NR; exit }')"
-    "$dialog" "$_uuid" "$BOXES_NEW_IMAGE_ID" "${_index:-1}"
-    "$dialog" "$_uuid" "$BOXES_NEW_NETWORK_ID" "1"
-    # A user pack agent-vm cannot use (its problem) is named as broken: a
-    # box that names it is refused, so offering it as if it worked would be a trap.
-    local _packs="$(agentvm_packs 2>/dev/null | /usr/bin/awk -F'\t' '{ printf "%s%s%s", sep, $1, ($3 != "" && $3 != "-") ? " (broken: " $3 ")" : ""; sep = ", " }')"
-    agentvm_last_error >/dev/null
-    if [ -n "$_packs" ]; then
-        "$dialog" "$_uuid" "$BOXES_NEW_PACKS_ID" "Packs name the hosts a tool needs, for example pack:npm. Known packs: $_packs."
-    fi
-}
-
-# boxes_new_create <uuid>  ->  0 once the box exists; otherwise the reason is in the window's
-# status line and it returns non-zero.
-boxes_new_create() {
-    local _uuid="$1"
-    local _name="$OMC_ACTIONUI_VIEW_600_VALUE"
-    local _index="$OMC_ACTIONUI_VIEW_601_VALUE"
-    local _cpus="$OMC_ACTIONUI_VIEW_602_VALUE"
-    local _memory="$OMC_ACTIONUI_VIEW_603_VALUE"
-    local _rules="$OMC_ACTIONUI_VIEW_605_VALUE"
-    local _net _disposable _image
-    case "$OMC_ACTIONUI_VIEW_604_VALUE" in
-        2) _net=off ;;
-        3) _net=open ;;
-        *) _net=allowlist ;;
-    esac
-    case "$OMC_ACTIONUI_VIEW_607_VALUE" in
-        true) _disposable=yes ;;
-        *)    _disposable=no ;;
-    esac
-    case "$_index" in
-        ''|*[!0123456789]*) _image="" ;;
-        *) _image="$("$pasteboard" "$(boxes_key cadabra_boxes_new_images "$_uuid")" get | /usr/bin/awk -v n="$_index" 'NR == n { print; exit }')" ;;
-    esac
-    if [ -z "$_name" ]; then
-        "$dialog" "$_uuid" "$BOXES_NEW_STATUS_ID" "The box needs a name."
-        return 2
-    fi
-    if [ -z "$_image" ]; then
-        "$dialog" "$_uuid" "$BOXES_NEW_STATUS_ID" "Choose an image."
-        return 2
-    fi
-    # One rule per line; blank lines and surrounding spaces do not count. The rules become the
-    # positional parameters, which agentvm_box_create turns into --allow options, and only for
-    # the allow list: the other modes take no rules.
-    set --
-    if [ "$_net" = "allowlist" ]; then
-        local _line
-        while IFS= read -r _line; do
-            _line="$(printf '%s' "$_line" | /usr/bin/sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')"
-            [ -n "$_line" ] && set -- "$@" "$_line"
-        done <<RULES
-$_rules
-RULES
-    fi
-    "$dialog" "$_uuid" "$BOXES_NEW_STATUS_ID" "Creating $_name..."
-    agentvm_box_create "$_name" "$_image" "$_cpus" "$_memory" "$_net" "$_disposable" "$@"
-    local _status=$?
-    if [ "$_status" -ne 0 ]; then
-        "$dialog" "$_uuid" "$BOXES_NEW_STATUS_ID" "$(agentvm_last_error "$_status")"
-        return "$_status"
-    fi
-    "$dialog" "$_uuid" "$BOXES_NEW_STATUS_ID" ""
-    return 0
-}
-
-# -- The Box Manager coming back to the front, and jobs started from other windows -----------
-
-BOXES_HEADER_NEW_IMAGE_ID=122
-BOXES_IMAGE_NEW_FROM_ID=546
-
-# boxes_activated <uuid>  ->  the Box Manager became the active window again: repaints the jobs,
-# and starts a poll loop when jobs run (or a watched one ended unseen) and none is polling. A
-# job started from another window
-# (New Image) has no loop of its own, since a loop chained from there would run in that
-# window's context; this is where one begins.
-boxes_activated() {
-    local _uuid="$1"
-    boxes_read_jobs "$_uuid" || return 0
-    boxes_show_jobs "$_uuid"
-    boxes_show_images "$_uuid"
-    boxes_show_boxes "$_uuid"
-    local _running="$(boxes_running_count "$_uuid")"
-    local _holder="$("$pasteboard" "$(boxes_key cadabra_boxes_poll "$_uuid")" get)"
-    # A watched job that already ended (the window was elsewhere for the whole build, or
-    # agent-vm refused at once) still needs one pass, which reads the lists it changed.
-    local _watched="$("$pasteboard" "$(boxes_key cadabra_boxes_watch "$_uuid")" get | /usr/bin/tr -d ' ')"
-    [ -n "$_watched" ] && _running=$((_running + 1))
-    if [ "$_running" -gt 0 ] && [ -z "$_holder" ]; then
-        "$next_command" "$OMC_CURRENT_COMMAND_GUID" "aichat.boxes.poll"
-    fi
-}
-
-# boxes_manager_job_started <job id>  ->  the open Box Manager (if any) lists a job another
-# window started, and watches it: its next poll loop counts it as ended even if it ends before
-# the loop's first pass.
-boxes_manager_job_started() {
-    local _uuid="$("$pasteboard" "$BOXES_MANAGER_KEY" get)"
-    [ -n "$_uuid" ] || return 0
-    local _watch="$(boxes_key cadabra_boxes_watch "$_uuid")"
-    "$pasteboard" "$_watch" set "$("$pasteboard" "$_watch" get) $1"
-    boxes_read_jobs "$_uuid"
-    boxes_show_jobs "$_uuid"
-    boxes_show_images "$_uuid"
-}
-
-# -- The New Image window (aichat.boxes.image.new.json) ---------------------------------------
-
-BOXES_NI_NAME_ID=700
-BOXES_NI_SOURCE_ID=701
-BOXES_NI_IPSW_ID=711
-BOXES_NI_IPSW_BROWSE_ID=712
-BOXES_NI_BASE_ID=715
-BOXES_NI_RECIPE_ID=720
-BOXES_NI_RECIPE_FILE_ID=721
-BOXES_NI_RECIPE_BROWSE_ID=722
-BOXES_NI_CPUS_ID=730
-BOXES_NI_MEMORY_ID=731
-BOXES_NI_DISK_ID=732
-BOXES_NI_ABOUT_ID=740
-BOXES_NI_VALUES_ID=741
-BOXES_NI_INPUT_BROWSE_ID=742
-BOXES_NI_DECLS_ID=743
-BOXES_NI_STATUS_ID=750
-BOXES_NI_BUILD_ID=752
-
-# The image "New Image from This..." was pressed on, handed to the window it opens; read once.
-BOXES_NI_BASE_KEY="cadabra_boxes_new_image_base"
-
-# _boxes_json_list  ->  stdin's lines as a JSON array of strings (for a Picker's options).
-_boxes_json_list() {
-    /usr/bin/awk 'BEGIN { printf "[" }
-        { gsub(/\\/, "\\\\"); gsub(/"/, "\\\""); printf "%s\"%s\"", sep, $0; sep = "," }
-        END { print "]" }'
-}
-
-# boxes_ni_setting <uuid> <name>  ->  one of the window's remembered lists (images, recipes).
-boxes_ni_setting() {
-    "$pasteboard" "$(boxes_key "cadabra_boxes_ni_$2" "$1")" get
-}
-
-# boxes_ni_init <uuid>  ->  fills the window: the ready images for "An existing image" (the one
-# "New Image from This..." was pressed on chosen), and the recipes that came with agent-vm.
-# Both pickers deliver 1-based indexes, so their ordered lists are kept on the pasteboard.
-boxes_ni_init() {
-    local _uuid="$1"
-    local _wanted="$("$pasteboard" "$BOXES_NI_BASE_KEY" get)"
-    "$pasteboard" "$BOXES_NI_BASE_KEY" set ""
-    local _images
-    _images="$(boxes_new_images)"
-    local _status=$?
-    if [ "$_status" -ne 0 ]; then
-        "$dialog" "$_uuid" "$BOXES_NI_STATUS_ID" "Could not list the images: $(agentvm_last_error "$_status")"
-        _images=""
-    fi
-    "$pasteboard" "$(boxes_key cadabra_boxes_ni_images "$_uuid")" set "$_images"
-    if [ -n "$_images" ]; then
-        "$dialog" "$_uuid" "$BOXES_NI_BASE_ID" omc_set_property options "$(printf '%s\n' "$_images" | _boxes_json_list)"
-    fi
-    # Recipe picker: "None", each of agent-vm's recipes by its description up to the first " (",
-    # then "A recipe file of your own".
-    local _recipes="$(agentvm_recipes)"
-    "$pasteboard" "$(boxes_key cadabra_boxes_ni_recipes "$_uuid")" set "$(printf '%s\n' "$_recipes" | /usr/bin/cut -f2)"
-    "$dialog" "$_uuid" "$BOXES_NI_RECIPE_ID" omc_set_property options "$( {
-        printf 'None\n'
-        printf '%s\n' "$_recipes" | /usr/bin/awk -F'\t' 'NF { d = $3; i = index(d, " ("); if (i > 1) d = substr(d, 1, i - 1); print d }'
-        printf 'A recipe file of your own\n'
-    } | _boxes_json_list)"
-    "$dialog" "$_uuid" "$BOXES_NI_RECIPE_ID" "1"
-    local _index=""
-    [ -n "$_wanted" ] && _index="$(printf '%s\n' "$_images" | /usr/bin/awk -v want="$_wanted" '$0 == want { print NR; exit }')"
-    if [ -n "$_index" ]; then
-        "$dialog" "$_uuid" "$BOXES_NI_SOURCE_ID" "2"
-        "$dialog" "$_uuid" "$BOXES_NI_BASE_ID" "$_index"
-        boxes_ni_source "$_uuid" 2
-    else
-        "$dialog" "$_uuid" "$BOXES_NI_SOURCE_ID" "1"
-        [ -n "$_images" ] && "$dialog" "$_uuid" "$BOXES_NI_BASE_ID" "1"
-        boxes_ni_source "$_uuid" 1
-    fi
-}
-
-# boxes_ni_source <uuid> <1|2>  ->  enables the restore file field (1) or the base picker (2).
-boxes_ni_source() {
-    if [ "$2" = "2" ]; then
-        "$dialog" "$1" "$BOXES_NI_IPSW_ID" omc_disable
-        "$dialog" "$1" "$BOXES_NI_IPSW_BROWSE_ID" omc_disable
-        "$dialog" "$1" "$BOXES_NI_BASE_ID" omc_enable
-    else
-        "$dialog" "$1" "$BOXES_NI_BASE_ID" omc_disable
-        "$dialog" "$1" "$BOXES_NI_IPSW_ID" omc_enable
-        "$dialog" "$1" "$BOXES_NI_IPSW_BROWSE_ID" omc_enable
-    fi
-}
-
-# boxes_ni_recipe_path <uuid> <picker index> <recipe file field>  ->  the recipe the picker
-# names: nothing for "None", one of agent-vm's recipes, or the file field for the last option.
-boxes_ni_recipe_path() {
-    local _count="$(boxes_ni_setting "$1" recipes | /usr/bin/awk 'NF { n++ } END { print n + 0 }')"
-    case "$2" in
-        ''|*[!0123456789]*|1) return 0 ;;
-    esac
-    if [ "$2" -gt "$((_count + 1))" ]; then
-        case "$3" in
-            "~/"*) printf '%s\n' "$HOME/${3#"~/"}" ;;
-            *)     printf '%s\n' "$3" ;;
-        esac
-        return 0
-    fi
-    boxes_ni_setting "$1" recipes | /usr/bin/awk -v n="$(($2 - 1))" 'NF && ++i == n { print; exit }'
-}
-
-# boxes_ni_show_recipe <uuid> <picker index> <recipe file field> <disk field>  ->  the recipe's
-# description, its inputs and parameters as editable name=value lines (defaults filled in),
-# and what each one means. The Xcode recipe gets a larger disk, as its README asks.
-boxes_ni_show_recipe() {
-    local _uuid="$1" _index="$2" _file="$3" _disk="$4"
-    local _count="$(boxes_ni_setting "$_uuid" recipes | /usr/bin/awk 'NF { n++ } END { print n + 0 }')"
-    local _own=0
-    case "$_index" in
-        ''|*[!0123456789]*) ;;
-        *) [ "$_index" -gt "$((_count + 1))" ] && _own=1 ;;
-    esac
-    boxes_enable "$_uuid" "$BOXES_NI_RECIPE_FILE_ID" "$_own"
-    boxes_enable "$_uuid" "$BOXES_NI_RECIPE_BROWSE_ID" "$_own"
-    "$dialog" "$_uuid" "$BOXES_NI_STATUS_ID" ""
-    local _path="$(boxes_ni_recipe_path "$_uuid" "$_index" "$_file")"
-    local _rows=""
-    local _status=0
-    if [ -n "$_path" ]; then
-        _rows="$(agentvm_recipe_info "$_path")"
-        _status=$?
-    fi
-    # No recipe, or one that cannot be read: nothing of the previous recipe stays on show.
-    if [ -z "$_path" ] || [ "$_status" -ne 0 ]; then
-        "$dialog" "$_uuid" "$BOXES_NI_ABOUT_ID" ""
-        "$dialog" "$_uuid" "$BOXES_NI_VALUES_ID" ""
-        "$dialog" "$_uuid" "$BOXES_NI_DECLS_ID" ""
-        "$dialog" "$_uuid" "$BOXES_NI_INPUT_BROWSE_ID" omc_disable
-        [ "$_status" -ne 0 ] && "$dialog" "$_uuid" "$BOXES_NI_STATUS_ID" "$(agentvm_last_error "$_status")"
-        return 0
-    fi
-    "$dialog" "$_uuid" "$BOXES_NI_ABOUT_ID" "$(printf '%s\n' "$_rows" | /usr/bin/awk -F'\t' '$1 == "recipe" && $5 != "-" { print $5 }')"
-    "$dialog" "$_uuid" "$BOXES_NI_VALUES_ID" "$(printf '%s\n' "$_rows" | /usr/bin/awk -F'\t' '
-        $1 == "input"     { print $2 "=" }
-        $1 == "parameter" { print $2 "=" ($4 == "-" ? "" : $4) }')"
-    "$dialog" "$_uuid" "$BOXES_NI_DECLS_ID" "$(printf '%s\n' "$_rows" | /usr/bin/awk -F'\t' '
-        $1 == "input"     { print $2 " (a file): " $5 }
-        $1 == "parameter" { print $2 ": " ($5 == "-" ? "" : $5) ($3 == "true" ? " (required)" : "") }')"
-    local _inputs="$(printf '%s\n' "$_rows" | /usr/bin/awk -F'\t' '$1 == "input" { n++ } END { print n + 0 }')"
-    boxes_enable "$_uuid" "$BOXES_NI_INPUT_BROWSE_ID" "$([ "$_inputs" -gt 0 ] && echo 1 || echo 0)"
-    if [ "$(/usr/bin/basename "$(/usr/bin/dirname "$_path")")" = "xcode" ] && [ -z "$_disk" ]; then
-        "$dialog" "$_uuid" "$BOXES_NI_DISK_ID" "128"
-    fi
-}
-
-# boxes_ni_set_input <values text> <recipe.json> <file>  ->  the values text with the recipe's
-# first input set to file (the line replaced, or added when missing).
-boxes_ni_set_input() {
-    local _input="$(agentvm_recipe_info "$2" 2>/dev/null | /usr/bin/awk -F'\t' '$1 == "input" { print $2; exit }')"
-    agentvm_last_error >/dev/null
-    if [ -z "$_input" ]; then
-        printf '%s\n' "$1"
-        return 0
-    fi
-    # The file comes through the environment: awk -v turns a backslash in a file name into an
-    # escape sequence.
-    printf '%s\n' "$1" | BOXES_NI_FILE="$3" /usr/bin/awk -v name="$_input" '
-        BEGIN { file = ENVIRON["BOXES_NI_FILE"] }
-        { line = $0; sub(/^[ \t]+/, "", line) }
-        index(line, name "=") == 1 && !done { print name "=" file; done = 1; next }
-        { print }
-        END { if (!done) print name "=" file }' | /usr/bin/awk 'NF || seen { print; seen = 1 }'
-}
-
-# boxes_ni_create <uuid>  ->  0 once the build started as a job (its id is in $boxes_ni_job);
-# otherwise the reason is in the window's status line and it returns non-zero.
-boxes_ni_create() {
-    local _uuid="$1"
-    local _name="$OMC_ACTIONUI_VIEW_700_VALUE"
-    local _ipsw="$OMC_ACTIONUI_VIEW_711_VALUE"
-    local _recipe="$(boxes_ni_recipe_path "$_uuid" "$OMC_ACTIONUI_VIEW_720_VALUE" "$OMC_ACTIONUI_VIEW_721_VALUE")"
-    local _kind _source
-    boxes_ni_job=""
-    case "$_ipsw" in
-        "~/"*) _ipsw="$HOME/${_ipsw#"~/"}" ;;
-    esac
-    if [ "$OMC_ACTIONUI_VIEW_701_VALUE" = "2" ]; then
-        _kind=from
-        case "$OMC_ACTIONUI_VIEW_715_VALUE" in
-            ''|*[!0123456789]*) _source="" ;;
-            *) _source="$(boxes_ni_setting "$_uuid" images | /usr/bin/awk -v n="$OMC_ACTIONUI_VIEW_715_VALUE" 'NF && ++i == n { print; exit }')" ;;
-        esac
-        if [ -z "$_source" ]; then
-            "$dialog" "$_uuid" "$BOXES_NI_STATUS_ID" "Choose the image to start from."
-            return 2
-        fi
-    else
-        _kind=ipsw
-        _source="$_ipsw"
-        if [ -z "$_source" ]; then
-            "$dialog" "$_uuid" "$BOXES_NI_STATUS_ID" "Choose a macOS restore file (.ipsw)."
-            return 2
-        fi
-    fi
-    if [ -z "$_name" ]; then
-        "$dialog" "$_uuid" "$BOXES_NI_STATUS_ID" "The image needs a name."
-        return 2
-    fi
-    # The values: name=value lines. A name the recipe declares as an input becomes input:, any
-    # other set: (agent-vm refuses a name the recipe does not declare, with its own message).
-    # A recipe that cannot be read is refused here, while the window still holds the fields.
-    local _inputs="" _required="" _declared=""
-    if [ -n "$_recipe" ]; then
-        local _decls
-        _decls="$(agentvm_recipe_info "$_recipe")"
-        local _decls_status=$?
-        if [ "$_decls_status" -ne 0 ]; then
-            "$dialog" "$_uuid" "$BOXES_NI_STATUS_ID" "$(agentvm_last_error "$_decls_status")"
-            return "$_decls_status"
-        fi
-        _inputs=" $(printf '%s\n' "$_decls" | /usr/bin/awk -F'\t' '$1 == "input" { printf "%s ", $2 }')"
-        # Parameters without a default: the prefilled "name=" line would set them to empty
-        # text, which agent-vm accepts, so its "must be set" check never fires.
-        _required=" $(printf '%s\n' "$_decls" | /usr/bin/awk -F'\t' '$1 == "parameter" && $3 == "true" { printf "%s ", $2 }')"
-        # Every name the recipe declares: a misspelled one is refused here, where the fields
-        # can still be corrected, rather than by agent-vm after the window has closed.
-        _declared=" $(printf '%s\n' "$_decls" | /usr/bin/awk -F'\t' '$1 == "input" || $1 == "parameter" { printf "%s ", $2 }')"
-    fi
-    set --
-    local _line _key _value
-    while IFS= read -r _line; do
-        _line="$(printf '%s' "$_line" | /usr/bin/sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')"
-        case "$_line" in
-            ''|'#'*) continue ;;
-            *=*) ;;
-            *) "$dialog" "$_uuid" "$BOXES_NI_STATUS_ID" "\"$_line\" is not a name=value line."
-               return 2 ;;
-        esac
-        [ -n "$_recipe" ] || continue
-        _key="${_line%%=*}"
-        _value="${_line#*=}"
-        case "$_declared" in
-            *" $_key "*) ;;
-            *) "$dialog" "$_uuid" "$BOXES_NI_STATUS_ID" "The recipe has no input or parameter named \"$_key\"."
-               return 2 ;;
-        esac
-        case "$_inputs" in
-            *" $_key "*)
-                case "$_value" in
-                    "~/"*) _value="$HOME/${_value#"~/"}" ;;
-                esac
-                if [ -z "$_value" ]; then
-                    "$dialog" "$_uuid" "$BOXES_NI_STATUS_ID" "The recipe input $_key needs a file."
-                    return 2
-                fi
-                set -- "$@" "input:$_key=$_value" ;;
-            *)
-                case "$_required" in
-                    *" $_key "*)
-                        if [ -z "$_value" ]; then
-                            "$dialog" "$_uuid" "$BOXES_NI_STATUS_ID" "The recipe parameter $_key needs a value."
-                            return 2
-                        fi ;;
-                esac
-                set -- "$@" "set:$_key=$_value" ;;
-        esac
-    done <<VALUES
-$OMC_ACTIONUI_VIEW_741_VALUE
-VALUES
-    "$dialog" "$_uuid" "$BOXES_NI_STATUS_ID" "Starting the build..."
-    boxes_ni_job="$(agentvm_image_create_job "$_name" "$_kind" "$_source" "$_recipe" \
-        "$OMC_ACTIONUI_VIEW_730_VALUE" "$OMC_ACTIONUI_VIEW_731_VALUE" "$OMC_ACTIONUI_VIEW_732_VALUE" "$@")"
-    local _status=$?
-    if [ "$_status" -ne 0 ]; then
-        "$dialog" "$_uuid" "$BOXES_NI_STATUS_ID" "$(agentvm_last_error "$_status")"
-        return "$_status"
-    fi
-    return 0
-}
-
-# boxes_ni_forget <uuid>  ->  the window's pasteboard lists, when it closes.
-boxes_ni_forget() {
-    "$pasteboard" "$(boxes_key cadabra_boxes_ni_images "$1")" set ""
-    "$pasteboard" "$(boxes_key cadabra_boxes_ni_recipes "$1")" set ""
-}
-
-# -- Installing AgentVM ------------------------------------------------------------------------
-
-# boxes_show_jobs_only <uuid>  ->  the jobs table while agent-vm cannot be used, so an install
-# job (or any job still running from before) is seen. Prints the number of running jobs.
-boxes_show_jobs_only() {
-    boxes_read_jobs "$1"
-    boxes_show_jobs "$1"
-    boxes_running_count "$1"
-}
-
-# boxes_install_agentvm <uuid>  ->  asks, then starts the install job (agentvm_install_job) and
-# polls it; 0 when started or declined, otherwise the refusal is shown in an alert. Install or
-# Update follows from what agentvm_available says now (Update also for a usable agent-vm older
-# than the newest release), and nothing is started when agent-vm can be used and is current
-# (installed meanwhile from Terminal, say): the header is shown again instead.
-boxes_install_agentvm() {
-    local _uuid="$1"
-    agentvm_available >/dev/null
-    local _status=$?
-    local _verb
-    local _newer=""
-    if [ "$_status" -eq 0 ]; then
-        _newer="$(agentvm_update_available "$(agentvm_version_info | /usr/bin/cut -f1)")"
-    fi
-    case "$_status" in
-        "$agentvm_not_installed") _verb="install" ;;
-        "$agentvm_too_old")       _verb="update" ;;
-        0)  if [ -n "$_newer" ]; then
-                _verb="update"
-            else
-                boxes_show_header "$_uuid"
-                if [ $? -eq 0 ]; then
-                    boxes_populate "$_uuid" images
-                fi
-                return 0
-            fi ;;
-        *)  boxes_show_header "$_uuid"
-            if [ $? -eq 0 ]; then
-                boxes_populate "$_uuid" images
-            fi
-            return 0 ;;
-    esac
-    local _title="Install AgentVM?" _ok="Install" _running=""
-    if [ "$_verb" = "update" ]; then
-        _title="Update AgentVM?"
-        _ok="Update"
-        _running=" Boxes that are running keep their version until they are stopped."
-    fi
-    "$alert" --level caution --title "$_title" --ok "$_ok" --cancel "Cancel" \
-        "Cadabra downloads the newest AgentVM release from $agentvm_releases_page, checks that Apple notarized it and AgentVM's developer signed it, and installs it for your user account only, in the .local folder of your home folder, with no administrator password. Your shell settings are not changed: to use agent-vm and avm in Terminal, add ~/.local/bin to your PATH.$_running"
-    if [ $? -ne 0 ]; then
-        return 0
-    fi
-    local _job
-    _job="$(agentvm_install_job "$_verb")"
-    _status=$?
-    if [ "$_status" -ne 0 ]; then
-        boxes_alert_error "Could not start the AgentVM installation" "$_status"
-        return 0
-    fi
-    boxes_show_header "$_uuid" >/dev/null
-    boxes_after_job_start "$_uuid" "$_job"
-}
-
-# boxes_install_agentvm_elsewhere <install|update>  ->  0 once the install job started, which
-# the open Box Manager (if any) then follows; 1 after an alert with the refusal. For a window
-# that is not the Box Manager and has asked already (chat start); open the Box Manager after it
-# (aichat.boxes.open), which shows the job's progress. An install that already runs (started
-# from another window) counts as started: the Box Manager shows that one.
-boxes_install_agentvm_elsewhere() {
-    agentvm_installing
-    if [ $? -eq 0 ]; then
-        return 0
-    fi
-    local _job
-    _job="$(agentvm_install_job "$1")"
-    local _status=$?
-    if [ "$_status" -ne 0 ]; then
-        boxes_alert_error "Could not start the AgentVM installation" "$_status"
-        return 1
-    fi
-    boxes_manager_job_started "$_job"
-    local _uuid="$("$pasteboard" "$BOXES_MANAGER_KEY" get)"
-    [ -n "$_uuid" ] && boxes_show_header "$_uuid" >/dev/null
-    return 0
-}
-
-# -- Images that need something: Update All, and Full Disk Access after a build -------------
-
-BOXES_UPDATES_TEXT_ID=133
-BOXES_UPDATE_ALL_ID=132
-
-# boxes_update_candidates <uuid>  ->  the ready images whose guest daemon lacks features of this
-# agent-vm's (need "guest-update") and that no job holds, one name per line, from the cache.
-boxes_update_candidates() {
-    local _file="$(boxes_cache "$1" images)"
-    [ -f "$_file" ] || return 0
-    /usr/bin/awk -F'\t' -v held="$(boxes_busy_table "$1")" '
-        BEGIN {
-            n = split(held, pair, " ")
-            for (i = 1; i <= n; i++) { split(pair[i], part, "="); if (part[1] ~ /^image:/) busy[substr(part[1], 7)] = 1 }
-        }
-        $2 == "ready" && ("," $15 ",") ~ /,guest-update,/ && !($1 in busy) { print $1 }' "$_file"
-}
-
-# boxes_show_updates <uuid>  ->  "N images need a guest update" with Update All beside it, or
-# neither. After an agent-vm update (the bundled one, or a developer build) every image built
-# before it needs this, which is why it is one button rather than one per image.
-boxes_show_updates() {
-    local _uuid="$1"
-    local _count="$(boxes_update_candidates "$_uuid" | /usr/bin/awk 'NF { n++ } END { print n + 0 }')"
-    if [ "$_count" -eq 0 ]; then
-        "$dialog" "$_uuid" "$BOXES_UPDATES_TEXT_ID" ""
-        "$dialog" "$_uuid" "$BOXES_UPDATE_ALL_ID" omc_hide
-        return 0
-    fi
-    if [ "$_count" -eq 1 ]; then
-        "$dialog" "$_uuid" "$BOXES_UPDATES_TEXT_ID" "1 image needs a guest update"
-    else
-        "$dialog" "$_uuid" "$BOXES_UPDATES_TEXT_ID" "$_count images need a guest update"
-    fi
-    "$dialog" "$_uuid" "$BOXES_UPDATE_ALL_ID" omc_show
-}
-
-# boxes_update_all <uuid>  ->  asks, then updates every candidate in one job; 0 when started or
-# declined, otherwise agent-vm's or the library's refusal is shown in an alert.
-boxes_update_all() {
-    local _uuid="$1"
-    local _images="$(boxes_update_candidates "$_uuid")"
-    [ -n "$_images" ] || return 0
-    local _list="$(printf '%s\n' "$_images" | /usr/bin/awk 'NF { printf "%s%s", sep, $0; sep = ", " }')"
-    "$alert" --level caution --title "Update the guest in these images?" --ok "Update All" --cancel "Cancel" \
-        "$_list. Each image is booted in turn, a minute or two each, to install the agent-vm-guest that comes with this agent-vm. Boxes made from them before keep their old guest until they are made again."
-    if [ $? -ne 0 ]; then
-        return 0
-    fi
-    # The names are agent-vm names (letters, digits, ".", "_", "-"), so word splitting is safe.
-    local _job
-    _job="$(agentvm_image_update_guest_job $_images)"
-    local _status=$?
-    if [ "$_status" -ne 0 ]; then
-        boxes_alert_error "Could not start the guest update" "$_status"
-        return 0
-    fi
-    boxes_after_job_start "$_uuid" "$_job"
-}
-
-# boxes_offer_setup <uuid> <images...>  ->  of the images a finished job just built or updated,
-# the ready ones that need Full Disk Access (their guest daemon has no grant, or a new daemon
-# was never checked); offers to set up the first now, naming the rest. Without it, programs in
-# their boxes cannot read the shared project. One offer and at most one setup per pass: each
-# setup is an interactive VM window, and macOS runs two VMs at most, so after Update All a
-# setup per image would soon be refused. The others keep their Needs, and their own Full Disk
-# Access... button.
-boxes_offer_setup() {
-    local _uuid="$1"
-    shift
-    local _file="$(boxes_cache "$_uuid" images)"
-    local _image _row _state _kinds _need=""
-    for _image in "$@"; do
-        _row="$(boxes_row "$_file" "$_image")"
-        _state="$(boxes_field "$_row" 2)"
-        _kinds="$(boxes_field "$_row" 15)"
-        [ "$_state" = "ready" ] || continue
-        case ",$_kinds," in
-            *,full-disk-access,*) _need="${_need:+$_need }$_image" ;;
-        esac
-    done
-    [ -n "$_need" ] || return 0
-    local _first="${_need%% *}"
-    local _others=""
-    [ "$_need" != "$_first" ] && _others="${_need#* }"
-    local _more=""
-    if [ -n "$_others" ]; then
-        _more=" It is needed in $(printf '%s' "$_others" | /usr/bin/sed 's/ /, /g') too: set those up one at a time afterwards, with each image's Full Disk Access... button."
-    fi
-    "$alert" --level note --title "Set up Full Disk Access in $_first?" --ok "Set Up Now" --cancel "Later" \
-        "Programs in boxes made from $_first cannot read the shared project until agent-vm-guest has Full Disk Access. Setting it up opens the image in a window: open System Settings > Privacy & Security > Full Disk Access, drag agent-vm-guest into the list (it is in /usr/local/libexec), turn it on, and enter the password if asked (the window's Type Password button types it). Then close the window.$_more"
-    if [ $? -ne 0 ]; then
-        return 0
-    fi
-    local _job
-    _job="$(agentvm_image_setup_job "$_first")"
-    local _status=$?
-    if [ "$_status" -ne 0 ]; then
-        boxes_alert_error "Could not open $_first" "$_status"
-        return 0
-    fi
-    local _watch="$(boxes_key cadabra_boxes_watch "$_uuid")"
-    "$pasteboard" "$_watch" set "$("$pasteboard" "$_watch" get) $_job"
 }

@@ -119,9 +119,11 @@ built from the source of its newest version tag, which the script downloads from
 time-mcp needs `cmake`. No WebUI is downloaded
 or patched - Cadabra's chat is native.
 
-Cadabra carries no agent-vm. Boxes run the agent-vm that AgentVM's package installs for the user
-(`~/.local/bin/agent-vm`, from https://github.com/abra-code/agent-vm/releases), the same one Terminal
-runs. The developer setting `/developer/agent-vm` in Cadabra's settings file points it at another
+Cadabra carries no agent-vm and does not install one. Boxes need macOS 27 or later and run the
+agent-vm that the AgentVM app (https://github.com/abra-code/AgentVMApp) installs for the user
+(`~/.local/bin/agent-vm`), the same one Terminal runs. The AgentVM app also makes the images and
+boxes; Cadabra's Tools > AgentVM Boxes only shows the boxes and starts and stops them. The developer
+setting `/developer/agent-vm` in Cadabra's settings file points it at another
 build, such as `~/Development/agent-vm/.build/signed/release/agent-vm`. An earlier build's
 `Contents/Support/AgentVM/` is removed by the script.
 

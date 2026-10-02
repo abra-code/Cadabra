@@ -1,11 +1,11 @@
 #!/bin/sh
-# Tests/47-agentvm-boxes.test.sh - what the Box Manager reads from agent-vm (images, boxes,
-# packs, the exec and network logs), and the quick commands it runs itself (create, delete,
-# view, the free-slot check, a shell in Terminal).
+# Tests/47-agentvm-boxes.test.sh - what Cadabra reads from agent-vm about boxes (images, boxes,
+# the exec and network logs, the status the AgentVM Boxes window polls), the commands it runs
+# itself (create, delete, view, the free-slot check, a start or a stop as an agent-vm job, a shell
+# in Terminal), and the links that open the AgentVM app.
 #
 # agent-vm never runs here: CADABRA_AGENT_VM points the library at fake_agent_vm.sh, which
-# answers from JSON captured from a real agent-vm (Tests/fixtures/agentvm/). The long commands,
-# run as detached jobs, are 48-agentvm-jobs.test.sh.
+# answers from JSON captured from a real agent-vm (Tests/fixtures/agentvm/).
 #
 # POSIX sh only. Validate with "sh -n", never "bash -n".
 . "${OMCTEST_LIB:?set OMCTEST_LIB, or run via: appletbuilder test}"
@@ -53,7 +53,7 @@ set_developer() {
 message() { lib agentvm_last_error "$1"; }
 
 # -----------------------------------------------------------------------------------------
-section "images: one row per image, the fields the Box Manager shows"
+section "images: one row per image"
 rows=$(convert images "$FIXTURES/image-list.json")
 check "one row per image"  "5" "$(printf '%s\n' "$rows" | count_rows)"
 row=$(printf '%s\n' "$rows" | /usr/bin/awk -F'\t' '$1 == "dev-agents"')
@@ -71,14 +71,6 @@ check "a base image has no \"based on\"" "-" "$(printf '%s\n' "$rows" | /usr/bin
 
 section "drift: every image field the library reads is in the fixture"
 check "no field is absent" "" "$(printf '%s\n' "$row" | absent name state _ macOS basedOn ownSize needs recipe created guestVersion cpus memoryGB diskGB path needKinds)"
-
-section "sizes: an image's or a box's space, from image info and box info (agent-vm 0.2.18)"
-row=$(convert sizes "$FIXTURES/image-info.json")
-check "own size, total, base and what it added" "280 MB${TAB}39 GB${TAB}dev-node${TAB}2.1 GB" "$row"
-row=$(convert sizes "$FIXTURES/box-info.json")
-check "a box has no base"  "1.4 GB${TAB}36 GB${TAB}-${TAB}-" "$row"
-row=$(printf '%s' '{"name":"x"}' | "$PY" "$CONVERT" sizes)
-check "no measurement: every field \"-\"" "-${TAB}-${TAB}-${TAB}-" "$row"
 
 section "boxes: one row per box"
 rows=$(convert boxes "$FIXTURES/box-list.json")
@@ -108,17 +100,7 @@ check "rules, comma-joined" "pack:npm,example.com" "$(printf '%s\n' "$row" | col
 printf '%s' '[{"box":{"name":"o","network":{"mode":"off"}},"state":"stopped"}]' > "$OMCTEST_WORK/off.json"
 check "network off is just \"off\"" "off" "$(convert boxes "$OMCTEST_WORK/off.json" | col 4)"
 
-section "packs, and the two logs"
-rows=$(convert packs "$FIXTURES/packs.json")
-check "npm is a pack" "1" "$(printf '%s\n' "$rows" | /usr/bin/grep -c "^npm${TAB}")"
-check "hosts, comma-joined" "1" "$(cad_has "$(printf '%s\n' "$rows" | /usr/bin/awk -F'\t' '$1 == "github" { print $2 }')" "github.com,api.github.com")"
-check "a usable pack has no problem" "-" "$(printf '%s\n' "$rows" | /usr/bin/awk -F'\t' '$1 == "github" { print $3 }')"
-printf '%s' '[{"name":"mine","source":"user","path":"/Users/you/Packs/mine.json","problem":"hosts is not a list of host names"},{"name":"npm","hosts":["registry.npmjs.org"],"source":"built-in"}]' > "$OMCTEST_WORK/packs-broken.json"
-rows=$(convert packs "$OMCTEST_WORK/packs-broken.json")
-check "a broken user pack keeps its row" "1" "$(printf '%s\n' "$rows" | /usr/bin/grep -c "^mine${TAB}")"
-check "  with no hosts"                 "-" "$(printf '%s\n' "$rows" | /usr/bin/awk -F'\t' '$1 == "mine" { print $2 }')"
-check "  and agent-vm's problem"        "hosts is not a list of host names" "$(printf '%s\n' "$rows" | /usr/bin/awk -F'\t' '$1 == "mine" { print $3 }')"
-check "  while the next pack still reads" "registry.npmjs.org" "$(printf '%s\n' "$rows" | /usr/bin/awk -F'\t' '$1 == "npm" { print $2 }')"
+section "the two logs"
 row=$(convert execlog "$FIXTURES/execlog.json" | /usr/bin/head -1)
 check "execlog: six fields" "6"              "$(printf '%s\n' "$row" | /usr/bin/awk -F'\t' '{ print NF }')"
 check "  started"           "2026-09-25T07:36:52Z" "$(printf '%s\n' "$row" | col 1)"
@@ -147,8 +129,6 @@ check "images"   "5" "$(with_fake agentvm_images | count_rows)"
 check "  asked"  "image list --json" "$(last_call)"
 with_fake agentvm_boxes >/dev/null
 check "boxes asked"  "box list --json" "$(last_call)"
-with_fake agentvm_packs >/dev/null
-check "packs asked"  "box packs --json" "$(last_call)"
 /bin/cp "$FIXTURES/box-status-stopped.json" "$FAKE_AGENTVM_DIR/box-b1.json"
 with_fake agentvm_execlog b1 >/dev/null
 check "execlog asked" "box execlog b1 --json" "$(last_call)"
@@ -214,14 +194,6 @@ check "  asked"                 "box delete b1 --json" "$(last_call)"
 out=$(with_fake agentvm_box_delete b1); rc=$?
 check "deleting it again fails" "1" "$rc"
 check "  with agent-vm's words" 'no box b1; `agent-vm box list` shows the existing ones' "$(message "$rc")"
-printf 'image dev is in use by the box b1; delete the box first' > "$FAKE_AGENTVM_DIR/fail-image-delete"
-out=$(with_fake agentvm_image_delete dev); rc=$?
-check "an image in use is refused by agent-vm" "1" "$rc"
-check "  naming the box"        "image dev is in use by the box b1; delete the box first" "$(message "$rc")"
-/bin/rm -f "$FAKE_AGENTVM_DIR/fail-image-delete"
-with_fake agentvm_image_delete dev; rc=$?
-check "deleting an image"       "0" "$rc"
-check "  asked"                 "image delete dev --json" "$(last_call)"
 /bin/cp "$FIXTURES/box-status-running.json" "$FAKE_AGENTVM_DIR/box-b2.json"
 with_fake agentvm_box_view b2
 check "view"                    "box view b2 --json" "$(last_call)"
@@ -235,7 +207,7 @@ out=$(with_fake agentvm_vm_slot_free); rc=$?
 check "the fixture's two running VMs: none free" "1" "$rc"
 why=$(message "$rc")
 check "  doctor's own count is in the reason" "1" "$(cad_has "$why" "No virtual machine slot is free: 2 virtual machines running on this Mac")"
-check "  and where to stop a box"   "1" "$(cad_has "$why" "Stop a box in Tools > AgentVM, or a virtual machine in another application, then try again.")"
+check "  and where to stop a box"   "1" "$(cad_has "$why" "Stop a box in Tools > AgentVM Boxes, or a virtual machine in another application, then try again.")"
 printf '%s' '[{"box":{"name":"s3","network":{"mode":"off"}},"state":"running"},{"box":{"name":"try1","network":{"mode":"off"}},"state":"stopped"},{"box":{"name":"b2","network":{"mode":"off"}},"state":"starting"},{"box":{"name":"b4","network":{"mode":"off"}},"state":"stopping"}]' > "$FAKE_AGENTVM_DIR/box-list.json"
 with_fake agentvm_vm_slot_free; rc=$?
 check "running boxes: refused"      "1" "$rc"
@@ -284,123 +256,113 @@ check "  and no file is written outside Shells" "0" "$([ -e "$HOME/Library/Appli
 lib agentvm_last_error >/dev/null
 cad_reset
 
-section "the recipes beside agent-vm"
-# The real path: the library finds the recipes by resolving agent-vm's links.
-RECIPES="$(cd "$OMCTEST_TESTS/helpers/Recipes" && pwd -P)"
-rows=$(with_fake agentvm_recipes)
-check "five, by folder name" "acp-agents homebrew node xcode xcode-platforms" "$(printf '%s\n' "$rows" | col 1 | /usr/bin/tr '\n' ' ' | /usr/bin/sed 's/ $//')"
-check "  each with its recipe.json" "$RECIPES/xcode/recipe.json" "$(printf '%s\n' "$rows" | /usr/bin/awk -F'\t' '$1 == "xcode" { print $2 }')"
-check "  and its description" "Node and npm, from Homebrew (needs Homebrew: put Recipes/homebrew before it)" "$(printf '%s\n' "$rows" | /usr/bin/awk -F'\t' '$1 == "node" { print $3 }')"
-check "homebrew's copied file came along" "1" "$([ -f "$RECIPES/homebrew/files/zprofile" ] && echo 1 || echo 0)"
+section "status: the boxes, the jobs and the virtual machines of one answer"
+# status_rows <function> <file>  ->  one of the library's jq filters over a status answer.
+status_rows() { lib "$1" < "$2"; }
+rows=$(status_rows agentvm_status_box_rows "$FIXTURES/status-variety.json")
+check "one row per box"            "3" "$(printf '%s\n' "$rows" | count_rows)"
+check "a stopped disposable box"   "cadabra-spike${TAB}stopped${TAB}dev-agents${TAB}4${TAB}-${TAB}-${TAB}true${TAB}-" "$(printf '%s\n' "$rows" | /usr/bin/sed -n 1p)"
+check "a running one: its programs and its owner" "s3${TAB}running${TAB}dev-acp${TAB}8${TAB}2${TAB}812${TAB}false${TAB}-" "$(printf '%s\n' "$rows" | /usr/bin/sed -n 2p)"
+check "one that does not answer says why" "no answer from the supervisor within 5 s" "$(printf '%s\n' "$rows" | /usr/bin/sed -n 3p | col 8)"
+check "every row has eight fields" "8 8 8" "$(printf '%s\n' "$rows" | /usr/bin/awk -F'\t' '{ printf "%s%s", sep, NF; sep = " " }')"
+check "the virtual machines"       "1${TAB}2" "$(status_rows agentvm_status_vm_row "$FIXTURES/status-variety.json")"
+check "no jobs: no rows"           "" "$(status_rows agentvm_status_job_rows "$FIXTURES/status-variety.json")"
+rows=$(status_rows agentvm_status_job_rows "$FIXTURES/status.json")
+check "drift: a real capture's jobs have an id, a state, a target and a command" "" "$(printf '%s\n' "$rows" | /usr/bin/awk -F'\t' '{ for (i = 1; i <= 4; i++) if ($i == "-") printf "row %d field %d ", NR, i }')"
+check "  the box job among them"   "done${TAB}box:cadabra-spike${TAB}box stop${TAB}0${TAB}-" "$(printf '%s\n' "$rows" | /usr/bin/awk -F'\t' '$3 == "box:cadabra-spike"' | /usr/bin/cut -f2-)"
+/usr/bin/jq '.jobs = [{"id": "20261002-101500-a1b2c3", "state": "failed", "status": 75, "targets": ["box:s3"], "command": ["box", "start", "s3", "--json"], "error": "no free slot\tfor s3\nstop one"}]' "$FIXTURES/status-variety.json" > "$OMCTEST_WORK/failed.json"
+check "a failed job: its status, and its error on one line" "20261002-101500-a1b2c3${TAB}failed${TAB}box:s3${TAB}box start${TAB}75${TAB}no free slot for s3 stop one" "$(status_rows agentvm_status_job_rows "$OMCTEST_WORK/failed.json")"
+fake_reset
+with_fake agentvm_status >/dev/null
+check "status asked"               "status --json" "$(last_call)"
 
-section "the installed agent-vm's recipes are in its version's folder, found through its link"
-# The layout AgentVM's package installs: ~/.local/bin/agent-vm links into a version's folder.
-VERSION_DIR="$HOME/.local/share/agent-vm/versions/9.9.9"
-/bin/mkdir -p "$VERSION_DIR/Recipes/only-this" "$HOME/.local/bin"
-printf '#!/bin/sh\n' > "$VERSION_DIR/agent-vm"
-/bin/chmod +x "$VERSION_DIR/agent-vm"
-/bin/cp "$RECIPES/homebrew/recipe.json" "$VERSION_DIR/Recipes/only-this/recipe.json"
-/bin/ln -s ../share/agent-vm/versions/9.9.9/agent-vm "$HOME/.local/bin/agent-vm"
-rows=$(lib agentvm_recipes)
-check "that version's recipes, and no others" "only-this" "$(printf '%s\n' "$rows" | col 1)"
-check "  at their real path" "$(cd "$VERSION_DIR" && pwd -P)/Recipes/only-this/recipe.json" "$(printf '%s\n' "$rows" | col 2)"
-/bin/rm -f "$HOME/.local/bin/agent-vm"
-/bin/ln -s ../share/agent-vm/versions/0.0.1/agent-vm "$HOME/.local/bin/agent-vm"
-check "a link to a version that is gone: none" "" "$(lib agentvm_recipes)"
-/bin/rm -rf "$HOME/.local"
-check "no agent-vm at all: none"               "" "$(lib agentvm_recipes)"
-
-section "a developer build's recipes are its working tree's"
-# agent-vm's build script leaves no Recipes beside .build/signed/release/agent-vm.
-TREE="$OMCTEST_WORK/agent-vm-tree"
-/bin/mkdir -p "$TREE/.build/signed/release" "$TREE/Recipes/from-tree"
-: > "$TREE/Package.swift"
-printf '#!/bin/sh\n' > "$TREE/.build/signed/release/agent-vm"
-/bin/chmod +x "$TREE/.build/signed/release/agent-vm"
-/bin/cp "$RECIPES/homebrew/recipe.json" "$TREE/Recipes/from-tree/recipe.json"
-cad_reset
-set_developer agent-vm "$TREE/.build/signed/release/agent-vm"
-rows=$(lib agentvm_recipes)
-check "the tree's recipes"       "from-tree" "$(printf '%s\n' "$rows" | col 1)"
-check "  from the tree's folder" "$(cd "$TREE" && pwd -P)/Recipes/from-tree/recipe.json" "$(printf '%s\n' "$rows" | col 2)"
-/bin/mkdir -p "$TREE/.build/signed/release/Recipes/beside"
-/bin/cp "$RECIPES/xcode/recipe.json" "$TREE/.build/signed/release/Recipes/beside/recipe.json"
-check "recipes beside the build win" "beside" "$(lib agentvm_recipes | col 1)"
-/bin/rm -rf "$TREE/.build/signed/release/Recipes"
-cad_reset
-# The same layout as the installed agent-vm: no working tree is looked for.
-/bin/mkdir -p "$HOME/.local/bin"
-/bin/ln -s "$TREE/.build/signed/release/agent-vm" "$HOME/.local/bin/agent-vm"
-check "the installed origin never looks above its folder" "" "$(lib agentvm_recipes)"
-/bin/rm -rf "$HOME/.local"
-
-section "a recipe's inputs and parameters"
-rows=$(lib agentvm_recipe_info "$RECIPES/xcode/recipe.json")
-check "the recipe row: kind, -, -, commandLineTools" "recipe${TAB}-${TAB}-${TAB}true" "$(printf '%s\n' "$rows" | /usr/bin/head -1 | /usr/bin/cut -f1-4)"
-check "one input, always required" "input${TAB}xcode${TAB}true${TAB}-" "$(printf '%s\n' "$rows" | /usr/bin/awk -F'\t' '$1 == "input"' | /usr/bin/cut -f1-4)"
-rows=$(lib agentvm_recipe_info "$RECIPES/acp-agents/recipe.json")
-check "parameters with defaults are not required" "parameter${TAB}claude_acp${TAB}false${TAB}0.81.2" "$(printf '%s\n' "$rows" | /usr/bin/awk -F'\t' '$2 == "claude_acp"' | /usr/bin/cut -f1-4)"
-check "an empty default is \"-\"" "-" "$(printf '%s\n' "$rows" | /usr/bin/awk -F'\t' '$2 == "extras" { print $4 }')"
-printf '%s' '{"version":1,"description":"a\tb","parameters":{"need":{"description":"no default"}},"steps":[]}' > "$OMCTEST_WORK/r.json"
-rows=$(lib agentvm_recipe_info "$OMCTEST_WORK/r.json")
-check "a parameter without a default is required" "true" "$(printf '%s\n' "$rows" | /usr/bin/awk -F'\t' '$2 == "need" { print $3 }')"
-check "  and a tab in a description stays in its field" "a?b" "$(printf '%s\n' "$rows" | /usr/bin/head -1 | col 5)"
-out=$(lib agentvm_recipe_info recipe.json); rc=$?
-check "a relative path is refused" "2" "$rc"
-lib agentvm_last_error >/dev/null
-printf 'not json' > "$OMCTEST_WORK/bad.json"
-out=$(lib agentvm_recipe_info "$OMCTEST_WORK/bad.json"); rc=$?
-check "a file that is not a recipe fails" "1" "$rc"
-check "  saying so" "1" "$(cad_has "$(message "$rc")" "agentvm_json.py recipe")"
-
-section "building an image: the argv"
+section "starting and stopping a box as agent-vm jobs"
 fake_reset
 /usr/bin/sed 's/"warning"/"ok"/g' "$FIXTURES/doctor.json" > "$FAKE_AGENTVM_DIR/doctor.json"
-printf 'xip' > "$OMCTEST_WORK/Xcode.xip"
-printf 'ipsw' > "$OMCTEST_WORK/Restore.ipsw"
-# wait_log <pattern> - until the detached job's agent-vm call is in the fake's log (5 s at most).
-wait_log() {
-    w_left=50
-    while [ "$w_left" -gt 0 ]; do
-        /usr/bin/grep -q "$1" "$FAKE_AGENTVM_DIR/log" 2>/dev/null && return 0
-        w_left=$((w_left - 1))
-        /bin/sleep 0.1
-    done
-}
-id=$(with_fake agentvm_image_create_job dev-xc from dev "$RECIPES/xcode/recipe.json" 2 "" 128 "input:xcode=$OMCTEST_WORK/Xcode.xip" "set:mode=a=b c"); rc=$?
-check "from an image, with a recipe: started" "0" "$rc"
-wait_log "^image create dev-xc"
-check "  the argv, every option in place" "image create dev-xc --from dev --input xcode=$OMCTEST_WORK/Xcode.xip --set mode=a=b c --recipe $RECIPES/xcode/recipe.json --cpus 2 --disk-gb 128 --json" "$(/usr/bin/grep '^image create dev-xc' "$FAKE_AGENTVM_DIR/log")"
-id=$(with_fake agentvm_image_create_job base ipsw "" "" "" "" "" 2>/dev/null); rc=$?
-check "from a restore image with no path: refused" "2" "$rc"
-lib agentvm_last_error >/dev/null
-id=$(with_fake agentvm_image_create_job base ipsw "$OMCTEST_WORK/Restore.ipsw" "" "" "" ""); rc=$?
-check "from a restore image: started" "0" "$rc"
-wait_log "^image create base"
-check "  the argv" "image create base --ipsw $OMCTEST_WORK/Restore.ipsw --json" "$(/usr/bin/grep '^image create base' "$FAKE_AGENTVM_DIR/log")"
-
-section "building an image: what is refused before agent-vm runs"
-fake_reset
-/usr/bin/sed 's/"warning"/"ok"/g' "$FIXTURES/doctor.json" > "$FAKE_AGENTVM_DIR/doctor.json"
-refused_build() {
-    with_fake agentvm_image_create_job "$@" >/dev/null
-    rb_rc=$?
-    rb_msg=$(message "$rb_rc")
-    printf '%s|%s' "$rb_rc" "$(/bin/cat "$FAKE_AGENTVM_DIR/log" 2>/dev/null | /usr/bin/grep -c '^image create' | /usr/bin/tr -d ' ')"
-}
-check "a relative restore image"       "2|0" "$(refused_build x ipsw Restore.ipsw "" "" "" "")"
-check "a file that is not an .ipsw"    "2|0" "$(refused_build x ipsw "$OMCTEST_WORK/Xcode.xip" "" "" "" "")"
-check "a restore image that is missing" "2|0" "$(refused_build x ipsw /nowhere/R.ipsw "" "" "" "")"
-check "a base image name like an option" "2|0" "$(refused_build x from -dev "" "" "" "")"
-check "a relative recipe"              "2|0" "$(refused_build x from dev recipe.json "" "" "")"
-check "a parameter name in capitals"   "2|0" "$(refused_build x from dev "$RECIPES/acp-agents/recipe.json" "" "" "" "set:Extras=x")"
-check "an input with a relative file"  "2|0" "$(refused_build x from dev "$RECIPES/xcode/recipe.json" "" "" "" "input:xcode=Xcode.xip")"
-check "an input with a missing file"   "2|0" "$(refused_build x from dev "$RECIPES/xcode/recipe.json" "" "" "" "input:xcode=/nowhere.xip")"
-check "an extra that is neither"       "2|0" "$(refused_build x from dev "" "" "" "" "xcode=/a")"
-check "a disk size that is not a number" "2|0" "$(refused_build x from dev "" "" "" 1TB)"
-check "too few arguments"              "2|0" "$(refused_build x from dev)"
+if [ -n "${OMC_APP_PROCESS_ID:-}" ]; then
+    owner_args=" --owner-pid $OMC_APP_PROCESS_ID"
+else
+    owner_args=""
+fi
+id=$(with_fake agentvm_box_start_job b1); rc=$?
+check "a start"                    "0" "$rc"
+check "  answers with the job's id" "20261002-101500-000001" "$id"
+check "  asked as a job, owned by Cadabra" "job start --json -- box start b1$owner_args" "$(last_call)"
+id=$(with_fake agentvm_box_stop_job b1); rc=$?
+check "a stop"                     "0|20261002-101500-000002" "$rc|$id"
+check "  asked as a job"           "job start --json -- box stop b1" "$(last_call)"
 /bin/cp "$FIXTURES/doctor.json" "$FAKE_AGENTVM_DIR/doctor.json"
-check "no free VM slot"                "1|0" "$(refused_build x from dev "" "" "" "")"
+starts_before=$(/usr/bin/grep -c 'box start b1' "$FAKE_AGENTVM_DIR/log")
+id=$(with_fake agentvm_box_start_job b1); rc=$?
+check "no free slot: no start"     "1|" "$rc|$id"
+check "  and no job was asked for" "$starts_before" "$(/usr/bin/grep -c 'box start b1' "$FAKE_AGENTVM_DIR/log")"
+lib agentvm_last_error >/dev/null
+id=$(with_fake agentvm_box_stop_job b1); rc=$?
+check "  a stop needs no slot"     "0" "$rc"
+id=$(with_fake agentvm_box_start_job "-x"); rc=$?
+check "a name that could be an option is refused" "2|" "$rc|$id"
+lib agentvm_last_error >/dev/null
+printf 'a job for box:b1 already runs' > "$FAKE_AGENTVM_DIR/fail-job-start"
+id=$(with_fake agentvm_box_stop_job b1); rc=$?
+check "agent-vm's refusal of a job" "1|" "$rc|$id"
+check "  in its words"             "a job for box:b1 already runs" "$(message "$rc")"
+/bin/rm -f "$FAKE_AGENTVM_DIR/fail-job-start"
+printf 'not-an-id' > "$FAKE_AGENTVM_DIR/job-id"
+id=$(with_fake agentvm_box_stop_job b1); rc=$?
+check "an answer without a job id is a failure" "1|" "$rc|$id"
+check "  that says so"             "agent-vm started a job and did not say which." "$(message "$rc")"
+for id in 20261001-094934-a1b2c3 2; do
+    lib agentvm_valid_job_id "$id"
+    check "job id $id" "0" "$?"
+done
+for id in "" "-20261001" "2026 1" "2026;x" "20261001-094934-A1B2C3" "20261001-094934-a1b2c3-20261001-094934-a1b2c3"; do
+    lib agentvm_valid_job_id "$id"
+    check "not a job id: \"$id\"" "1" "$?"
+done
+
+section "the AgentVM app, opened by its links"
+fake_reset
+cad_reset
+opened="$OMCTEST_WORK/opened"
+# The stand-in for /usr/bin/open: records its arguments, and fails while open-fails exists.
+printf '#!/bin/sh\nprintf "%%s\\n" "$*" >> "%s"\n[ -f "%s" ] && exit 1\nexit 0\n' "$opened" "$OMCTEST_WORK/open-fails" > "$OMCTEST_WORK/fake_open.sh"
+/bin/chmod +x "$OMCTEST_WORK/fake_open.sh"
+with_open() {
+    ( CADABRA_AGENT_VM="$FAKE"; CADABRA_OPEN="$OMCTEST_WORK/fake_open.sh"; export CADABRA_AGENT_VM CADABRA_OPEN; lib "$@" )
+}
+/bin/rm -f "$opened" "$OMCTEST_WORK/open-fails"
+with_open agentvm_app_open; rc=$?
+check "the app"                    "0|agentvm://status" "$rc|$(/bin/cat "$opened")"
+/bin/rm -f "$opened"
+with_open agentvm_app_open s3; rc=$?
+check "at a box"                   "0|agentvm://box/s3" "$rc|$(/bin/cat "$opened")"
+/bin/rm -f "$opened"
+with_open agentvm_app_open "s3/../x"; rc=$?
+check "a name that is not a box name opens nothing" "2|" "$rc|$(/bin/cat "$opened" 2>/dev/null)"
+lib agentvm_last_error >/dev/null
+: > "$OMCTEST_WORK/open-fails"
+with_open agentvm_app_open; rc=$?
+check "no app answers the link"    "1" "$rc"
+check "  and the reason says where to get it" "The AgentVM app is not on this Mac. Get it from https://github.com/abra-code/AgentVMApp/releases." "$(message "$rc")"
+alerts_reset
+alert_answers_reset
+alert_answer 0
+/bin/rm -f "$opened"
+with_open agentvm_app_show s3; rc=$?
+check "shown from a button: an alert says the app is missing" "1|1" "$rc|$(alerts_mention 'The AgentVM app is not on this Mac')"
+check "  and its button opens the download page" "https://github.com/abra-code/AgentVMApp/releases" "$(/usr/bin/tail -1 "$opened")"
+alerts_reset
+alert_answers_reset
+alert_answer 1
+/bin/rm -f "$opened"
+with_open agentvm_app_show; rc=$?
+check "  Cancel opens nothing more" "1" "$(/usr/bin/awk 'END { print NR }' "$opened")"
+/bin/rm -f "$OMCTEST_WORK/open-fails"
+alerts_reset
+alert_answers_reset
+with_open agentvm_app_show; rc=$?
+check "an app that opens: no alert" "0|0" "$rc|$(alerts_count)"
+cad_reset
 
 section "cumulative: no handler wrote to a view id the window does not declare"
 check "no undeclared ids" "" "$(ui_unknown_writes)"

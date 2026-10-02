@@ -379,7 +379,7 @@ _boxsession_prompt_notice() {
     if [ "$_stopped" = "yes" ]; then
         _outcome="Nobody can answer that prompt inside the box, so agent-vm stopped the program. The agent may report that a command failed."
     else
-        _outcome="Nobody can answer that prompt inside the box, so the program may wait until it is answered on the box's screen (Tools > AgentVM, Boxes, View and Control)."
+        _outcome="Nobody can answer that prompt inside the box, so the program may wait until it is answered on the box's screen (the AgentVM app, the box's View and Control)."
     fi
     # Found by the quiet watch (boxsession_watch): a program left waiting on the prompt may be why
     # the turn stalled. One that agent-vm stopped is not what the agent waits for.
@@ -400,9 +400,9 @@ _boxsession_prompt_notice() {
     case "$_kinds" in
         *o*)
             if [ -n "$_image" ] && [ "$_image" != "-" ]; then
-                _fix="To let programs in boxes use protected folders, give the image $_image Full Disk Access: Tools > AgentVM, Images, then the Full Disk Access... button. A box made before that keeps the access it had."
+                _fix="To let programs in boxes use protected folders, give the image $_image Full Disk Access in the AgentVM app: Images, then Set Up... beside Full Disk Access. A box made before that keeps the access it had."
             else
-                _fix="To let programs in boxes use protected folders, give the box's image Full Disk Access: Tools > AgentVM, Images, then the Full Disk Access... button. A box made before that keeps the access it had."
+                _fix="To let programs in boxes use protected folders, give the box's image Full Disk Access in the AgentVM app: Images, then Set Up... beside Full Disk Access. A box made before that keeps the access it had."
             fi ;;
     esac
     case "$_kinds" in
@@ -734,7 +734,7 @@ _boxsession_start_box() {
                 /bin/rm -f "$agentvm_err_file"
                 case "$_mode" in
                     off)
-                        _agentvm_refuse 1 "The kept AgentVM box $_box has its network off, so Internet search & fetch cannot work in it. Turn Internet off in Agentic Session Tools, or give the box a network in Tools > AgentVM."
+                        _agentvm_refuse 1 "The kept AgentVM box $_box has its network off, so Internet search & fetch cannot work in it. Turn Internet off in Agentic Session Tools, or give the box a network in the AgentVM app."
                         return 1 ;;
                     open|-) _kept_rules="" ;;
                 esac
@@ -1283,7 +1283,7 @@ If you keep it running, Cadabra stops it when Cadabra quits."
     else
         _text="$_text
 
-Cadabra did not start it, so it keeps running until it is stopped (Tools > AgentVM)."
+Cadabra did not start it, so it keeps running until it is stopped (Tools > AgentVM Boxes)."
     fi
     # The question is about a box no window uses: a window may have started on it during the
     # wait or the status read (the alert is not modal to Cadabra, so also while it is up).

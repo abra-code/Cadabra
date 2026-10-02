@@ -2,7 +2,7 @@
 # aichat.box.network.saved.remove.sh
 # Remove...: after a confirmation, the selected host is no longer saved for the agent, so new
 # AgentVM boxes made for it do not allow it. Boxes that already have the rule keep it: this box
-# until it is deleted, a kept box until its rules are edited in Tools > AgentVM.
+# until it is deleted, a kept box until its rules are edited in the AgentVM app.
 
 source "$OMC_APP_BUNDLE_PATH/Contents/Resources/Scripts/aichat.box.network.library.sh"
 

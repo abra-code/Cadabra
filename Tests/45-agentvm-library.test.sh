@@ -67,14 +67,6 @@ set_developer() {
 }
 
 # -----------------------------------------------------------------------------------------
-section "agentvm_json.py: the version row"
-row=$(convert version "$FIXTURES/version.json")
-check "version"                  "0.1.8" "$(printf '%s\n' "$row" | col 1)"
-check "the guest daemon version" "0.1.8" "$(printf '%s\n' "$row" | col 3)"
-check "its features, comma-joined" "terminal,prompt-notices,wallpaper" "$(printf '%s\n' "$row" | col 4)"
-check "no guest error is \"-\""  "-"     "$(printf '%s\n' "$row" | col 6)"
-check "exactly six fields"       "6"     "$(printf '%s\n' "$row" | /usr/bin/awk -F'\t' '{ print NF }')"
-
 section "agentvm_json.py: the status of a running box"
 row=$(convert status "$FIXTURES/box-status-running.json")
 check "state"            "running"                                      "$(printf '%s\n' "$row" | col 1)"
@@ -96,10 +88,6 @@ missing=$(printf '%s\n' "$row" | /usr/bin/awk -F'\t' '
     BEGIN { split("state pid supervisorVersion supervisorPath startedAt project projectReadOnly activeExecs guestVersion guestFeatures image", name, " ") }
     { for (i = 1; i <= 11; i++) if ($i == "-") printf "%s ", name[i] }')
 check "no field is absent" "" "$missing"
-missing=$(convert version "$FIXTURES/version.json" | /usr/bin/awk -F'\t' '
-    BEGIN { split("version path guestVersion guestFeatures guestDigest", name, " ") }
-    { for (i = 1; i <= 5; i++) if ($i == "-") printf "%s ", name[i] }')
-check "and none of the version row's" "" "$missing"
 
 section "agentvm_json.py: a stopped box and a wedged one"
 row=$(convert status "$FIXTURES/box-status-stopped.json")
@@ -211,7 +199,7 @@ section "binary gate: what each origin says when its agent-vm is missing"
 check "a relative developer path"   "1" "$(cad_has "$(lib agentvm_bin_reason agent-vm developer)" "not an absolute path")"
 check "a developer path that is not there" "1" "$(cad_has "$(lib agentvm_bin_reason /nowhere/agent-vm developer)" "points at /nowhere/agent-vm, which is not an executable file")"
 check "a directory is not an agent-vm" "1" "$(cad_has "$(lib agentvm_bin_reason "$OMCTEST_WORK/adir" developer)" "not an executable file")"
-check "the installed one missing"   "1" "$(cad_has "$(lib agentvm_bin_reason /nowhere/agent-vm installed)" "AgentVM is not installed: there is no agent-vm at /nowhere/agent-vm. Install AgentVM from https://github.com/abra-code/agent-vm/releases.")"
+check "the installed one missing"   "1" "$(cad_has "$(lib agentvm_bin_reason /nowhere/agent-vm installed)" "AgentVM is not set up on this Mac: there is no agent-vm at /nowhere/agent-vm. The AgentVM app installs it.")"
 check "the seam missing"            "1" "$(cad_has "$(lib agentvm_bin_reason /nowhere/agent-vm test)" "CADABRA_AGENT_VM is /nowhere/agent-vm")"
 check "the fake passes"             ""  "$(lib agentvm_bin_reason "$FAKE" test)"
 
@@ -256,8 +244,7 @@ else
     fake_reset
     out=$(lib agentvm_available); rc=$?
     check "nothing installed: unavailable, an install away" "2" "$rc"
-    check "  AgentVM is not installed, and where to get it" "AgentVM is not installed: there is no agent-vm at $INSTALLED. Install AgentVM from https://github.com/abra-code/agent-vm/releases." "$out"
-    check "  and no folder for its files"      "" "$(lib agentvm_real_dir)"
+    check "  AgentVM is not set up, and what sets it up" "AgentVM is not set up on this Mac: there is no agent-vm at $INSTALLED. The AgentVM app installs it." "$out"
     VERSION_DIR="$HOME/.local/share/agent-vm/versions/$MIN_VERSION"
     /bin/mkdir -p "$VERSION_DIR" "$HOME/.local/bin"
     /bin/ln -s "$FAKE" "$VERSION_DIR/agent-vm"
@@ -265,11 +252,10 @@ else
     out=$(lib agentvm_available); rc=$?
     check "installed: available"               "0" "$rc"
     check "  run through the link"             "--version" "$(/bin/cat "$FAKE_AGENTVM_DIR/log")"
-    check "  its files are beside the real program, where the links end" "$(cd "$OMCTEST_TESTS/helpers" && pwd -P)" "$(lib agentvm_real_dir)"
     printf '0.1.11\n' > "$FAKE_AGENTVM_DIR/version"
     out=$(lib agentvm_available); rc=$?
     check "an installed 0.1.11 is too old, an update away" "3" "$rc"
-    check "  and the reason says to install the newest" "Cadabra needs agent-vm $MIN_VERSION or later, and $INSTALLED is 0.1.11. Install the newest AgentVM from https://github.com/abra-code/agent-vm/releases." "$out"
+    check "  and the reason says what updates it" "Cadabra needs agent-vm $MIN_VERSION or later, and $INSTALLED is 0.1.11. The AgentVM app updates it." "$out"
     /bin/rm -rf "$HOME/.local"
     fake_reset
 fi
@@ -327,17 +313,16 @@ check "with no Error: line, the lines that are not progress" "Segmentation fault
 
 section "a conversion failure is reported like an agent-vm failure"
 fake_reset
-printf 'not json\n' > "$FAKE_AGENTVM_DIR/version.json"
-out=$(with_fake agentvm_version_info); rc=$?
+printf 'not json\n' > "$FAKE_AGENTVM_DIR/doctor.json"
+out=$(with_fake agentvm_doctor); rc=$?
 check "fails"                      "1" "$rc"
 check "  with no row"              ""  "$out"
-check "  and names the converter"  "1" "$(cad_has "$(lib agentvm_last_error "$rc")" "agentvm_json.py version")"
+check "  and names the converter"  "1" "$(cad_has "$(lib agentvm_last_error "$rc")" "agentvm_json.py doctor")"
 
-section "doctor and version rows through the fake"
+section "doctor rows through the fake"
 fake_reset
 check "six doctor rows" "6" "$(with_fake agentvm_doctor | /usr/bin/awk 'END { print NR }')"
-check "the version row" "0.1.8" "$(with_fake agentvm_version_info | col 1)"
-check "  asked as version --json" "version --json" "$(/usr/bin/tail -1 "$FAKE_AGENTVM_DIR/log")"
+check "  asked as doctor --json" "doctor --json" "$(/usr/bin/tail -1 "$FAKE_AGENTVM_DIR/log")"
 
 section "cumulative: no handler wrote to a view id the window does not declare"
 check "no undeclared ids" "" "$(ui_unknown_writes)"

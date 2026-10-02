@@ -808,7 +808,7 @@ This may cause slowdowns or instability. ${advice}"
 Unified memory:  ${ram_fmt}
 Recommended max: ${threshold_fmt}
 
-Give the box less memory: make a box with a smaller memory size in Tools > AgentVM, and choose it in Runs in."
+Give the box less memory: make a box with a smaller memory size in the AgentVM app, and choose it in Runs in."
     else
         message="\"${new_label}\" (${new_fmt}) likely exceeds what your Mac can load.
 

@@ -23,12 +23,10 @@ case "$run_in" in
 esac
 text="$(mcp_tools_box_network_text "$window_uuid" "$run_in" "$box_agent")"
 if [ -z "$text" ]; then
-    text="The box's network rules cannot be read right now. **Tools > AgentVM** shows them."
+    text="The box's network rules cannot be read right now. The **AgentVM** app shows them."
 fi
-# The last paragraph names Tools > AgentVM, Cadabra's own window for boxes: reword it when editing
-# boxes moves out of Cadabra to the AgentVM app.
 mcp_info_sheet "$window_uuid" "## $title
 
 $text
 
-Rules are changed in **Tools > AgentVM**. A host a program was refused can be allowed from the chat window's **Network...** button."
+Rules are changed in the **AgentVM** app. A host a program was refused can be allowed from the chat window's **Network...** button."
