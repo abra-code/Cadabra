@@ -29,9 +29,11 @@ swept() {
 
 section "the existing bundle executables are still swept"
 check "llama-server"       "yes" "$(swept "$B/Support/Llama.cpp/llama-server --port 8150 -m /m/x.gguf")"
-check "the bundled Python" "yes" "$(swept "$B/Library/Python/bin/python3 -m mcp_server_time")"
+check "the bundled Python" "yes" "$(swept "$B/Library/Python/bin/python3 -P -m duckduckgo_mcp_server.server")"
 check "replay"             "yes" "$(swept "$B/Support/replay --mcp-server --allow-write /p")"
 check "pdfutil"            "yes" "$(swept "$B/Support/pdfutil mcp --root /p --writable")"
+check "time-mcp"           "yes" "$(swept "$B/Support/time-mcp --local-timezone Europe/Warsaw")"
+check "  not a program whose name only begins like it" "no" "$(swept "$B/Support/time-mcp-other --x")"
 check "mlx-agent"          "yes" "$(swept "$B/Support/MLX/mlx-agent acp --model m")"
 
 section "agent-vm: exec clients are swept"
@@ -62,7 +64,7 @@ check "  but a list call is an ordinary helper" "yes" "$(swept "$PYBIN $JOBPY li
 check "  and so is a start that lost its parent" "yes" "$(swept "$PYBIN $JOBPY start /j box-start box:b Start -- $AVM box start b")"
 check "  the runner run with other interpreter options is not the runner" "yes" "$(swept "$PYBIN -I $JOBPY run /j 20260925-092829-9660ef 3")"
 check "  nor is the same name elsewhere" "yes" "$(swept "$PYBIN /tmp/agentvm_job.py run /j x 3")"
-check "the MCP servers' Python is still swept" "yes" "$(swept "$PYBIN -m mcp_server_time")"
+check "the MCP servers' Python is still swept" "yes" "$(swept "$PYBIN -P -m duckduckgo_mcp_server.server")"
 # 48-agentvm-jobs.test.sh checks the same verdict on a real runner's command line, from ps.
 
 section "the developer override: its exec clients, and only with it set"

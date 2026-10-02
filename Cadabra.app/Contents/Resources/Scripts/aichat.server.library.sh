@@ -81,19 +81,21 @@ forget_server_host_entry() {
 # Orphaned bundle-process reaping (registry-independent safety net)
 # ──────────────────────────────────────────────────────────────
 #
-# Five kinds of process run out of THIS app bundle and can outlive the session that
+# Six kinds of process run out of THIS app bundle and can outlive the session that
 # started them:
 #   • llama-server       ($OMC_APP_BUNDLE_PATH/Contents/Support/Llama.cpp/llama-server)
 #     — the model server, one per chat window, launched with '&' from the init handler
 #   • mlx-agent          ($OMC_APP_BUNDLE_PATH/Contents/Support/MLX/mlx-agent) — the
 #     Chat element's ACP child, owner of the session's MCP stdio servers
 #   • the bundled Python ($OMC_APP_BUNDLE_PATH/Contents/Library/Python/bin/python3)
-#     — the time / search MCP servers, children of mlx-agent
+#     — the search MCP server, a child of mlx-agent
 #   • replay             ($OMC_APP_BUNDLE_PATH/Contents/Support/replay) — the Local
 #     (files & shell) MCP server, a child of mlx-agent
 #   - pdfutil            ($OMC_APP_BUNDLE_PATH/Contents/Support/pdfutil) - the PDF MCP
 #     server, a child of mlx-agent
-# A sixth kind runs out of the installed agent-vm (or the developer override) but is not a
+#   - time-mcp           ($OMC_APP_BUNDLE_PATH/Contents/Support/time-mcp) - the date and
+#     time MCP server, a child of mlx-agent
+# A seventh kind runs out of the installed agent-vm (or the developer override) but is not a
 # bundle process in the same sense: `agent-vm exec`, the client that runs one program in a
 # box for mlx-agent or the chat. Only that subcommand is swept; see _bundle_managed_process.
 #
@@ -164,7 +166,7 @@ forget_server_host_entry() {
 # app). It is swept anyway for the case that self-teardown cannot cover - an agent wedged
 # mid-generation, or one whose own MCP children outlive it - since a survivor would hold the
 # session's MCP servers open. Sweeping it also reaps the agent's descendants (replay, the
-# bundled python servers, pdfutil), which the classes above already match.
+# bundled Python server, pdfutil, time-mcp), which the classes above already match.
 _bundle_managed_process() {
     case "$1" in
         "$OMC_APP_BUNDLE_PATH/Contents/Library/Python/bin/python3 $OMC_APP_BUNDLE_PATH/Contents/Resources/Scripts/agentvm_job.py run "*)
@@ -174,6 +176,8 @@ _bundle_managed_process() {
         "$OMC_APP_BUNDLE_PATH/Contents/Support/replay "*)                 return 0 ;;
         "$OMC_APP_BUNDLE_PATH/Contents/Support/pdfutil"|\
         "$OMC_APP_BUNDLE_PATH/Contents/Support/pdfutil "*)                return 0 ;;
+        "$OMC_APP_BUNDLE_PATH/Contents/Support/time-mcp"|\
+        "$OMC_APP_BUNDLE_PATH/Contents/Support/time-mcp "*)               return 0 ;;
         "$OMC_APP_BUNDLE_PATH/Contents/Support/Llama.cpp/llama-server"|\
         "$OMC_APP_BUNDLE_PATH/Contents/Support/Llama.cpp/llama-server "*) return 0 ;;
         "$OMC_APP_BUNDLE_PATH/Contents/Support/MLX/mlx-agent"|\

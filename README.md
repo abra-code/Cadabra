@@ -49,7 +49,7 @@ MLX - so both formats sit side by side in the same model list.
 - Chat history: named, persisted conversations you can rename, reveal, delete, and continue
 - In-place model switching from the chat toolbar, without opening a second window
 - **MCP tool support** over stdio, owned by `mlx-agent`, with a servers dialog and an inspector:
-  - Time (`mcp-server-time`)
+  - Time (embedded `time-mcp`, a native program, no network)
   - Web Search & Fetch (`duckduckgo-mcp-server`)
   - PDF (embedded `pdfutil`, no network): inspection always, plus optional editing - merge, page ops, metadata, form fill, watermark, shrink - whose outputs are always new files (never an overwrite) and are permission-gated per call
   - Local files & shell, sandboxed via `replay`, with explicit read-only and read-write path lists
@@ -110,10 +110,12 @@ bundle and verifies that they actually launch (`--help` lists every option):
 | `mlx-agent` + resource bundles | `Contents/Support/MLX/` | built from source with `xcodebuild` |
 | `pdfutil` | `Contents/Support/` | built from source with `./build.sh` |
 | `replay` | `Contents/Support/` | built from source with `xcodebuild` |
-| Python MCP servers | `Contents/Library/Packages/` | `pip install` with the bundle's own `python3` |
+| `time-mcp` | `Contents/Support/` | built from source with `cmake` |
+| Python MCP server (search) | `Contents/Library/Packages/` | `pip install` with the bundle's own `python3` |
 
-mlx-agent, pdfutil and replay are built from sibling checkouts (`--agent-repo=`, `--pdfutil-repo=`,
-`--replay-repo=`); the script offers to `git clone` them if they are missing. No WebUI is downloaded
+mlx-agent, pdfutil, replay and time-mcp are built from sibling checkouts (`--agent-repo=`,
+`--pdfutil-repo=`, `--replay-repo=`, `--time-repo=`); the script offers to `git clone` the first
+three if they are missing. time-mcp needs `cmake`. No WebUI is downloaded
 or patched - Cadabra's chat is native.
 
 Cadabra carries no agent-vm. Boxes run the agent-vm that AgentVM's package installs for the user
@@ -168,7 +170,7 @@ tracked. Excluded:
 Cadabra.app/Contents/Frameworks     Abracode.framework
 Cadabra.app/Contents/MacOS          Cadabra
 Cadabra.app/Contents/Library        embedded Python + MCP packages
-Cadabra.app/Contents/Support        llama-server + dylibs, mlx-agent, pdfutil, replay
+Cadabra.app/Contents/Support        llama-server + dylibs, mlx-agent, pdfutil, replay, time-mcp
 Cadabra.app/Contents/_CodeSignature
 ```
 

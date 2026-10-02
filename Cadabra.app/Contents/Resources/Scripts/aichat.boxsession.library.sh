@@ -772,8 +772,8 @@ EOF
     printf '%s\n' "$_box"
 }
 
-# TOOLS IN A BOX. A local model's MCP servers (replay, pdfutil, and the Python time and search
-# servers) can run in a box while the model runs on this Mac: mlx-agent starts each server as
+# TOOLS IN A BOX. A local model's MCP servers (replay, pdfutil, time-mcp and the Python search
+# server) can run in a box while the model runs on this Mac: mlx-agent starts each server as
 # `agent-vm exec --box B --project P -- <server>` (generate_mcp_configs.py's box mode). The
 # servers are Cadabra's own files, so they are copied into the box user's
 #   ~/Library/Application Support/Cadabra/Tools/<version>-<digest>/
@@ -793,7 +793,7 @@ EOF
 #
 # The digest covers the copied files' paths, sizes and modification times (under 0.1 s), so a
 # rebuilt Cadabra copies again even at the same version.
-boxsession_tools_items="Support/replay Support/pdfutil Library/Python Library/Packages Resources/replay-box-sandbox.json"
+boxsession_tools_items="Support/replay Support/pdfutil Support/time-mcp Library/Python Library/Packages Resources/replay-box-sandbox.json"
 # The rule the search server needs: agent-vm's "public" (any public host name, logged, never
 # this Mac or the local network), since its fetch tool reads whatever page the model names.
 boxsession_tools_internet_rule="public"

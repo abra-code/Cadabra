@@ -28,8 +28,8 @@
 #     allows any public host, boxsession_tools_rules);
 #   - pdfutil's roots are the project and the box's /private/tmp, and it is not --writable when
 #     the project is shared read-only (its outputs could not be written anyway);
-#   - the Python servers get PYTHONPATH and PYTHONPYCACHEPREFIX for the copy, through --env, so
-#     they reach the program in the box rather than agent-vm on this Mac.
+#   - the search server, the one Python server, gets PYTHONPATH and PYTHONPYCACHEPREFIX for the
+#     copy, through --env, so they reach the program in the box rather than agent-vm on this Mac.
 # --client in-box writes each server as a client inside the box starts it (its command and
 # environment there, no agent-vm exec): for an external agent that runs in the box and starts
 # the servers itself from its session/new mcpServers. The probe still runs through exec.
@@ -119,6 +119,7 @@ if box.box:
 packages_dir = f"{app_bundle}/Contents/Library/Packages"
 python3_bin  = f"{app_bundle}/Contents/Library/Python/bin/python3"
 replay_bin   = f"{app_bundle}/Contents/Support/replay"
+time_bin     = f"{app_bundle}/Contents/Support/time-mcp"
 
 # ── Load user preferences (if any) ────────────────────────────────────────────
 prefs = {}
@@ -303,19 +304,21 @@ if not box.box and srv_enabled("pdf"):
     else:
         print("  pdf server enabled but no readable sandbox paths configured; omitting it")
 
-# -P for both `python3 -m` servers, here and in a box: without it Python puts the working folder
-# first on sys.path, ahead of PYTHONPATH and its own library, and the servers run in the project
-# folder. A file there named like a module they import (argparse.py, a mcp_server_time folder)
-# would then run on this Mac, outside every sandbox, the next time a window starts its tools:
-# code left in the project by an earlier session, or shipped in a folder someone else made.
+# The time server is a native program (time-mcp): it reads the clock and the system's time zone
+# files, uses no network and writes nothing. --local-timezone is the zone its tool descriptions
+# suggest when the user names none; in a box it is this Mac's zone, not the box's own.
 if not box.box and srv_enabled("time"):
     servers["time"] = {
-        "command": python3_bin,
-        "args": ["-P", "-m", "mcp_server_time", "--local-timezone", tz],
-        "env": {"PYTHONPATH": packages_dir},
+        "command": time_bin,
+        "args": ["--local-timezone", tz],
     }
     server_order.append("time")
 
+# -P for the `python3 -m` server, here and in a box: without it Python puts the working folder
+# first on sys.path, ahead of PYTHONPATH and its own library, and the server runs in the project
+# folder. A file there named like a module it imports (argparse.py, a duckduckgo_mcp_server
+# folder) would then run on this Mac, outside every sandbox, the next time a window starts its
+# tools: code left in the project by an earlier session, or shipped in a folder someone else made.
 if not box.box and allow_network and srv_enabled("search"):
     servers["search"] = {
         "command": python3_bin,
@@ -363,8 +366,7 @@ if box.box:
         servers["pdf"] = boxed(pdf_argv)
         server_order.append("pdf")
     if box_flag("time"):
-        servers["time"] = boxed([guest_python, "-P", "-m", "mcp_server_time", "--local-timezone", tz],
-                                guest_python_env)
+        servers["time"] = boxed([f"{box.guest_tools}/Support/time-mcp", "--local-timezone", tz])
         server_order.append("time")
     if box_flag("internet"):
         servers["search"] = boxed([guest_python, "-P", "-m", "duckduckgo_mcp_server.server"],
@@ -387,7 +389,7 @@ if box.box:
 # Probe the servers from the working directory they will actually run in. ChatView
 # launches mlx-agent with the Project workspace as cwd (falling back to $HOME for a
 # value that is not absolute-and-existing) and the servers inherit it, so the probe
-# runs where they will. (The two `python3 -m` servers no longer import from that
+# runs where they will. (The `python3 -m` server no longer imports from that
 # folder: see -P above.)
 #
 # Read the pref directly rather than reusing user_project: that one is only set when

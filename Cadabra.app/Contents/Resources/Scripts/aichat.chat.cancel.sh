@@ -27,7 +27,7 @@ srvlog "WINDOW-CANCEL enter front=${OMC_FRONT_PROCESS_ID} win=$OMC_ACTIONUI_WIND
 # reach - ending a window's server without closing the window.
 stop_window_server "$OMC_ACTIONUI_WINDOW_UUID" WINDOW-CANCEL
 
-# Safety net: reap any of this bundle's llama-server / MCP server (bundled python,
+# Safety net: reap any of this bundle's llama-server / MCP server (bundled python, pdfutil, time-mcp,
 # replay) / mlx-agent processes left orphaned on launchd — children stranded by an
 # agent that died without tearing them down, or leftovers from an earlier crash.
 # Other windows' servers stay registered to a live host, so they are protected and

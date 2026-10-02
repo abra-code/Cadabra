@@ -6,12 +6,13 @@
 #   2. mlx-agent  - built from source with xcodebuild, Release (the ACP agent + MLX engine)
 #   3. pdfutil    - built from source with ./build.sh (the PDF MCP server)
 #   4. replay     - built from source with xcodebuild (the local files/shell MCP server)
-#   5. packages   - the Python MCP servers, pip-installed into Contents/Library/Packages
+#   5. time-mcp   - built from source with cmake (the date and time MCP server)
+#   6. packages   - the Python MCP server, pip-installed into Contents/Library/Packages
 # then codesigns the bundle and verifies the engines actually launch.
 #
-# Stage 5 absorbs what update-mcp-servers.py did as a separate manual step. Folding it in
+# Stage 6 absorbs what update-mcp-servers.py did as a separate manual step. Folding it in
 # means one codesign pass instead of two (that script signed, then this one signed again)
-# and it means the Python servers cannot silently rot: generate_mcp_configs.py now PROBES
+# and it means the Python server cannot silently rot: generate_mcp_configs.py now PROBES
 # every server at launch and drops any that fails to answer, so a stale or missing
 # Packages dir no longer shows up as a broken server - it shows up as no server at all.
 #
@@ -58,10 +59,12 @@ SIGNING_IDENTITY="-"
 AGENT_REPO="${AGENT_REPO:-}"
 PDFUTIL_REPO="${PDFUTIL_REPO:-}"
 REPLAY_REPO="${REPLAY_REPO:-}"
+TIME_REPO="${TIME_REPO:-}"
 DO_LLAMA="yes"
 DO_AGENT="yes"
 DO_PDFUTIL="yes"
 DO_REPLAY="yes"
+DO_TIME="yes"
 DO_PACKAGES="yes"
 DO_AGENT_PACKAGE_UPDATE="yes"
 DO_BUILD="yes"
@@ -71,7 +74,7 @@ DO_CODESIGN="yes"
 # or --no-clean-packages sets it outright.
 CLEAN_PACKAGES="default"
 
-# The Python MCP servers. Two lists because the name pip installs is not the name that
+# The Python MCP servers (one today, the search server). Two lists because the name pip installs is not the name that
 # gets imported, and they must stay index-aligned.
 #
 # MCP_MODULES holds the module generate_mcp_configs.py actually LAUNCHES with
@@ -85,8 +88,11 @@ CLEAN_PACKAGES="default"
 # Kept in sync with generate_mcp_configs.py - adding one here without teaching that
 # script about it installs dead weight, and the reverse leaves a configured server with
 # nothing to import.
-MCP_PACKAGES=("mcp-server-time" "duckduckgo-mcp-server")
-MCP_MODULES=("mcp_server_time" "duckduckgo_mcp_server.server")
+#
+# The search server is held below 0.7: that release moves to version 2 of the mcp package and
+# adds a third tool, which the app's permission rules have not been checked against.
+MCP_PACKAGES=("duckduckgo-mcp-server<0.7")
+MCP_MODULES=("duckduckgo_mcp_server.server")
 [ "${#MCP_PACKAGES[@]}" -eq "${#MCP_MODULES[@]}" ] \
     || { echo "MCP_PACKAGES and MCP_MODULES must be index-aligned" >&2; exit 1; }
 # bash 3.2 (which is what /bin/bash is on macOS) treats "${empty[@]}" as an unbound
@@ -105,8 +111,11 @@ AGENT_PINS_DIR=""
 AGENT_PINS_BACKUP=""
 PDFUTIL_BUILD_BIN=""
 REPLAY_BUILD_BIN=""
+TIME_BUILD_DIR=""
+TIME_BUILD_BIN=""
+CMAKE_BIN=""
 LLAMA_STATUS="skipped"; AGENT_STATUS="skipped"; PDFUTIL_STATUS="skipped"
-REPLAY_STATUS="skipped"; PACKAGES_STATUS="skipped"
+REPLAY_STATUS="skipped"; TIME_STATUS="skipped"; PACKAGES_STATUS="skipped"
 
 SCRIPT_DIR="$(cd "$(/usr/bin/dirname "$0")" >/dev/null 2>&1 && pwd)"
 
@@ -153,6 +162,7 @@ INSTALL_DIR="$APP_BUNDLE/Contents/Support/Llama.cpp"
 MLX_DIR="$APP_BUNDLE/Contents/Support/MLX"
 PDFUTIL_BIN="$APP_BUNDLE/Contents/Support/pdfutil"
 REPLAY_BIN="$APP_BUNDLE/Contents/Support/replay"
+TIME_BIN="$APP_BUNDLE/Contents/Support/time-mcp"
 # Where Cadabra builds before this one kept agent-vm. Cadabra runs the installed
 # ~/.local/bin/agent-vm now; prepare removes this folder when an earlier build left it.
 AGENTVM_DIR="$APP_BUNDLE/Contents/Support/AgentVM"
@@ -200,6 +210,7 @@ Updates the runtime engines in $(/usr/bin/basename "$APP_BUNDLE"):
   mlx-agent -> Contents/Support/MLX/         (built from source, xcodebuild -configuration Release)
   pdfutil   -> Contents/Support/pdfutil      (built from source with ./build.sh)
   replay    -> Contents/Support/replay       (built from source with xcodebuild)
+  time-mcp  -> Contents/Support/time-mcp     (built from source with cmake)
   packages  -> Contents/Library/Packages     (pip install with the bundle's own python3)
 
 Options:
@@ -211,10 +222,12 @@ Options:
   --agent-repo=PATH   mlx-agent repo (default: ../mlx-agent sibling checkout)
   --pdfutil-repo=PATH pdfutil repo (default: ../pdfutil sibling checkout)
   --replay-repo=PATH  replay repo (default: ../replay sibling checkout)
+  --time-repo=PATH    time-mcp repo (default: ../time-mcp sibling checkout)
   --skip-llama        leave llama.cpp untouched
   --skip-agent        leave mlx-agent untouched
   --skip-pdfutil      leave pdfutil untouched
   --skip-replay       leave replay untouched
+  --skip-time         leave time-mcp untouched
   --skip-packages     leave the Python MCP packages untouched
   --clean-packages    reinstall Contents/Library/Packages from scratch, dropping orphaned
                       packages and old versions' metadata (the default; OMC's own modules
@@ -234,9 +247,9 @@ Examples:
   ./update-cadabra.sh --version=nightly            # newest build instead of the latest release
   ./update-cadabra.sh --skip-llama                 # rebuild + redeploy the agent + MCP servers
   ./update-cadabra.sh --skip-agent                 # refresh llama.cpp + the MCP servers
-  ./update-cadabra.sh --skip-llama --skip-agent    # rebuild + redeploy just pdfutil + replay
-  ./update-cadabra.sh --skip-llama --skip-agent --skip-pdfutil   # just replay + packages
-  ./update-cadabra.sh --skip-llama --skip-agent --skip-pdfutil --skip-replay   # just the packages
+  ./update-cadabra.sh --skip-llama --skip-agent    # rebuild + redeploy just the MCP servers
+  ./update-cadabra.sh --skip-llama --skip-agent --skip-pdfutil   # just replay, time-mcp + packages
+  ./update-cadabra.sh --skip-llama --skip-agent --skip-pdfutil --skip-replay --skip-time   # just the packages
 EOF
     exit 0
 }
@@ -254,10 +267,13 @@ while [ $# -gt 0 ]; do
         --pdfutil-repo) shift; PDFUTIL_REPO="${1:-}" ;;
         --replay-repo=*) REPLAY_REPO="${1#*=}" ;;
         --replay-repo) shift; REPLAY_REPO="${1:-}" ;;
+        --time-repo=*) TIME_REPO="${1#*=}" ;;
+        --time-repo) shift; TIME_REPO="${1:-}" ;;
         --skip-llama) DO_LLAMA="no" ;;
         --skip-agent) DO_AGENT="no" ;;
         --skip-pdfutil) DO_PDFUTIL="no" ;;
         --skip-replay) DO_REPLAY="no" ;;
+        --skip-time) DO_TIME="no" ;;
         --skip-packages) DO_PACKAGES="no" ;;
         --clean-packages) CLEAN_PACKAGES="yes" ;;
         --no-clean-packages) CLEAN_PACKAGES="no" ;;
@@ -491,6 +507,35 @@ prepare() {
         REPLAY_BUILD_BIN="$REPLAY_REPO/build/Release/replay"
     fi
 
+    if [ "$DO_TIME" = "yes" ]; then
+        # Locate the time-mcp repo (Apache 2.0) by its CMakeLists.txt and its main source file.
+        # Same sibling-then-legacy candidate order as the others. No offer to clone: the
+        # repository has no public address yet.
+        if [ -z "$TIME_REPO" ]; then
+            for _cand in "$SCRIPT_DIR/../time-mcp" "$SCRIPT_DIR/../../time-mcp"; do
+                [ -f "$_cand/CMakeLists.txt" ] && { TIME_REPO="$(cd "$_cand" && pwd)"; break; }
+            done
+        fi
+        [ -n "$TIME_REPO" ] && [ -f "$TIME_REPO/CMakeLists.txt" ] && [ -f "$TIME_REPO/src/TimeTools.cpp" ] \
+            || fail "time-mcp repo not found (looked for CMakeLists.txt and src/TimeTools.cpp); pass --time-repo=PATH, or re-run with --skip-time."
+        # A build folder of this script's own inside build/, so a developer's own build there
+        # (another architecture, a debug build) is neither used nor changed.
+        TIME_BUILD_DIR="$TIME_REPO/build/cadabra"
+        TIME_BUILD_BIN="$TIME_BUILD_DIR/time-mcp"
+        if [ "$DO_BUILD" = "yes" ]; then
+            # cmake is not part of Xcode or the Command Line Tools, so it is looked up here,
+            # before any stage runs, instead of failing after the long ones.
+            CMAKE_BIN="$(command -v cmake 2>/dev/null)"
+            if [ -z "$CMAKE_BIN" ]; then
+                for _cand in /opt/homebrew/bin/cmake /usr/local/bin/cmake /Applications/CMake.app/Contents/bin/cmake; do
+                    [ -x "$_cand" ] && { CMAKE_BIN="$_cand"; break; }
+                done
+            fi
+            [ -n "$CMAKE_BIN" ] \
+                || fail "cmake not found, and time-mcp is built with it. Install it (brew install cmake, or cmake.org), or re-run with --skip-time."
+        fi
+    fi
+
     # Cadabra no longer carries agent-vm: it runs the one AgentVM's package installs for the
     # user (~/.local/bin/agent-vm). An earlier build's Contents/Support/AgentVM is removed here,
     # before anything is signed, but not while a process runs its agent-vm: boxes started from
@@ -547,6 +592,7 @@ prepare() {
     echo "  mlx-agent  : $([ "$DO_AGENT" = yes ] && echo "${AGENT_REPO}$([ "$DO_BUILD" = no ] && echo " (no rebuild)")$([ "$DO_BUILD" = yes ] && [ "$DO_AGENT_PACKAGE_UPDATE" = yes ] && echo " (+ SPM re-resolve)")" || echo "<skipped>")"
     echo "  pdfutil    : $([ "$DO_PDFUTIL" = yes ] && echo "${PDFUTIL_REPO}$([ "$DO_BUILD" = no ] && echo " (no rebuild)")" || echo "<skipped>")"
     echo "  replay     : $([ "$DO_REPLAY" = yes ] && echo "${REPLAY_REPO}$([ "$DO_BUILD" = no ] && echo " (no rebuild)")" || echo "<skipped>")"
+    echo "  time-mcp   : $([ "$DO_TIME" = yes ] && echo "${TIME_REPO}$([ "$DO_BUILD" = no ] && echo " (no rebuild)")" || echo "<skipped>")"
     echo "  packages   : $([ "$DO_PACKAGES" = yes ] && echo "${MCP_PACKAGES[*]}$([ "$CLEAN_PACKAGES" = yes ] && echo " (clean install)")" || echo "<skipped>")"
     echo "  Codesign   : $([ "$DO_CODESIGN" = yes ] && echo "$SIGNING_IDENTITY" || echo "<skipped>")"
     echo
@@ -922,7 +968,52 @@ update_replay() {
     echo
 }
 
-# ── 3c. Python MCP packages ───────────────────────────────────────────────────
+# ── 3c. time-mcp ──────────────────────────────────────────────────────────────
+update_time() {
+    echo "==== time-mcp ===="
+    echo
+
+    if [ "$DO_BUILD" = "yes" ]; then
+        # A plain C++ program with yyjson vendored: no Xcode project and no dependencies.
+        # The architecture is passed because cmake would otherwise build for the machine
+        # it runs on, which is the same today but is not this script's rule.
+        echo "  Building (cmake, MinSizeRel, $ARCH)..."
+        # The whole output goes to a log: cmake's last lines say only that it failed.
+        /bin/mkdir -p "$TIME_BUILD_DIR" || fail "Could not create $TIME_BUILD_DIR"
+        local time_log="$TIME_BUILD_DIR/update-cadabra.log"
+        "$CMAKE_BIN" -S "$TIME_REPO" -B "$TIME_BUILD_DIR" \
+            -DCMAKE_BUILD_TYPE=MinSizeRel -DCMAKE_OSX_ARCHITECTURES="$ARCH" > "$time_log" 2>&1 \
+            || fail "time-mcp: cmake could not configure the build. See $time_log"
+        "$CMAKE_BIN" --build "$TIME_BUILD_DIR" --target time-mcp >> "$time_log" 2>&1 \
+            || fail "time-mcp build failed. See $time_log"
+        /usr/bin/tail -2 "$time_log"
+    else
+        echo "  --skip-build: reusing existing build product"
+    fi
+
+    [ -x "$TIME_BUILD_BIN" ] \
+        || fail "No built time-mcp at $TIME_BUILD_BIN (build first, or drop --skip-build)."
+
+    /bin/mkdir -p "$(/usr/bin/dirname "$TIME_BIN")" || fail "Could not create Support dir for time-mcp"
+    /bin/cp -f "$TIME_BUILD_BIN" "$TIME_BIN"
+    /bin/chmod +x "$TIME_BIN"
+
+    # Same pre-signing freshness proof as update_pdfutil.
+    /usr/bin/cmp -s "$TIME_BUILD_BIN" "$TIME_BIN" \
+        || fail "Deployed time-mcp differs from the build product - copy did not take."
+
+    [ -f "$TIME_REPO/LICENSE" ] && /bin/cp -f "$TIME_REPO/LICENSE" "${TIME_BIN}.LICENSE"
+    # yyjson is compiled into the program, and its license (MIT) asks for its notice to travel
+    # with copies.
+    [ -f "$TIME_REPO/vendor/yyjson/LICENSE" ] \
+        && /bin/cp -f "$TIME_REPO/vendor/yyjson/LICENSE" "${TIME_BIN}.yyjson.LICENSE"
+
+    TIME_STATUS="deployed"
+    echo "  ${GREEN}Deployed${RESET} time-mcp"
+    echo
+}
+
+# ── 3d. Python MCP packages ───────────────────────────────────────────────────
 update_packages() {
     echo "==== Python MCP packages ===="
     echo
@@ -1238,6 +1329,36 @@ verify() {
         echo "  ${GREEN}OK${RESET} replay launches and serves annotated tools (post-signing)"
     fi
 
+    if [ "$DO_TIME" = "yes" ]; then
+        local time_version
+        time_version=$("$TIME_BIN" --version 2>&1 | head -1 || echo "")
+        case "$time_version" in
+            "time-mcp "*) ;;
+            *) fail "time-mcp --version did not report a version (got: \"${time_version:-<no output>}\") - load failure or broken signature?" ;;
+        esac
+        echo "  time-mcp: $time_version"
+        # The app takes the server's tools from tools/list and never asks before a tool
+        # marked read-only, so both are checked, and one real call: it reads the system's
+        # time zone files, which a launch alone does not prove. Captured and matched as a
+        # string, and bounded by perl's alarm, for the reasons given at replay above.
+        local time_out
+        time_out=$(printf '%s\n' \
+            '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-03-26","capabilities":{},"clientInfo":{"name":"update-cadabra","version":"1"}}}' \
+            '{"jsonrpc":"2.0","method":"notifications/initialized","params":{}}' \
+            '{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}' \
+            '{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"get_current_time","arguments":{"timezone":"UTC"}}}' \
+            | /usr/bin/perl -e 'alarm 20; exec @ARGV or exit 127' "$TIME_BIN" --local-timezone UTC 2>/dev/null)
+        case "$time_out" in
+            *'"readOnlyHint":true'*) ;;
+            *) fail "time-mcp answered no annotated tools/list - it did not start, or it hung." ;;
+        esac
+        case "$time_out" in
+            *'"isError":false'*) ;;
+            *) fail "time-mcp could not tell the time in UTC - it cannot read the system's time zone files?" ;;
+        esac
+        echo "  ${GREEN}OK${RESET} time-mcp launches, serves annotated tools and tells the time (post-signing)"
+    fi
+
     if [ "$DO_PACKAGES" = "yes" ]; then
         # Import each module the way the app will: the bundle's own interpreter with
         # PYTHONPATH pointing at Packages, matching how generate_mcp_configs.py spawns
@@ -1298,6 +1419,7 @@ print_summary() {
     echo "  mlx-agent : $AGENT_STATUS"
     echo "  pdfutil   : $PDFUTIL_STATUS"
     echo "  replay    : $REPLAY_STATUS"
+    echo "  time-mcp  : $TIME_STATUS"
     echo "  packages  : $PACKAGES_STATUS"
     echo
     echo "  ${GREEN}$(/usr/bin/basename "$APP_BUNDLE") is ready.${RESET}"
@@ -1310,6 +1432,7 @@ main() {
     [ "$DO_AGENT" = "yes" ] && update_agent
     [ "$DO_PDFUTIL" = "yes" ] && update_pdfutil
     [ "$DO_REPLAY" = "yes" ] && update_replay
+    [ "$DO_TIME" = "yes" ] && update_time
     # Before codesign, deliberately: the packages land inside the bundle, so installing
     # them afterwards would invalidate the seal that was just applied.
     [ "$DO_PACKAGES" = "yes" ] && update_packages

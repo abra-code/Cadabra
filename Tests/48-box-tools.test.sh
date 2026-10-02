@@ -108,8 +108,8 @@ status=$?
 dir="$TOOLS_ROOT/$TOOLS_ID"
 check "it copies"                         "0" "$status"
 check "  answering the folder and the bytecode cache" "$dir${TAB}$PYCACHE" "$row"
-check "  replay, pdfutil and the Python servers are there" "yes|yes|yes|yes" \
-    "$([ -x "$dir/Support/replay" ] && echo yes)|$([ -x "$dir/Support/pdfutil" ] && echo yes)|$([ -x "$dir/Library/Python/bin/python3" ] && echo yes)|$([ -d "$dir/Library/Packages/mcp_server_time" ] && echo yes)"
+check "  replay, pdfutil, time-mcp and the Python server are there" "yes|yes|yes|yes|yes" \
+    "$([ -x "$dir/Support/replay" ] && echo yes)|$([ -x "$dir/Support/pdfutil" ] && echo yes)|$([ -x "$dir/Support/time-mcp" ] && echo yes)|$([ -x "$dir/Library/Python/bin/python3" ] && echo yes)|$([ -d "$dir/Library/Packages/duckduckgo_mcp_server" ] && echo yes)"
 check "  with replay's profile for the box" "yes" "$([ -f "$dir/Resources/replay-box-sandbox.json" ] && echo yes)"
 check "  compiled into the cache"         "yes" "$([ -d "$PYCACHE" ] && echo yes)"
 check "  marked complete"                 "yes" "$([ -f "$dir/.cadabra-tools-complete" ] && echo yes)"
@@ -236,7 +236,7 @@ check "  its tools gated as on this Mac"  "1" "$(server "$cfg" local '1 if "exec
 check "pdfutil: the project and the box's temporary folder, writable" \
     "exec --box b1 --project $PROJECT -- $guest/Support/pdfutil mcp --root $PROJECT --root /private/tmp --writable" \
     "$(server "$cfg" pdf '" ".join(s["args"])')"
-check "the Python servers get their paths in the box through --env" \
+check "the Python server gets its paths in the box through --env" \
     "exec --box b1 --project $PROJECT --env PYTHONPATH=$guest/Library/Packages --env PYTHONPYCACHEPREFIX=$PYCACHE -- $guest/Library/Python/bin/python3 -P -m duckduckgo_mcp_server.server" \
     "$(server "$cfg" search '" ".join(s["args"])')"
 check "  and no environment on this Mac"  "none" "$(server "$cfg" search 's.get("env", "none")')"
@@ -318,11 +318,11 @@ check "it builds"                         "0" "$?"
 check "the agent itself runs through agent-vm exec" "1" "$(cad_has "$json" '"exec", "--box", "b1"')"
 check "  and gets all four servers" "local|pdf|search|time" "$(mcp_servers "$json" '"|".join(sorted(m))')"
 check "  each started by the agent in the box, not through agent-vm" \
-    "$guest/Support/replay|$guest/Support/pdfutil|$guest/Library/Python/bin/python3" \
-    "$(mcp_servers "$json" 'm["local"]["command"] + "|" + m["pdf"]["command"] + "|" + m["search"]["command"]')"
+    "$guest/Support/replay|$guest/Support/pdfutil|$guest/Support/time-mcp|$guest/Library/Python/bin/python3" \
+    "$(mcp_servers "$json" 'm["local"]["command"] + "|" + m["pdf"]["command"] + "|" + m["time"]["command"] + "|" + m["search"]["command"]')"
 check "  replay unconfined, the project first" "--mcp-server --no-sandbox --allow-write $PROJECT --allow-write /" \
     "$(mcp_servers "$json" '" ".join(m["local"]["args"])')"
-check "  the Python servers' environment in ACP's form" "PYTHONPATH=$guest/Library/Packages,PYTHONPYCACHEPREFIX=$PYCACHE" \
+check "  the Python server's environment in ACP's form" "PYTHONPATH=$guest/Library/Packages,PYTHONPYCACHEPREFIX=$PYCACHE" \
     "$(mcp_servers "$json" '",".join(e["name"] + "=" + e["value"] for e in m["search"]["env"])')"
 check "  no agent-vm anywhere in them" "0" "$(mcp_servers "$json" 'sum("agent-vm" in json.dumps(s) or "fake_agent_vm" in json.dumps(s) for s in m.values())')"
 check "  probed through the box"         "1" "$(cad_has "$(/bin/cat "$FAKE_AGENTVM_DIR/log")" "exec --box b1 --project $PROJECT -- $guest/Support/replay")"
@@ -527,9 +527,9 @@ check "a backtick in a rule stays inside its code span" "0|1" \
     "$(cad_has "$(net_text box:odd)" '`[docs]')|$(cad_has "$(net_text box:odd)" "- \`x'[docs](https://example.invalid)'\`")"
 /bin/rm -f "$net_places"
 
-section "the Python servers on this Mac never import from the project folder"
+section "the Python server on this Mac never imports from the project folder"
 # The servers run with the project as their working folder. A file there named like a module
-# they import must not run on this Mac: it would be code a session left in the project, run
+# the Python one imports must not run on this Mac: it would be code a session left in the project, run
 # outside every sandbox the next time a window starts its tools.
 fake_reset
 prefs_reset
@@ -538,20 +538,22 @@ cad_call mcp_prefs_set_bool servers/local/enabled false
 cad_call mcp_prefs_set_bool servers/pdf/enabled false
 HOSTILE="$OMCTEST_WORK/hostile-project"
 /bin/rm -rf "$HOSTILE"
-/bin/mkdir -p "$HOSTILE/mcp_server_time"
+/bin/mkdir -p "$HOSTILE/duckduckgo_mcp_server"
 printf 'import os\nopen(os.path.join(os.path.dirname(os.path.abspath(__file__)), "RAN-argparse"), "w").close()\nraise SystemExit(0)\n' > "$HOSTILE/argparse.py"
-printf 'import os\nopen(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "RAN-package"), "w").close()\nraise SystemExit(0)\n' > "$HOSTILE/mcp_server_time/__init__.py"
+printf 'import os\nopen(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "RAN-package"), "w").close()\nraise SystemExit(0)\n' > "$HOSTILE/duckduckgo_mcp_server/__init__.py"
 cad_call mcp_prefs_set_string servers/local/project "$HOSTILE"
 mac_cfg="$OMCTEST_WORK/mac-config/mcp-config.json"
-# No bytecode: these servers start on this Mac with Cadabra's own Python, which would write
+# No bytecode: the search server starts on this Mac with Cadabra's own Python, which would write
 # __pycache__ folders into the application and break its signature.
 ( PYTHONDONTWRITEBYTECODE=1; export PYTHONDONTWRITEBYTECODE
   cad_call_lib aichat.mcp.servers.library.sh generate_stdio_mcp_config "$mac_cfg" >/dev/null 2>&1 )
 check "the probe ran the real servers, from the project" "present|present" \
     "$(server "$mac_cfg" time '"present"')|$(server "$mac_cfg" search '"present"')"
 check "  and nothing in the project ran" "" "$(/bin/ls "$HOSTILE" | /usr/bin/grep RAN)"
-check "  both start Python with -P, so the agent's own start does not import from there either" "-P -m mcp_server_time|-P -m duckduckgo_mcp_server.server" \
-    "$(server "$mac_cfg" time '" ".join(s["args"][:3])')|$(server "$mac_cfg" search '" ".join(s["args"])')"
+check "  Python starts with -P, so the agent's own start does not import from there either" "-P -m duckduckgo_mcp_server.server" \
+    "$(server "$mac_cfg" search '" ".join(s["args"])')"
+check "  the time server is the native program, with no Python and no environment" "$OMC_APP_BUNDLE_PATH/Contents/Support/time-mcp|--local-timezone|none" \
+    "$(server "$mac_cfg" time 's["command"] + "|" + s["args"][0] + "|" + str(s.get("env", "none"))')"
 /bin/rm -rf "$HOSTILE" "$OMCTEST_WORK/mac-config"
 
 /bin/rm -rf "$TOOLS_ROOT" "$PYCACHE"

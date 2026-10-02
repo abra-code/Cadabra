@@ -47,7 +47,7 @@ prune_server_registry "$OMC_FRONT_PROCESS_ID"
 # closes when the app goes away, so it normally exits by itself (verified: on a hard kill of
 # the app the agent is gone within seconds while llama-server survives). TERM any that is
 # still alive anyway - a wedged agent would hold this session's MCP servers (replay, the
-# bundled python servers) open, and those DO orphan. Identified by its own executable path
+# bundled python server, time-mcp) open, and those DO orphan. Identified by its own executable path
 # under $OMC_APP_BUNDLE_PATH, the only reliable signal at terminate (OMC_FRONT_PROCESS_ID and
 # app-exe pgrep are not - see the orphan-server postmortem). The reap below cannot cover this
 # case: at terminate the agent is still parented to the app, and the reap only touches PPID 1.
@@ -89,7 +89,7 @@ if [ -f "$mcp_app_support/box-sessions.tsv" ]; then
 fi
 
 # Safety net: after the registry teardown above, sweep any of this bundle's llama-server
-# / MCP server (bundled python, replay) / mlx-agent processes still orphaned on launchd —
+# / MCP server (bundled python, replay, pdfutil, time-mcp) / mlx-agent processes still orphaned on launchd —
 # children stranded by an agent that died without tearing them down, and any leftovers
 # from a crashed session. A still-running app instance's servers stay registered under a
 # live host, so they are protected and left running.
