@@ -8,6 +8,8 @@
 #   4. replay     - built from source with xcodebuild (the local files/shell MCP server)
 #   5. time-mcp   - built from source with cmake (the date and time MCP server)
 #   6. packages   - the Python MCP server, pip-installed into Contents/Library/Packages
+# Each of the four built tools comes from a sibling checkout when there is one (built as it
+# is), and otherwise from the source of its newest version tag on GitHub.
 # then codesigns the bundle and verifies the engines actually launch.
 #
 # Stage 6 absorbs what update-mcp-servers.py did as a separate manual step. Folding it in
@@ -101,7 +103,7 @@ MCP_MODULES=("duckduckgo_mcp_server.server")
 [ "${#MCP_PACKAGES[@]}" -gt 0 ] \
     || { echo "MCP_PACKAGES is empty; use --skip-packages instead" >&2; exit 1; }
 
-# Set by prepare()
+# Set by prepare(), the build paths by each tool's stage
 ASSET_NAME=""; DOWNLOAD_URL=""; WORK_DIR=""; TARBALL=""; EXTRACT_DIR=""
 AGENT_BUILD_DIR=""
 AGENT_RESOLVED=""
@@ -113,6 +115,12 @@ PDFUTIL_BUILD_BIN=""
 REPLAY_BUILD_BIN=""
 TIME_BUILD_DIR=""
 TIME_BUILD_BIN=""
+# Where the four tools' repositories are, and for a tool with no local checkout the version
+# tag whose source is built instead (set by prepare) and the folder it is unpacked in.
+GITHUB_BASE="https://github.com/abra-code"
+AGENT_TAG=""; PDFUTIL_TAG=""; REPLAY_TAG=""; TIME_TAG=""
+SOURCES_WORK_DIR=""
+FETCHED_DIR=""
 CMAKE_BIN=""
 LLAMA_STATUS="skipped"; AGENT_STATUS="skipped"; PDFUTIL_STATUS="skipped"
 REPLAY_STATUS="skipped"; TIME_STATUS="skipped"; PACKAGES_STATUS="skipped"
@@ -121,17 +129,79 @@ SCRIPT_DIR="$(cd "$(/usr/bin/dirname "$0")" >/dev/null 2>&1 && pwd)"
 
 fail() { echo "${RED}$*${RESET}" >&2; cleanup; exit 1; }
 
-# A dependency repo is missing: offer to git-clone it into the sibling location and continue.
-# Interactive runs only - without a TTY (CI, piped stdin) this declines silently and the
-# caller's fail() fires with the manual instructions. $1 = repo URL, $2 = destination dir.
-offer_clone() {
-    [ -t 0 ] || return 1
-    printf "%s  %s not found. Clone %s\n  into %s now? [y/N] %s" \
-        "$YELLOW" "$(/usr/bin/basename "$2")" "$1" "$2" "$RESET"
-    local _ans
-    IFS= read -r _ans
-    case "$_ans" in [yY]|[yY][eE][sS]) ;; *) return 1 ;; esac
-    /usr/bin/git clone "$1" "$2"
+# latest_version_tag <repository>  ->  the newest version tag of that repository on GitHub, or
+# nothing. A version tag is two or three numbers with or without a leading v (v2.2.2, 0.3.0,
+# 0.3), compared as numbers (0.10.2 is newer than 0.9.11). Asked through git, which needs no
+# API quota and no token, and never asks for a name on the terminal should a repository stop
+# being public.
+latest_version_tag() {
+    GIT_TERMINAL_PROMPT=0 /usr/bin/git ls-remote --tags --refs "$GITHUB_BASE/$1" 2>/dev/null \
+        | /usr/bin/sed -n -E 's|^[0-9a-f]+[[:space:]]+refs/tags/(v?[0-9]+(\.[0-9]+){1,2})$|\1|p' \
+        | /usr/bin/awk '{ t = $0; sub(/^v/, "", t); n = split(t, part, "."); printf "%d.%d.%d %s\n", part[1], part[2], (n > 2 ? part[3] : 0), $0 }' \
+        | /usr/bin/sort -t. -k1,1n -k2,2n -k3,3n \
+        | /usr/bin/tail -1 | /usr/bin/cut -d' ' -f2
+}
+
+# tag_for_missing_repo <repository> <its --skip option>  ->  the tag to build for a tool with no
+# local checkout. Called from prepare, before any stage runs, so no network or no tag stops the
+# run before the long stages rather than in the middle of them.
+tag_for_missing_repo() {
+    echo "  No $1 checkout; resolving its newest version on GitHub..." >&2
+    local _tag="$(latest_version_tag "$1")"
+    [ -n "$_tag" ] \
+        || fail "Could not find a version tag of $1 at $GITHUB_BASE/$1 - no network, or no tag there. Clone it beside this repository, or re-run with $2."
+    printf '%s\n' "$_tag"
+}
+
+# fetch_tagged_source <repository> <tag> <a file or folder its source must have>  ->  sets
+# FETCHED_DIR to the tag's source, downloaded from GitHub and unpacked in this run's temporary
+# folder (removed by cleanup). GitHub's archive of a tag unpacks into <repository>-<tag
+# without the v>. The tag comes from latest_version_tag, so it is digits, dots and a v.
+fetch_tagged_source() {
+    if [ -z "$SOURCES_WORK_DIR" ]; then
+        SOURCES_WORK_DIR="$(/usr/bin/mktemp -d "${TMPDIR:-/tmp}/update-cadabra-src.XXXXXX")" || fail "mktemp failed"
+    fi
+    local _url="$GITHUB_BASE/$1/archive/refs/tags/$2.tar.gz"
+    local _tarball="$SOURCES_WORK_DIR/$1-$2.tar.gz"
+    echo "  Downloading $_url"
+    /usr/bin/curl -L --fail --show-error --silent -o "$_tarball" "$_url" \
+        || fail "Could not download $1 $2 from $_url"
+    /usr/bin/tar -xzf "$_tarball" -C "$SOURCES_WORK_DIR" \
+        || fail "Could not unpack $_tarball"
+    FETCHED_DIR="$SOURCES_WORK_DIR/$1-${2#v}"
+    [ -e "$FETCHED_DIR/$3" ] \
+        || fail "The $1 $2 archive did not unpack into $(/usr/bin/basename "$FETCHED_DIR") with $3 in it."
+}
+
+# check_tagged_version <program name> <tag> <built program>  ->  a tagged source must build the
+# version its tag names: a tag put on the wrong commit would otherwise ship under the right name.
+# Run from the program's own folder (mlx-agent loads its Metal library from beside itself).
+check_tagged_version() {
+    local _built="$( cd "$(/usr/bin/dirname "$3")" && "./$(/usr/bin/basename "$3")" --version 2>/dev/null | /usr/bin/head -1 )"
+    [ "$_built" = "$1 ${2#v}" ] \
+        || fail "The source tagged $2 built \"${_built:-<no output>}\", not $1 ${2#v}."
+}
+
+# keep_bundled <program name> <its path in the bundle>  ->  --skip-build for a tool with no local
+# checkout: there is no build product to reuse (a tag's source is built in a temporary folder),
+# so the program already in the bundle stays.
+keep_bundled() {
+    [ -x "$2" ] || fail "No $1 at $2 (drop --skip-build to download and build it)."
+    echo "  --skip-build: keeping the $1 already in the bundle"
+    echo
+}
+
+# plan_line <do> <repo> <tag>  ->  what prepare's summary says a tool is built from.
+plan_line() {
+    if [ "$1" != "yes" ]; then
+        printf '%s\n' "<skipped>"
+    elif [ -n "$2" ]; then
+        printf '%s\n' "$2$([ "$DO_BUILD" = no ] && echo " (no rebuild)")"
+    elif [ "$DO_BUILD" = "yes" ]; then
+        printf '%s\n' "$3 from GitHub"
+    else
+        printf '%s\n' "the one already in the bundle (no download, no rebuild)"
+    fi
 }
 
 # PIDs of processes running the agent-vm an earlier build left in this bundle: box supervisors
@@ -223,6 +293,8 @@ Options:
   --pdfutil-repo=PATH pdfutil repo (default: ../pdfutil sibling checkout)
   --replay-repo=PATH  replay repo (default: ../replay sibling checkout)
   --time-repo=PATH    time-mcp repo (default: ../time-mcp sibling checkout)
+                      A checkout is built as it is. A tool with no checkout is built from
+                      the source of its newest version tag, downloaded from GitHub.
   --skip-llama        leave llama.cpp untouched
   --skip-agent        leave mlx-agent untouched
   --skip-pdfutil      leave pdfutil untouched
@@ -237,7 +309,9 @@ Options:
   --skip-agent-package-update
                       build mlx-agent against its committed Package.resolved instead of
                       re-resolving its SPM dependencies to the newest allowed versions
-  --skip-build        deploy the existing build products without rebuilding
+                      (always so for a version built from GitHub's source)
+  --skip-build        deploy the existing build products without rebuilding (a tool
+                      without a checkout: keep the one already in the bundle)
   --skip-codesign     do not codesign
   --help              show this message
 
@@ -309,6 +383,9 @@ cleanup() {
     # Only ever remove the mktemp dir this run created; never an inherited/empty value.
     if [ -n "$WORK_DIR" ] && [ -d "$WORK_DIR" ]; then
         /bin/rm -rf "$WORK_DIR"
+    fi
+    if [ -n "$SOURCES_WORK_DIR" ] && [ -d "$SOURCES_WORK_DIR" ]; then
+        /bin/rm -rf "$SOURCES_WORK_DIR"
     fi
     # The Package.resolved backup + resolve log. Removed last, and only ever after any
     # restore has already run (the trap restores before calling cleanup).
@@ -434,94 +511,80 @@ prepare() {
         EXTRACT_DIR="$WORK_DIR/extracted"
     fi
 
+    # THE FOUR BUILT TOOLS. Each is taken from a local checkout when there is one - the path
+    # given, else ../<name> beside this repository (../../<name> is kept for checkouts still
+    # laid out the pre-rebrand way, when this script lived one level deeper) - and built as it
+    # is. Without a checkout, the source of the newest version tag is downloaded from GitHub
+    # and built in a temporary folder; the tag is resolved here, the download is the stage's.
+    # The paths that depend on where the source is are set by each stage.
     if [ "$DO_AGENT" = "yes" ]; then
-        # Locate the mlx-agent repo (github.com/abra-code/mlx-agent, Apache 2.0) by its Xcode
-        # PROJECT: the repo has no Package.swift since it moved to an XcodeGen-generated
-        # project (Metal shaders force xcodebuild anyway). When missing, offer to clone it
-        # into the sibling location and continue.
-        # ../mlx-agent is the current sibling layout (this script sits at the repo root
-        # since the Cadabra rebrand); ../../mlx-agent is kept as a fallback for checkouts
-        # still laid out the pre-rebrand way, when this script lived one level deeper.
+        # mlx-agent (github.com/abra-code/mlx-agent, Apache 2.0), known by its Xcode PROJECT:
+        # the repo has no Package.swift since it moved to an XcodeGen-generated project (Metal
+        # shaders force xcodebuild anyway).
         if [ -z "$AGENT_REPO" ]; then
             for _cand in "$SCRIPT_DIR/../mlx-agent" "$SCRIPT_DIR/../../mlx-agent"; do
                 [ -d "$_cand/mlx-agent.xcodeproj" ] && { AGENT_REPO="$(cd "$_cand" && pwd)"; break; }
             done
         fi
-        if [ -z "$AGENT_REPO" ]; then
-            offer_clone "https://github.com/abra-code/mlx-agent" "$(cd "$SCRIPT_DIR/.." && pwd)/mlx-agent" \
-                && [ -d "$SCRIPT_DIR/../mlx-agent/mlx-agent.xcodeproj" ] \
-                && AGENT_REPO="$(cd "$SCRIPT_DIR/../mlx-agent" && pwd)"
+        if [ -n "$AGENT_REPO" ]; then
+            [ -d "$AGENT_REPO/mlx-agent.xcodeproj" ] \
+                || fail "No mlx-agent checkout at $AGENT_REPO (looked for mlx-agent.xcodeproj)."
+            AGENT_REPO="$(cd "$AGENT_REPO" && pwd)"
+        elif [ "$DO_BUILD" = "yes" ]; then
+            AGENT_TAG="$(tag_for_missing_repo mlx-agent --skip-agent)" || { cleanup; exit 1; }
         fi
-        [ -n "$AGENT_REPO" ] && [ -d "$AGENT_REPO/mlx-agent.xcodeproj" ] \
-            || fail "mlx-agent repo not found (looked for mlx-agent.xcodeproj); clone github.com/abra-code/mlx-agent or pass --agent-repo=PATH."
-        # Release, not Debug: this is the binary users run, so it is built -O/wholemodule
-        # rather than -Onone. The configuration is passed to xcodebuild explicitly (see
-        # update_agent) instead of relying on the scheme, which keeps run/test on Debug for
-        # development - so this path must match that flag, not the scheme.
-        AGENT_BUILD_DIR="$AGENT_REPO/build/Build/Products/Release"
-        # The SPM pins for the Xcode project live here (there is no Package.swift in that
-        # repo - see the header of mlx-agent/project.yml for why).
-        AGENT_RESOLVED="$AGENT_REPO/mlx-agent.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved"
     fi
 
     if [ "$DO_PDFUTIL" = "yes" ]; then
-        # Locate the pdfutil repo (github.com/abra-code/pdfutil, Apache 2.0) by its
-        # build.sh: it is a plain-swiftc build (no Xcode project, no Package.swift), so
-        # build.sh is the identifying marker. When missing, offer to clone it into the
-        # sibling location and continue.
-        # Same sibling-then-legacy candidate order as mlx-agent above.
+        # pdfutil (github.com/abra-code/pdfutil, Apache 2.0), known by its build.sh: a
+        # plain-swiftc build with no Xcode project and no Package.swift.
         if [ -z "$PDFUTIL_REPO" ]; then
             for _cand in "$SCRIPT_DIR/../pdfutil" "$SCRIPT_DIR/../../pdfutil"; do
                 [ -f "$_cand/build.sh" ] && { PDFUTIL_REPO="$(cd "$_cand" && pwd)"; break; }
             done
         fi
-        if [ -z "$PDFUTIL_REPO" ]; then
-            offer_clone "https://github.com/abra-code/pdfutil" "$(cd "$SCRIPT_DIR/.." && pwd)/pdfutil" \
-                && [ -f "$SCRIPT_DIR/../pdfutil/build.sh" ] \
-                && PDFUTIL_REPO="$(cd "$SCRIPT_DIR/../pdfutil" && pwd)"
+        if [ -n "$PDFUTIL_REPO" ]; then
+            [ -f "$PDFUTIL_REPO/build.sh" ] \
+                || fail "No pdfutil checkout at $PDFUTIL_REPO (looked for build.sh)."
+            PDFUTIL_REPO="$(cd "$PDFUTIL_REPO" && pwd)"
+        elif [ "$DO_BUILD" = "yes" ]; then
+            PDFUTIL_TAG="$(tag_for_missing_repo pdfutil --skip-pdfutil)" || { cleanup; exit 1; }
         fi
-        [ -n "$PDFUTIL_REPO" ] && [ -f "$PDFUTIL_REPO/build.sh" ] \
-            || fail "pdfutil repo not found (looked for build.sh); clone github.com/abra-code/pdfutil or pass --pdfutil-repo=PATH."
-        # build.sh always writes the (single- or universal-arch) binary here.
-        PDFUTIL_BUILD_BIN="$PDFUTIL_REPO/build/pdfutil"
     fi
 
     if [ "$DO_REPLAY" = "yes" ]; then
-        # Locate the replay repo (github.com/abra-code/replay, Apache 2.0) by its Xcode
-        # PROJECT: the repo does ship a Package.swift, but the xcodeproj is what this
-        # script builds (see update_replay), so it is the marker that matters. Same
-        # sibling-then-legacy candidate order as mlx-agent and pdfutil above.
+        # replay (github.com/abra-code/replay, Apache 2.0), known by its Xcode PROJECT: the
+        # repo does ship a Package.swift, but the xcodeproj is what this script builds.
         if [ -z "$REPLAY_REPO" ]; then
             for _cand in "$SCRIPT_DIR/../replay" "$SCRIPT_DIR/../../replay"; do
                 [ -d "$_cand/replay.xcodeproj" ] && { REPLAY_REPO="$(cd "$_cand" && pwd)"; break; }
             done
         fi
-        if [ -z "$REPLAY_REPO" ]; then
-            offer_clone "https://github.com/abra-code/replay" "$(cd "$SCRIPT_DIR/.." && pwd)/replay" \
-                && [ -d "$SCRIPT_DIR/../replay/replay.xcodeproj" ] \
-                && REPLAY_REPO="$(cd "$SCRIPT_DIR/../replay" && pwd)"
+        if [ -n "$REPLAY_REPO" ]; then
+            [ -d "$REPLAY_REPO/replay.xcodeproj" ] \
+                || fail "No replay checkout at $REPLAY_REPO (looked for replay.xcodeproj)."
+            REPLAY_REPO="$(cd "$REPLAY_REPO" && pwd)"
+        elif [ "$DO_BUILD" = "yes" ]; then
+            REPLAY_TAG="$(tag_for_missing_repo replay --skip-replay)" || { cleanup; exit 1; }
         fi
-        [ -n "$REPLAY_REPO" ] && [ -d "$REPLAY_REPO/replay.xcodeproj" ] \
-            || fail "replay repo not found (looked for replay.xcodeproj); clone github.com/abra-code/replay or pass --replay-repo=PATH."
-        # The project keeps SYMROOT inside the repo, so Release products land here.
-        REPLAY_BUILD_BIN="$REPLAY_REPO/build/Release/replay"
     fi
 
     if [ "$DO_TIME" = "yes" ]; then
-        # Locate the time-mcp repo (Apache 2.0) by its CMakeLists.txt and its main source file.
-        # Same sibling-then-legacy candidate order as the others. No offer to clone: the
-        # repository has no public address yet.
+        # time-mcp (github.com/abra-code/time-mcp, Apache 2.0), known by its CMakeLists.txt and
+        # its main source file.
         if [ -z "$TIME_REPO" ]; then
             for _cand in "$SCRIPT_DIR/../time-mcp" "$SCRIPT_DIR/../../time-mcp"; do
-                [ -f "$_cand/CMakeLists.txt" ] && { TIME_REPO="$(cd "$_cand" && pwd)"; break; }
+                [ -f "$_cand/CMakeLists.txt" ] && [ -f "$_cand/src/TimeTools.cpp" ] \
+                    && { TIME_REPO="$(cd "$_cand" && pwd)"; break; }
             done
         fi
-        [ -n "$TIME_REPO" ] && [ -f "$TIME_REPO/CMakeLists.txt" ] && [ -f "$TIME_REPO/src/TimeTools.cpp" ] \
-            || fail "time-mcp repo not found (looked for CMakeLists.txt and src/TimeTools.cpp); pass --time-repo=PATH, or re-run with --skip-time."
-        # A build folder of this script's own inside build/, so a developer's own build there
-        # (another architecture, a debug build) is neither used nor changed.
-        TIME_BUILD_DIR="$TIME_REPO/build/cadabra"
-        TIME_BUILD_BIN="$TIME_BUILD_DIR/time-mcp"
+        if [ -n "$TIME_REPO" ]; then
+            [ -f "$TIME_REPO/CMakeLists.txt" ] && [ -f "$TIME_REPO/src/TimeTools.cpp" ] \
+                || fail "No time-mcp checkout at $TIME_REPO (looked for CMakeLists.txt and src/TimeTools.cpp)."
+            TIME_REPO="$(cd "$TIME_REPO" && pwd)"
+        elif [ "$DO_BUILD" = "yes" ]; then
+            TIME_TAG="$(tag_for_missing_repo time-mcp --skip-time)" || { cleanup; exit 1; }
+        fi
         if [ "$DO_BUILD" = "yes" ]; then
             # cmake is not part of Xcode or the Command Line Tools, so it is looked up here,
             # before any stage runs, instead of failing after the long ones.
@@ -589,10 +652,10 @@ prepare() {
     # Spells out the SPM re-resolve: it is on by default, it touches a tracked file in a
     # DIFFERENT repo, and it goes to the network for minutes - the most surprising thing this
     # script does by default should be visible before it runs, not only in hindsight.
-    echo "  mlx-agent  : $([ "$DO_AGENT" = yes ] && echo "${AGENT_REPO}$([ "$DO_BUILD" = no ] && echo " (no rebuild)")$([ "$DO_BUILD" = yes ] && [ "$DO_AGENT_PACKAGE_UPDATE" = yes ] && echo " (+ SPM re-resolve)")" || echo "<skipped>")"
-    echo "  pdfutil    : $([ "$DO_PDFUTIL" = yes ] && echo "${PDFUTIL_REPO}$([ "$DO_BUILD" = no ] && echo " (no rebuild)")" || echo "<skipped>")"
-    echo "  replay     : $([ "$DO_REPLAY" = yes ] && echo "${REPLAY_REPO}$([ "$DO_BUILD" = no ] && echo " (no rebuild)")" || echo "<skipped>")"
-    echo "  time-mcp   : $([ "$DO_TIME" = yes ] && echo "${TIME_REPO}$([ "$DO_BUILD" = no ] && echo " (no rebuild)")" || echo "<skipped>")"
+    echo "  mlx-agent  : $(plan_line "$DO_AGENT" "$AGENT_REPO" "$AGENT_TAG")$([ "$DO_AGENT" = yes ] && [ -n "$AGENT_REPO" ] && [ "$DO_BUILD" = yes ] && [ "$DO_AGENT_PACKAGE_UPDATE" = yes ] && echo " (+ SPM re-resolve)")"
+    echo "  pdfutil    : $(plan_line "$DO_PDFUTIL" "$PDFUTIL_REPO" "$PDFUTIL_TAG")"
+    echo "  replay     : $(plan_line "$DO_REPLAY" "$REPLAY_REPO" "$REPLAY_TAG")"
+    echo "  time-mcp   : $(plan_line "$DO_TIME" "$TIME_REPO" "$TIME_TAG")"
     echo "  packages   : $([ "$DO_PACKAGES" = yes ] && echo "${MCP_PACKAGES[*]}$([ "$CLEAN_PACKAGES" = yes ] && echo " (clean install)")" || echo "<skipped>")"
     echo "  Codesign   : $([ "$DO_CODESIGN" = yes ] && echo "$SIGNING_IDENTITY" || echo "<skipped>")"
     echo
@@ -743,6 +806,16 @@ restore_agent_pins() {
 # INT/TERM/HUP/QUIT while the pins are moved aside. HUP and QUIT are in the set deliberately:
 # the window is minutes long on a cold checkout, which is exactly long enough for a terminal
 # to be closed or an ssh session to drop, and those deliver HUP - not INT.
+# An interrupted run removes its temporary folders: a tool built from a downloaded tag has its
+# whole build tree there. Armed for the whole run (main); the mlx-agent package resolve arms
+# its own handler, which also restores Package.resolved, and re-arms this one when done.
+interrupted() {
+    echo >&2
+    echo "${YELLOW}Interrupted${RESET}" >&2
+    cleanup
+    exit 130
+}
+
 agent_pins_interrupted() {
     echo >&2
     if restore_agent_pins; then
@@ -802,7 +875,7 @@ update_agent_packages() {
         fail "Resolution produced an unreadable Package.resolved - no pins in it (restored the previous one). Re-run, or use --skip-agent-package-update."
     fi
 
-    trap - INT TERM HUP QUIT
+    trap interrupted INT TERM HUP QUIT
     AGENT_PINS_BACKUP=""
 
     printf '%s\n' "$new_pins"
@@ -826,6 +899,26 @@ update_agent() {
     echo "==== mlx-agent ===="
     echo
 
+    if [ -z "$AGENT_REPO" ]; then
+        if [ "$DO_BUILD" = "no" ]; then
+            keep_bundled mlx-agent "$MLX_DIR/mlx-agent"
+            AGENT_STATUS="reused"
+            return 0
+        fi
+        fetch_tagged_source mlx-agent "$AGENT_TAG" mlx-agent.xcodeproj
+        AGENT_REPO="$FETCHED_DIR"
+        # A tagged version is built with the package versions it was tagged with.
+        DO_AGENT_PACKAGE_UPDATE="no"
+    fi
+    # Release, not Debug: this is the binary users run, so it is built -O/wholemodule
+    # rather than -Onone. The configuration is passed to xcodebuild explicitly (below)
+    # instead of relying on the scheme, which keeps run/test on Debug for development - so
+    # this path must match that flag, not the scheme.
+    AGENT_BUILD_DIR="$AGENT_REPO/build/Build/Products/Release"
+    # The SPM pins for the Xcode project live here (there is no Package.swift in that
+    # repo - see the header of mlx-agent/project.yml for why).
+    AGENT_RESOLVED="$AGENT_REPO/mlx-agent.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved"
+
     if [ "$DO_BUILD" = "yes" ]; then
         # MLX's Metal shaders need the Metal toolchain (a separate Xcode component). Without
         # it default.metallib never compiles and the agent aborts at runtime.
@@ -838,9 +931,12 @@ update_agent() {
             # Without a Package.resolved the build below resolves from scratch - i.e. performs
             # exactly the upgrade this flag exists to prevent, and writes a new pin set on the
             # way past. Refuse rather than print the opposite of what is about to happen.
+            # A tag's downloaded source: no flag was given and there is no git to restore from.
+            [ -z "$AGENT_TAG" ] || [ -f "$AGENT_RESOLVED" ] \
+                || fail "The mlx-agent $AGENT_TAG source has no Package.resolved, so the build would resolve its packages from scratch instead of using the versions the tag was made with. Clone mlx-agent beside this repository and build that, or re-run with --skip-agent."
             [ -f "$AGENT_RESOLVED" ] \
                 || fail "--skip-agent-package-update was given, but there is no $AGENT_RESOLVED - the build would resolve from scratch and upgrade anyway. Restore it (git -C '$AGENT_REPO' checkout -- mlx-agent.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved) or drop the flag."
-            echo "  --skip-agent-package-update: building against the committed Package.resolved"
+            echo "  Building against the committed Package.resolved$([ -n "$AGENT_TAG" ] && echo " of $AGENT_TAG")"
         fi
 
         # Release, not Debug: this binary ships inside the app, so it is built -O /
@@ -864,6 +960,7 @@ update_agent() {
 
     [ -x "$AGENT_BUILD_DIR/mlx-agent" ] \
         || fail "No built mlx-agent at $AGENT_BUILD_DIR (drop --skip-build, or build it yourself - note this deploys the RELEASE product, so a Debug-only build tree will not do)."
+    [ -z "$AGENT_TAG" ] || check_tagged_version mlx-agent "$AGENT_TAG" "$AGENT_BUILD_DIR/mlx-agent"
 
     /bin/mkdir -p "$MLX_DIR" || fail "Could not create $MLX_DIR"
     /bin/cp -f "$AGENT_BUILD_DIR/mlx-agent" "$MLX_DIR/mlx-agent"
@@ -890,7 +987,7 @@ update_agent() {
         || fail "default.metallib not found after copy."
     [ -f "$AGENT_REPO/LICENSE" ] && /bin/cp -f "$AGENT_REPO/LICENSE" "$MLX_DIR/mlx-agent.LICENSE"
 
-    AGENT_STATUS="deployed (Release)"
+    AGENT_STATUS="deployed (Release${AGENT_TAG:+, $AGENT_TAG})"
     echo "  ${GREEN}Deployed${RESET} mlx-agent + metallib"
     echo
 }
@@ -899,6 +996,18 @@ update_agent() {
 update_pdfutil() {
     echo "==== pdfutil ===="
     echo
+
+    if [ -z "$PDFUTIL_REPO" ]; then
+        if [ "$DO_BUILD" = "no" ]; then
+            keep_bundled pdfutil "$PDFUTIL_BIN"
+            PDFUTIL_STATUS="reused"
+            return 0
+        fi
+        fetch_tagged_source pdfutil "$PDFUTIL_TAG" build.sh
+        PDFUTIL_REPO="$FETCHED_DIR"
+    fi
+    # build.sh always writes the (single- or universal-arch) binary here.
+    PDFUTIL_BUILD_BIN="$PDFUTIL_REPO/build/pdfutil"
 
     if [ "$DO_BUILD" = "yes" ]; then
         # build.sh is a plain `xcrun swiftc -O` build (zero third-party deps - only macOS
@@ -914,6 +1023,7 @@ update_pdfutil() {
 
     [ -x "$PDFUTIL_BUILD_BIN" ] \
         || fail "No built pdfutil at $PDFUTIL_BUILD_BIN (build first, or drop --skip-build)."
+    [ -z "$PDFUTIL_TAG" ] || check_tagged_version pdfutil "$PDFUTIL_TAG" "$PDFUTIL_BUILD_BIN"
 
     /bin/mkdir -p "$(/usr/bin/dirname "$PDFUTIL_BIN")" || fail "Could not create Support dir for pdfutil"
     /bin/cp -f "$PDFUTIL_BUILD_BIN" "$PDFUTIL_BIN"
@@ -927,7 +1037,7 @@ update_pdfutil() {
 
     [ -f "$PDFUTIL_REPO/LICENSE" ] && /bin/cp -f "$PDFUTIL_REPO/LICENSE" "${PDFUTIL_BIN}.LICENSE"
 
-    PDFUTIL_STATUS="deployed"
+    PDFUTIL_STATUS="deployed${PDFUTIL_TAG:+ ($PDFUTIL_TAG)}"
     echo "  ${GREEN}Deployed${RESET} pdfutil"
     echo
 }
@@ -936,6 +1046,18 @@ update_pdfutil() {
 update_replay() {
     echo "==== replay ===="
     echo
+
+    if [ -z "$REPLAY_REPO" ]; then
+        if [ "$DO_BUILD" = "no" ]; then
+            keep_bundled replay "$REPLAY_BIN"
+            REPLAY_STATUS="reused"
+            return 0
+        fi
+        fetch_tagged_source replay "$REPLAY_TAG" replay.xcodeproj
+        REPLAY_REPO="$FETCHED_DIR"
+    fi
+    # The project keeps SYMROOT inside the repo, so Release products land here.
+    REPLAY_BUILD_BIN="$REPLAY_REPO/build/Release/replay"
 
     if [ "$DO_BUILD" = "yes" ]; then
         # The repo's own ./build.sh builds all four tools (replay, dispatch, fingerprint,
@@ -951,6 +1073,7 @@ update_replay() {
 
     [ -x "$REPLAY_BUILD_BIN" ] \
         || fail "No built replay at $REPLAY_BUILD_BIN (build first, or drop --skip-build)."
+    [ -z "$REPLAY_TAG" ] || check_tagged_version replay "$REPLAY_TAG" "$REPLAY_BUILD_BIN"
 
     /bin/mkdir -p "$(/usr/bin/dirname "$REPLAY_BIN")" || fail "Could not create Support dir for replay"
     /bin/cp -f "$REPLAY_BUILD_BIN" "$REPLAY_BIN"
@@ -963,7 +1086,7 @@ update_replay() {
 
     [ -f "$REPLAY_REPO/LICENSE" ] && /bin/cp -f "$REPLAY_REPO/LICENSE" "${REPLAY_BIN}.LICENSE"
 
-    REPLAY_STATUS="deployed"
+    REPLAY_STATUS="deployed${REPLAY_TAG:+ ($REPLAY_TAG)}"
     echo "  ${GREEN}Deployed${RESET} replay"
     echo
 }
@@ -973,19 +1096,34 @@ update_time() {
     echo "==== time-mcp ===="
     echo
 
+    if [ -z "$TIME_REPO" ]; then
+        if [ "$DO_BUILD" = "no" ]; then
+            keep_bundled time-mcp "$TIME_BIN"
+            TIME_STATUS="reused"
+            return 0
+        fi
+        fetch_tagged_source time-mcp "$TIME_TAG" CMakeLists.txt
+        TIME_REPO="$FETCHED_DIR"
+    fi
+    # A build folder of this script's own inside build/, so a developer's own build there
+    # (another architecture, a debug build) is neither used nor changed.
+    TIME_BUILD_DIR="$TIME_REPO/build/cadabra"
+    TIME_BUILD_BIN="$TIME_BUILD_DIR/time-mcp"
+
     if [ "$DO_BUILD" = "yes" ]; then
         # A plain C++ program with yyjson vendored: no Xcode project and no dependencies.
         # The architecture is passed because cmake would otherwise build for the machine
         # it runs on, which is the same today but is not this script's rule.
         echo "  Building (cmake, MinSizeRel, $ARCH)..."
-        # The whole output goes to a log: cmake's last lines say only that it failed.
+        # The whole output goes to a log: cmake's last lines say only that it failed. The log
+        # is shown on failure, since a temporary build folder goes when the script ends.
         /bin/mkdir -p "$TIME_BUILD_DIR" || fail "Could not create $TIME_BUILD_DIR"
         local time_log="$TIME_BUILD_DIR/update-cadabra.log"
         "$CMAKE_BIN" -S "$TIME_REPO" -B "$TIME_BUILD_DIR" \
             -DCMAKE_BUILD_TYPE=MinSizeRel -DCMAKE_OSX_ARCHITECTURES="$ARCH" > "$time_log" 2>&1 \
-            || fail "time-mcp: cmake could not configure the build. See $time_log"
+            || { /usr/bin/tail -30 "$time_log"; fail "time-mcp: cmake could not configure the build."; }
         "$CMAKE_BIN" --build "$TIME_BUILD_DIR" --target time-mcp >> "$time_log" 2>&1 \
-            || fail "time-mcp build failed. See $time_log"
+            || { /usr/bin/tail -30 "$time_log"; fail "time-mcp build failed."; }
         /usr/bin/tail -2 "$time_log"
     else
         echo "  --skip-build: reusing existing build product"
@@ -993,6 +1131,7 @@ update_time() {
 
     [ -x "$TIME_BUILD_BIN" ] \
         || fail "No built time-mcp at $TIME_BUILD_BIN (build first, or drop --skip-build)."
+    [ -z "$TIME_TAG" ] || check_tagged_version time-mcp "$TIME_TAG" "$TIME_BUILD_BIN"
 
     /bin/mkdir -p "$(/usr/bin/dirname "$TIME_BIN")" || fail "Could not create Support dir for time-mcp"
     /bin/cp -f "$TIME_BUILD_BIN" "$TIME_BIN"
@@ -1008,7 +1147,7 @@ update_time() {
     [ -f "$TIME_REPO/vendor/yyjson/LICENSE" ] \
         && /bin/cp -f "$TIME_REPO/vendor/yyjson/LICENSE" "${TIME_BIN}.yyjson.LICENSE"
 
-    TIME_STATUS="deployed"
+    TIME_STATUS="deployed${TIME_TAG:+ ($TIME_TAG)}"
     echo "  ${GREEN}Deployed${RESET} time-mcp"
     echo
 }
@@ -1427,6 +1566,7 @@ print_summary() {
 }
 
 main() {
+    trap interrupted INT TERM HUP QUIT
     prepare
     [ "$DO_LLAMA" = "yes" ] && update_llama
     [ "$DO_AGENT" = "yes" ] && update_agent

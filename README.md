@@ -114,8 +114,9 @@ bundle and verifies that they actually launch (`--help` lists every option):
 | Python MCP server (search) | `Contents/Library/Packages/` | `pip install` with the bundle's own `python3` |
 
 mlx-agent, pdfutil, replay and time-mcp are built from sibling checkouts (`--agent-repo=`,
-`--pdfutil-repo=`, `--replay-repo=`, `--time-repo=`); the script offers to `git clone` the first
-three if they are missing. time-mcp needs `cmake`. No WebUI is downloaded
+`--pdfutil-repo=`, `--replay-repo=`, `--time-repo=`), each as it is. A tool with no checkout is
+built from the source of its newest version tag, which the script downloads from GitHub.
+time-mcp needs `cmake`. No WebUI is downloaded
 or patched - Cadabra's chat is native.
 
 Cadabra carries no agent-vm. Boxes run the agent-vm that AgentVM's package installs for the user
@@ -192,3 +193,4 @@ Sources:
   https://github.com/ggml-org/llama.cpp/releases (llama-server, dylibs)
   https://github.com/abra-code/mlx-agent (mlx-agent)
   https://github.com/abra-code/pdfutil (pdfutil)
+  https://github.com/abra-code/time-mcp (time-mcp)
