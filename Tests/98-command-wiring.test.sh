@@ -146,23 +146,36 @@ check "the key and its per-window prefix are the ones under test" \
     "$HF_FIRST_RUN_KEY $HF_FIRST_RUN_ARM" \
     "$(cad_lib_var HF_FIRST_RUN_KEY aichat.library.sh) $(cad_lib_var HF_FIRST_RUN_PREFIX aichat.library.sh)"
 
-section "a bare launch with no model installed opens the Hugging Face browser"
-# The behavior the user meets on a Mac that has never had a model: double-click the app with
-# nothing selected. ACTIVATION_MODE is absent from the main command and therefore act_always,
-# which is what lets this run with no file context at all - if someone adds act_file_or_folder,
-# the engine shows a file picker before any of this and the launch experience silently changes.
+section "a bare launch opens the start window, with or without a model"
+# The behavior the user meets on a double-click with nothing selected. ACTIVATION_MODE is absent
+# from the main command and therefore act_always, which is what lets this run with no file
+# context at all - if someone adds act_file_or_folder, the engine shows a file picker before any
+# of this and the launch experience silently changes.
 #
-# "No model installed" is a FACT here rather than a hope: every root model_scan_roots names is
-# under $HOME, the harness gives this file its own, and nothing above has written a model into
-# one. The section after this one is the positive control that the scan can find one at all.
+# Launch no longer chooses between the Local Models list and the downloads by whether a model is
+# installed: the start window offers both, with an external agent and an empty chat window.
+# "No model installed" is a fact here: every root model_scan_roots names is under $HOME, the
+# harness gives this file its own, and nothing above has written a model into one.
 chains_reset
-cad_pb_set "$HF_FIRST_RUN_KEY" ""
+# Armed BEFORE this launch, standing in for the one hole a persistent pasteboard leaves: a crash
+# between an arm and the browser's init capturing it strands the global key, and a browser opened
+# from the menu long afterwards would otherwise capture it and announce that nothing is installed
+# on a Mac full of models. The main command clears the key on every launch.
+cad_pb_set "$HF_FIRST_RUN_KEY" "1"
 omc_run "Cadabra.main"
 check_status "the main command succeeds" 0
-check "it asks for the Hugging Face browser"     "1" "$(chain_asked aichat.hf.browse)"
+check "it asks for the start window"             "1" "$(chain_asked aichat.start)"
+check "it does not open the Hugging Face browser" "0" "$(chain_asked aichat.hf.browse)"
 check "it does not open the Local Models dialog" "0" "$(chain_asked aichat.select.local.model)"
 check "it does not open a chat window"           "0" "$(chain_asked aichat.chat)"
-check "it asks exactly once"                     "1" "$(chain_asked aichat.hf.browse)"
+check "and a stale arm from an earlier launch is gone" "" "$(cad_pb_get "$HF_FIRST_RUN_KEY")"
+
+section "Download Models in the start window, with no model, arms the handoff to the picker"
+chains_reset
+omc_trigger 14
+omc_run aichat.start.choose
+check_status "the button's handler succeeds" 0
+check "it asks for the Hugging Face browser"     "1" "$(chain_asked aichat.hf.browse)"
 check "and it armed the handoff back to the picker" "1" "$(cad_pb_get "$HF_FIRST_RUN_KEY")"
 
 section "closing that browser is what opens the Local Models dialog"
@@ -188,24 +201,20 @@ chains_reset
 omc_run aichat.hf.browse.cancel
 check "an ordinary close opens nothing" "0" "$(chain_asked aichat.select.local.model)"
 
-section "one installed model is enough to open the Local Models dialog instead"
-# The positive control for the scan above, and the branch every launch after the first takes.
+section "with a model installed, launch still opens the start window and Download Models arms nothing"
 cad_installed="$HOME/Library/Application Support/Cadabra/Models"
 /bin/mkdir -p "$cad_installed"
 /usr/bin/head -c 2048 /dev/zero > "$cad_installed/Installed-Q4_K_M.gguf"
 chains_reset
-# Armed BEFORE this launch, standing in for the one hole a persistent pasteboard leaves: a
-# crash between the main command arming and the browser's init capturing strands the global
-# key, and a browser opened from the menu long afterwards would otherwise capture it and
-# announce that nothing is installed on a Mac full of models. The main command writes this key
-# on every launch, so a stranded arm cannot outlive the launch after the one that stranded it.
-cad_pb_set "$HF_FIRST_RUN_KEY" "1"
 omc_run "Cadabra.main"
 check_status "the main command succeeds" 0
-check "it asks for the Local Models dialog"      "1" "$(chain_asked aichat.select.local.model)"
-check "it does not open the Hugging Face browser" "0" "$(chain_asked aichat.hf.browse)"
-check "it does not open a chat window"           "0" "$(chain_asked aichat.chat)"
-check "and a stale arm from an earlier launch is gone" "" "$(cad_pb_get "$HF_FIRST_RUN_KEY")"
+check "it asks for the start window"             "1" "$(chain_asked aichat.start)"
+check "it does not open the Local Models dialog" "0" "$(chain_asked aichat.select.local.model)"
+chains_reset
+omc_trigger 14
+omc_run aichat.start.choose
+check "Download Models opens the browser"        "1" "$(chain_asked aichat.hf.browse)"
+check "  as the plain one, with no handoff"      ""  "$(cad_pb_get "$HF_FIRST_RUN_KEY")"
 
 section "a dropped model opens the chat window instead"
 # The other half of the branch, and the reason this command chains imperatively with
@@ -219,7 +228,7 @@ cad_pb_set "$HF_FIRST_RUN_KEY" "1"
 omc_run "Cadabra.main"
 check_status "the main command succeeds with an object" 0
 check "it opens the chat window"                 "1" "$(chain_asked aichat.chat)"
-check "it does not open the Local Models dialog" "0" "$(chain_asked aichat.select.local.model)"
+check "it does not open the start window"        "0" "$(chain_asked aichat.start)"
 # The clear is unconditional, so the branch that never consults the key still owns it: a drop
 # launch is a launch, and leaving an arm standing here would hand the next menu-opened browser
 # a first-run message it has no business showing.
@@ -233,12 +242,12 @@ section "the routing follows the object, and the drop leaves nothing sticky"
 #
 # What is worth asserting once it IS cleared: that the branch is decided by the object alone.
 # The drop path runs aichat.chat.init, which writes settings - a launch preference stored there
-# would make every later launch open a chat window and never the picker again, and the user
-# would experience that as the app "forgetting" the fix.
+# would make every later launch open a chat window and never the start window again, and the
+# user would experience that as the app "forgetting" the fix.
 chains_reset
 omc_object ""
 omc_run "Cadabra.main"
-check "a bare launch after a drop is back to the picker" "1" "$(chain_asked aichat.select.local.model)"
+check "a bare launch after a drop is back to the start window" "1" "$(chain_asked aichat.start)"
 check "  and does not reuse the earlier drop"            "0" "$(chain_asked aichat.chat)"
 
 section "cumulative: no handler wrote to a view id the window does not declare"

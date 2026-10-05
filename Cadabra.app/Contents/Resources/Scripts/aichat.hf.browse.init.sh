@@ -13,8 +13,8 @@ INFO_TEXT_ID=211
 dialog_tool="$OMC_OMC_SUPPORT_PATH/omc_dialog_control"
 window_uuid="$OMC_ACTIONUI_WINDOW_UUID"
 
-# Take ownership of the arm launch leaves when it opens this window because the Mac has no
-# model installed (see Cadabra.main.sh), moving it into this window's scope so that closing
+# Take ownership of the arm the start window leaves when it opens this window on a Mac with no
+# model installed (see aichat.start.choose.sh), moving it into this window's scope so that closing
 # THIS browser is what hands back to the model picker. A no-op when the window was opened from
 # the menu, which is the ordinary case.
 #

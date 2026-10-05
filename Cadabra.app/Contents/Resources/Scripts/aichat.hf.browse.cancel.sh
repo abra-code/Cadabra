@@ -11,7 +11,7 @@ echo "[$(/usr/bin/basename "$0")]"
 
 window_uuid="$OMC_ACTIONUI_WINDOW_UUID"
 
-# Was this the browser LAUNCH opened, because the Mac had no model installed? Then closing it
+# Was this the FIRST-RUN browser, opened from the start window on a Mac with no model installed? Then closing it
 # is what opens the model picker: a first run that ends with the download finished and no
 # window on screen has stranded the user one menu away from the thing they just downloaded.
 #
@@ -25,7 +25,7 @@ window_uuid="$OMC_ACTIONUI_WINDOW_UUID"
 # Consumed on read, so this survives being called twice without opening two pickers.
 hf_first_run_consume_for "$window_uuid"
 if [ $? -eq 0 ]; then
-    echo "launch browser closing - handing back to the model picker"
+    echo "first-run browser closing - handing over to the model picker"
     "$next_command" "$OMC_CURRENT_COMMAND_GUID" "aichat.select.local.model"
 fi
 

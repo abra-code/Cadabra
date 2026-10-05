@@ -48,7 +48,7 @@ section "the ids this file drives are the ones the dialog declares"
 check "the picker's controls resolved" "10 12 3 20 24 30 51" \
     "$LM_TABLE_ID $LM_INFO_TEXT_ID $LM_LOAD_BUTTON_ID $LM_REVEAL_BUTTON_ID $LM_DELETE_BUTTON_ID $LM_USE_TOOLS_TOGGLE_ID $LM_BENCH_BTN_ID"
 
-section "whether this Mac has any model at all - the question launch asks"
+section "whether this Mac has any model at all - the question the start window asks"
 # Launch opens the Hugging Face browser instead of this picker when the answer is no
 # (Cadabra.main.sh), so a wrong answer here is a wrong window: a false yes opens a picker with
 # nothing in it, a false no sends a user who has models to a download browser they did not ask
@@ -79,7 +79,7 @@ check "a config.json with no weights beside it is not a model" "1" \
     "$(cad_model_call model_any_installed; echo $?)"
 /bin/rm -rf "$MODELS/probe-notamodel"
 
-# Recents are the only trace of a model living outside every scanned root, so the launch check
+# Recents are the only trace of a model living outside every scanned root, so that check
 # has to read them for the same reason the list does - otherwise a user whose only model sits on
 # their Desktop is told they have none.
 PROBE_OUTSIDE="$HOME/Desktop/Probe-Outside-Q4_K_M.gguf"

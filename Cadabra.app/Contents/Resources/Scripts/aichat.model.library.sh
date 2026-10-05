@@ -593,10 +593,10 @@ model_recents_add() { # <path>
 # model_scan_roots -> the directories scanned for installed models, one per line.
 #
 # ONE LIST, because two readers walk it: the picker's init, which lists what it finds, and
-# model_any_installed, which decides at launch whether there is anything to list at all. A
-# second copy is a copy that can drift, and it drifts silently in the direction that matters -
-# a root only the launch check knows about would send a user who has models straight into the
-# download browser.
+# model_any_installed, which decides whether there is anything to list at all. A second copy
+# is a copy that can drift, and it drifts silently in the direction that matters - a root only
+# that check knows about would show a user who has models the download browser's first-run
+# text.
 #
 # Every root is scanned for BOTH engines. The HF cache and LM Studio genuinely hold each kind
 # (LM Studio ships an MLX runtime), so neither can be assumed single-engine. The Ollama /
@@ -619,14 +619,15 @@ EOF
 }
 
 # model_any_installed -> 0 if this Mac has at least one model Cadabra can LOAD, 1 if it has
-# none. Launch asks it to decide which window to open (see Cadabra.main.sh).
+# none. The start window's Download Models button asks it, to decide whether the browser it
+# opens is the first-run one (see aichat.start.choose.sh).
 #
 # "Installed" means a downloaded GGUF file or MLX directory, and deliberately NOT Apple's
 # on-device model: that one belongs to the OS, is not on our disk, and is present on every
 # eligible Mac - counting it would retire the first-run download flow on exactly the machines
 # it was written for.
 #
-# STOPS AT THE FIRST HIT. This runs on the launch path, ahead of a window that has not appeared
+# STOPS AT THE FIRST HIT. This runs on a button press, ahead of a window that has not appeared
 # yet, so a user who has models pays for one find against one root rather than a walk of all
 # seven. The full walk is what "no models" costs, and that answer is reached about once per
 # machine.

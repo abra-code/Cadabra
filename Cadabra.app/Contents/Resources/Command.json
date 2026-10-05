@@ -8,6 +8,21 @@
     },
     {
       "ACTIONUI_WINDOW" : {
+        "IS_BLOCKING" : false,
+        "JSON_NAME" : "aichat.start",
+        "WINDOW_TITLE" : "Cadabra"
+      },
+      "COMMAND_ID" : "aichat.start",
+      "EXECUTION_MODE" : "exe_shell_script",
+      "NAME" : "Cadabra"
+    },
+    {
+      "COMMAND_ID" : "aichat.start.choose",
+      "EXECUTION_MODE" : "exe_script_file",
+      "NAME" : "Cadabra"
+    },
+    {
+      "ACTIONUI_WINDOW" : {
         "END_CANCEL_SUBCOMMAND_ID" : "aichat.select.local.model.cancel",
         "INIT_SUBCOMMAND_ID" : "aichat.select.local.model.init",
         "IS_BLOCKING" : false,

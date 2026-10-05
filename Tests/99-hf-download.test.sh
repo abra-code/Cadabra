@@ -12,7 +12,7 @@
 # AND the right size, so the assertions below are mostly of the form "after the interruption,
 # what does the picker see". That question is asked through the applet's own model_engine and
 # model_any_installed rather than by looking for files, because those two are what the picker
-# and the launch branch actually ask.
+# and the first-run check actually ask.
 #
 # THE NETWORK IS A FAKE (helpers/fake_curl.sh, reached through the CADABRA_CURL seam). It is
 # not there to simulate Hugging Face; it is there because every case worth testing is an
@@ -117,7 +117,7 @@ check "and its bytes are the ones served" "0" \
     "$(/usr/bin/cmp -s "$GGUF_DEST" "$REFERENCE"; echo $?)"
 check "no staging file survives"          "absent" "$(size_of "$GGUF_PART")"
 check "the picker would list it"          "gguf"   "$(cad_model_call model_engine "$GGUF_DEST")"
-check "and launch would find a model"     "0"      "$(cad_model_call model_any_installed; echo $?)"
+check "and the first-run check finds a model" "0"      "$(cad_model_call model_any_installed; echo $?)"
 
 section "a transfer that dies halfway leaves NOTHING the picker will offer"
 # The whole point. curl exits 18 (partial file) having written 200 of 512 bytes - the shape of
@@ -131,7 +131,7 @@ ui_reset
 run_gguf_download
 check "nothing is at the model's real name" "absent" "$(size_of "$GGUF_DEST")"
 check "the picker sees no model there"      ""       "$(cad_model_call model_engine "$GGUF_DEST")"
-check "and launch sees none on this Mac"    "1"      "$(cad_model_call model_any_installed; echo $?)"
+check "and the first-run check sees none"    "1"      "$(cad_model_call model_any_installed; echo $?)"
 # The bytes are not thrown away, they are parked where no reader looks. The old code deleted
 # them and sent the user back to zero.
 check "what arrived is kept for a resume"   "200"    "$(size_of "$GGUF_PART")"
@@ -267,7 +267,7 @@ check "the first shard is whole"          "200" "$(size_of "$MLX_DIR/$SHARD1")"
 check "the second is only ever staged"    "absent" "$(size_of "$MLX_DIR/$SHARD2")"
 check "  and what arrived of it is kept"  "40"  "$(size_of "$MLX_DIR/$SHARD2.part")"
 check "the picker sees no model there"    ""    "$(cad_model_call model_engine "$MLX_DIR")"
-check "and launch sees none on this Mac"  "1"   "$(cad_model_call model_any_installed; echo $?)"
+check "and the first-run check sees none"  "1"   "$(cad_model_call model_any_installed; echo $?)"
 
 section "and finishing the missing shard is what makes it one"
 # The positive control for the section above. Without it "not a model" could be passing because
@@ -282,7 +282,7 @@ check "both shards are whole"           "200 200" \
     "$(size_of "$MLX_DIR/$SHARD1") $(size_of "$MLX_DIR/$SHARD2")"
 check "no staging file survives"        "absent" "$(size_of "$MLX_DIR/$SHARD2.part")"
 check "the picker lists it now"         "mlx" "$(cad_model_call model_engine "$MLX_DIR")"
-check "and launch finds a model"        "0"   "$(cad_model_call model_any_installed; echo $?)"
+check "and the first-run check finds one"        "0"   "$(cad_model_call model_any_installed; echo $?)"
 
 section "a dropped connection during a RESUME keeps what it had"
 # The distinction the first cut of this got wrong, and it made resume useless on exactly the

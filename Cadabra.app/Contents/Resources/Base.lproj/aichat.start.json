@@ -1,0 +1,67 @@
+{
+  "type": "VStack",
+  "properties": {
+    "spacing": 12,
+    "alignment": "leading",
+    "padding": 24,
+    "frame": { "minWidth": 300 }
+  },
+  "children": [
+    {
+      "type": "Text",
+      "properties": {
+        "text": "What would you like to do?",
+        "font": "title3",
+        "padding": { "top": 0, "leading": 0, "bottom": 6, "trailing": 0 }
+      }
+    },
+    {
+      "type": "Button",
+      "id": 11,
+      "properties": {
+        "title": "Select Local Model",
+        "systemImage": "cpu",
+        "imageScale": "large",
+        "controlSize": "large",
+        "help": "Choose a model on this Mac to chat with",
+        "actionID": "aichat.start.choose"
+      }
+    },
+    {
+      "type": "Button",
+      "id": 12,
+      "properties": {
+        "title": "Select ACP Agent",
+        "systemImage": "apple.terminal",
+        "imageScale": "large",
+        "controlSize": "large",
+        "help": "Choose an external agent, such as Claude Code or Codex, to chat with",
+        "actionID": "aichat.start.choose"
+      }
+    },
+    {
+      "type": "Button",
+      "id": 13,
+      "properties": {
+        "title": "New Chat",
+        "systemImage": "plus.bubble",
+        "imageScale": "large",
+        "controlSize": "large",
+        "help": "Open a chat window and choose what to chat with there",
+        "actionID": "aichat.start.choose"
+      }
+    },
+    {
+      "type": "Button",
+      "id": 14,
+      "properties": {
+        "title": "Download Models",
+        "systemImage": "arrow.down.circle",
+        "imageScale": "large",
+        "controlSize": "large",
+        "help": "Find and download models from Hugging Face",
+        "actionID": "aichat.start.choose"
+      }
+    }
+  ]
+}

@@ -99,7 +99,7 @@ stop_exit() {
 # agentic/regular decision live.
 #
 # Two wordings, because the next step genuinely differs. In the ordinary case the picker is a
-# menu away and the user goes there when they feel like it. In the browser LAUNCH opened - the
+# menu away and the user goes there when they feel like it. In the FIRST-RUN browser - the
 # Mac had no model at all - closing this window IS what opens the picker (see the cancel
 # handler), so telling that user to go find a menu would describe a detour around the path they
 # are already on.
