@@ -32,6 +32,7 @@ mcp_inspect_dump="$mcp_inspect_dir/tools.json"
 SERVER_TABLE_ID=200
 COMMAND_FIELD_ID=210
 STATUS_ID=212
+BOX_NOTE_ID=214
 TOOLS_TABLE_ID=300
 DESC_EDITOR_ID=402
 SCHEMA_EDITOR_ID=403
@@ -60,6 +61,56 @@ mcp_inspect_reset_detail() {
     pb_set "aichatv2_mcp_srv_${window_uuid}" ""
 }
 
+# mcp_inspect_box_note  ->  one line of text when Where tools run (Agentic Session Tools) names
+# an AgentVM box, nothing when it is this Mac. This window always starts and lists this Mac's
+# servers, with this Mac's server choices; a conversation whose tools run in a box starts the
+# servers chosen in the box pane, in the box, so what is listed here can differ from what the
+# model gets there. The name comes from the settings file, which can be edited by hand, so one
+# with characters agent-vm allows in no name (it takes a-z, 0-9, ".", "_" and "-") is not shown.
+mcp_inspect_box_note() {
+    local run_in="$(mcp_tools_run_in)"
+    local place
+    case "$run_in" in
+        mac)     return 0 ;;
+        damaged) echo "Where tools run cannot be read from the settings. Choose it again in Agentic Session Tools."
+                 return 0 ;;
+        box:*)   place="AgentVM box ${run_in#box:}" ;;
+        new:*)   place="a new AgentVM box made from image ${run_in#new:} for each conversation" ;;
+    esac
+    case "${run_in#*:}" in
+        *[!a-z0-9._-]*)
+            place="an AgentVM box" ;;
+    esac
+
+    local servers=""
+    local name title
+    for name in local pdf time internet; do
+        if [ "$(mcp_box_setting "$name")" != "true" ]; then
+            continue
+        fi
+        case "$name" in
+            local)    title="Files and shell" ;;
+            pdf)      title="PDF" ;;
+            time)     title="Date & Time" ;;
+            internet) title="Internet" ;;
+        esac
+        servers="${servers:+$servers, }$title"
+    done
+    echo "Tools are set to run in $place. A conversation starts these servers there: ${servers:-none}. The list above is what runs on this Mac."
+}
+
+# mcp_inspect_show_box_note <window_uuid>  ->  the note under the server table, shown only when
+# there is something to say.
+mcp_inspect_show_box_note() {
+    local note="$(mcp_inspect_box_note)"
+    "$dialog" "$1" $BOX_NOTE_ID "$note"
+    if [ -n "$note" ]; then
+        "$dialog" "$1" $BOX_NOTE_ID omc_show
+    else
+        "$dialog" "$1" $BOX_NOTE_ID omc_hide
+    fi
+}
+
 # mcp_inspect_populate <window_uuid>
 # Generates the effective config from the current prefs, runs `mlx-agent tools`
 # (spawns + handshakes the servers; bounded per server by the agent's own timeout),
@@ -72,6 +123,7 @@ mcp_inspect_populate() {
     # the pane; the handshake dot is a narrow last column (index stays hidden).
     "$dialog" "$window_uuid" $SERVER_TABLE_ID omc_table_set_columns "Server" "i"
     "$dialog" "$window_uuid" $SERVER_TABLE_ID omc_table_remove_all_rows
+    mcp_inspect_show_box_note "$window_uuid"
 
     local agent_bin="$OMC_APP_BUNDLE_PATH/Contents/Support/MLX/mlx-agent"
     if [ ! -x "$agent_bin" ]; then

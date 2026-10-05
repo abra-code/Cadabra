@@ -39,6 +39,18 @@
 		  }
 		},
 		{
+		  "type": "Text",
+		  "id": 214,
+		  "properties": {
+			"text": "",
+			"font": "footnote",
+			"foregroundStyle": "secondary",
+			"hidden": true,
+			"frame": { "maxWidth": "infinity", "alignment": "leading" },
+			"padding": { "top": 0, "leading": 6, "bottom": 0, "trailing": 6 }
+		  }
+		},
+		{
 		  "type": "HStack",
 		  "properties": { "spacing": 8, "alignment": "center", "frame": { "maxWidth": "infinity" } },
 		  "children": [

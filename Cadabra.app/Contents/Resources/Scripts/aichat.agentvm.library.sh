@@ -47,7 +47,7 @@ source "$OMC_APP_BUNDLE_PATH/Contents/Resources/Scripts/aichat.library.sh"
 # pointing at a stale build) is refused rather than guessed at.
 # Raise it with every agent-vm version Cadabra moves to. The tests and the fake agent-vm read it
 # from here, so the number lives only on this line.
-AGENTVM_MIN_VERSION="0.5.13"
+AGENTVM_MIN_VERSION="0.6.14"
 AGENTVM_MIN_MACOS="27"
 
 # Where the AgentVM app puts the link to the newest agent-vm, and where to get the app.
