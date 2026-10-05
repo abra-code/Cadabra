@@ -304,6 +304,148 @@ omc_run aichat.chat.allow.folder
 check "run without a window (a link): nothing asked" "0" "$(alerts_count)"
 check "  and nothing listed"                   "read-write${TAB}$WORK/target" "$(allow allow_folder_list w1)"
 
+section "the offer after a refused tool call"
+OMC_ACTIONUI_WINDOW_UUID=w1
+export OMC_ACTIONUI_WINDOW_UUID
+/bin/mkdir -p "$HOME/Downloads/sub"
+OFFER_KEY=aichatv2_folder_offer_w1
+DISMISSED="$SESSION/window-folders-dismissed.txt"
+# tool_call <result text>  ->  the envelope of a finished tool call with that result.
+tool_call() {
+    /usr/bin/jq -c -n --arg text "$1" '{data: {toolCall: {contentText: $text, id: "c1", kind: "read", status: "failed", title: "read_file"}, type: "toolCall"}, id: "c1", sequence: 7, type: "toolCall"}'
+}
+refused() { allow allow_folder_refused_path "$(tool_call "$1")"; }
+check "the Local server's refusal names the path" "$HOME/Downloads/a b.txt" \
+    "$(refused "{\"error\": \"tool call failed: Transport error: Path not allowed: $HOME/Downloads/a b.txt is outside the allowed directories (use list_allowed_directories to see them)\"}")"
+check "the PDF server's too"                   "/tmp/out.pdf" "$(refused "{\"error\": \"output outside allowed roots: /tmp/out.pdf\"}")"
+check "a command's refused path"               "/Users/x/PROBE 2" "$(refused "--- write test ---
+touch: /Users/x/PROBE 2: Operation not permitted
+WROTE: no")"
+check "  after a tool named by its path"       "/x/y" "$(refused "/bin/sh: /x/y: Operation not permitted")"
+check "  a line that names no path: nothing"   "" "$(refused "Operation not permitted")"
+check "a call refused nothing: nothing"        "" "$(refused "[FILE] notes.txt")"
+check "an entry that is no tool call: nothing" "" "$(allow allow_folder_refused_path '{"type":"message","data":{"text":"Path not allowed: /x is outside the allowed directories"}}')"
+
+hint() { allow allow_folder_hint "$1"; }
+check "a folder is its own hint"               "$HOME_REAL/Downloads/sub" "$(hint "$HOME/Downloads/sub")"
+check "a file's hint is its folder"            "$HOME_REAL/Downloads" "$(hint "$HOME/Downloads/missing.txt")"
+check "a path that is not there yet: the nearest folder above" "$HOME_REAL/Downloads/sub" "$(hint "$HOME/Downloads/sub/new/deeper/file.txt")"
+check "a path that is not absolute: nothing"   "" "$(hint "Downloads/file.txt")"
+
+# offer <path>  ->  what the entry handler does in the background for a call refused that path.
+offer() { allow allow_folder_offer w1 "$(tool_call "Path not allowed: $1 is outside the allowed directories (use list_allowed_directories to see them)")" >/dev/null 2>&1; }
+offers() { cad_journal 562 | /usr/bin/grep -c 'omc_insert_element {"type":"HStack","id":563'; }
+stand_in "$CFG"
+/bin/rm -f "$DISMISSED"
+cad_pb_set "$OFFER_KEY" ""
+cad_journal_reset
+
+offer "$HOME/Downloads/report.txt"
+check "a refused file: its folder is offered"  "1" "$(offers)"
+check "  the line shows it from the home folder" "~/Downloads" "$(ui_value 564)"
+check "  with Allow a Folder... and Dismiss"   "1|1" "$(cad_journal 562 | /usr/bin/grep -c '"actionID":"aichat.chat.allow.folder.offered"')|$(cad_journal 562 | /usr/bin/grep -c '"actionID":"aichat.chat.allow.folder.dismiss"')"
+check "  the chooser of the offer opens at the line's folder" "__ACTIONUI_VIEW_564_VALUE__" \
+    "$(/usr/bin/jq -r '.COMMAND_LIST[] | select(.COMMAND_ID == "aichat.chat.allow.folder.choose") | .CHOOSE_FOLDER_DIALOG.DEFAULT_LOCATION | join(" ")' "$OMC_APP_BUNDLE_PATH/Contents/Resources/Command.json")"
+check "  and the window has a slot for the line" "1" "$(/usr/bin/jq '[.. | objects | select(.id? == 562)] | length' "$OMC_APP_BUNDLE_PATH/Contents/Resources/Base.lproj/aichat.chat.json")"
+offer "$HOME/Downloads/other.txt"
+check "the same folder again: one line"        "1" "$(offers)"
+offer "$HOME/nothing-here.txt"
+check "the home folder is never offered"       "1|$HOME_REAL/Downloads" "$(offers)|$(cad_pb_get "$OFFER_KEY")"
+offer "/"
+check "  nor the root"                         "1" "$(offers)"
+offer "$HOME/.ssh/id_rsa"
+check "  nor a hidden folder of the home folder" "1" "$(offers)"
+offer "$WORK/target/sub/file"
+check "a folder the window already has read-write is not offered" "1" "$(offers)"
+offer "$WORK/extra-two/file"
+check "another folder replaces the line"       "2|$WORK/extra-two" "$(offers)|$(cad_pb_get "$OFFER_KEY")"
+check "  the old line taken out first"         "1" "$(cad_has "$(cad_journal 563)" "omc_remove_element")"
+
+omc_run aichat.chat.allow.folder.dismiss
+check "Dismiss takes the line away"            "" "$(cad_pb_get "$OFFER_KEY")"
+offer "$WORK/extra-two/file"
+check "  and that folder is not offered again" "2" "$(offers)"
+offer "$HOME/Downloads/report.txt"
+check "  another one still is"                 "3" "$(offers)"
+
+/bin/mkdir "$SESSION/window-folders-offer.lock"
+/bin/rm -f "$DISMISSED"
+offer "$WORK/extra-two/file"
+check "while another offer is being put up: left out" "3" "$(offers)"
+/usr/bin/touch -t 202001010000 "$SESSION/window-folders-offer.lock"
+offer "$WORK/extra-two/file"
+check "  a lock left behind is taken over"     "4" "$(offers)"
+check "  and released"                         "0" "$([ -d "$SESSION/window-folders-offer.lock" ] && echo 1 || echo 0)"
+
+cad_pb_set aichatv2_agent_w1 "opencode"
+offer "$HOME/Downloads/report.txt"
+check "an external agent's window gets no offer" "4" "$(offers)"
+allow allow_folder_button w1
+check "  and loses the one it had"             "" "$(cad_pb_get "$OFFER_KEY")"
+cad_pb_set aichatv2_agent_w1 ""
+allow allow_folder_button w1
+
+# The line's Allow a Folder...: its button hands over to the command with the chooser, which is
+# the main handler with the folder chosen there.
+chains_reset
+omc_run aichat.chat.allow.folder.offered
+check "the line's button hands over to the chooser's command" "1" "$(chain_asked aichat.chat.allow.folder.choose)"
+check "  which has no chooser of its own"      "null" "$(/usr/bin/jq -r '.COMMAND_LIST[] | select(.COMMAND_ID == "aichat.chat.allow.folder.offered") | .CHOOSE_FOLDER_DIALOG' "$OMC_APP_BUNDLE_PATH/Contents/Resources/Command.json")"
+offer "$HOME/Downloads/report.txt"
+check "offered again"                          "$HOME_REAL/Downloads" "$(cad_pb_get "$OFFER_KEY")"
+/bin/rm -f "$HUP_FILE"
+alerts_reset
+alert_answers_reset
+alert_answer 0
+omc_dialog_answer choose_folder "$HOME/Downloads/sub"
+omc_run aichat.chat.allow.folder.choose
+check "a folder inside the offered one is allowed" "1" "$(allow allow_folder_list w1 | /usr/bin/grep -c -F "read-only${TAB}$HOME_REAL/Downloads/sub")"
+check "  the offer stays: its folder is still refused" "$HOME_REAL/Downloads" "$(cad_pb_get "$OFFER_KEY")"
+alerts_reset
+alert_answers_reset
+alert_answer 0
+omc_dialog_answer choose_folder "$HOME/Downloads"
+omc_run aichat.chat.allow.folder.choose
+check "the offered folder is allowed"          "1" "$(allow allow_folder_list w1 | /usr/bin/grep -c -F -x "read-only${TAB}$HOME_REAL/Downloads")"
+check "  and the offer goes"                   "" "$(cad_pb_get "$OFFER_KEY")"
+/bin/sleep 0.5
+check "  the agent was told each time"         "2" "$(/usr/bin/grep -c hup "$HUP_FILE" 2>/dev/null)"
+
+# The refused path is a tool's text, so a folder's name is the model's to shape. Whatever it
+# holds, it is only named: as one string of the line's JSON, as the line's value, and as one
+# whole line of the dismissed list.
+ODD="$WORK/odd \"q\" \$(touch $WORK/made) \`touch $WORK/made\` \\ * [x] 'a' ; & -n"
+/bin/mkdir -p "$ODD/sub" "$WORK/odd-plain"
+cad_journal_reset
+offer "$ODD/sub/file.txt"
+check "a folder with quotes and shell characters in its name is offered" "$ODD/sub" "$(cad_pb_get "$OFFER_KEY")"
+check "  as one string of the line"            "$ODD/sub" "$(cad_journal 562 | /usr/bin/sed -n 's/^omc_insert_element //p' | /usr/bin/jq -r '.children[2].properties.help')"
+check "  and nothing else of the line changed" "HStack|6|aichat.chat.allow.folder.offered|aichat.chat.allow.folder.dismiss" \
+    "$(cad_journal 562 | /usr/bin/sed -n 's/^omc_insert_element //p' | /usr/bin/jq -r '[.type, (.children | length | tostring), .children[3].properties.actionID, .children[4].properties.actionID] | join("|")')"
+check "  the line's value is the name as it is" "$ODD/sub" "$(ui_value 564)"
+check "  nothing in the name was run"          "0" "$([ -e "$WORK/made" ] && echo 1 || echo 0)"
+omc_run aichat.chat.allow.folder.dismiss
+check "  dismissed, it is one line of the list" "1" "$(/usr/bin/grep -c -F -x -e "$ODD/sub" "$DISMISSED")"
+offer "$ODD/sub/file.txt"
+check "  and is not offered again"             "" "$(cad_pb_get "$OFFER_KEY")"
+offer "$WORK/odd-plain/file.txt"
+check "  a folder whose name only begins the same still is" "$WORK/odd-plain" "$(cad_pb_get "$OFFER_KEY")"
+omc_run aichat.chat.allow.folder.dismiss
+/bin/mkdir -p "$WORK/line
+break"
+offer "$WORK/line
+break/file.txt"
+check "a folder with a line break in its name is not offered" "" "$(cad_pb_get "$OFFER_KEY")"
+
+# The entry handler makes the offer for a finished tool call, and for nothing else.
+cad_journal_reset
+/bin/rm -f "$DISMISSED"
+omc_trigger 1 "" "$(tool_call "Path not allowed: $WORK/extra-two/x is outside the allowed directories (use list_allowed_directories to see them)")"
+omc_run aichat.chat.entry
+omc_wait_for "[ -n \"\$(\"$OMC_OMC_SUPPORT_PATH/pasteboard\" $OFFER_KEY get)\" ]" 10
+check "the entry handler offers the folder of a refused call" "$WORK/extra-two" "$(cad_pb_get "$OFFER_KEY")"
+stop_stand_in
+
 /bin/kill "$OTHER_AGENT" "$IMPOSTOR" 2>/dev/null
 wait "$OTHER_AGENT" "$IMPOSTOR" 2>/dev/null
 /bin/rm -rf "$WORK"

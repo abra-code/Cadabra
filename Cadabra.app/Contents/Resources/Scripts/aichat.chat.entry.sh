@@ -215,6 +215,23 @@ if [ -z "$info_stated" ] && [ -n "$envelope_is_message" ]; then
     chat_info_refresh "$win"
 fi
 
+# A tool call that ended refused a folder gets the offer of Allow a Folder... under the chat
+# (THE OFFER AFTER A REFUSED TOOL CALL in aichat.allow.folder.library.sh). The test here is on
+# the envelope's text alone, so the turns that are refused nothing, which is nearly all of them,
+# start no process for it. In the background: the offer asks mlx-agent what it supports.
+case "$envelope" in
+    *'"type":"toolCall"'*)
+        case "$envelope" in
+            *'Path not allowed: '*|*'outside allowed roots: '*|*': Operation not permitted'*)
+                (
+                    source "$OMC_APP_BUNDLE_PATH/Contents/Resources/Scripts/aichat.allow.folder.library.sh"
+                    allow_folder_offer "$win" "$envelope"
+                ) >/dev/null 2>&1 &
+                ;;
+        esac
+        ;;
+esac
+
 # The box line (a window whose agent runs in an agent-vm box) restates what the box's programs
 # reached and were refused, after each message. Every finalized entry, message or not, also marks
 # the time for the quiet watch, which looks at the line when the turn goes quiet: a program in the

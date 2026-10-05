@@ -201,6 +201,10 @@ allow_folder_button() {
     allow_folder_applies "$1"
     local _applies=$?
     if [ "$_applies" -ne 0 ]; then
+        # An offer made after a refused tool call goes with the button.
+        if [ -n "$(pb_get "aichatv2_folder_offer_$1")" ]; then
+            allow_folder_offer_hide "$1"
+        fi
         return 0
     fi
     allow_folder_agent_reloads
@@ -330,5 +334,160 @@ allow_folder_apply() {
     fi
     /bin/rm -f "$_kept"
     echo "allow folder: window $1 config regenerated, SIGHUP to mlx-agent $_pid"
+    return 0
+}
+
+# THE OFFER AFTER A REFUSED TOOL CALL. When a tool call of the window ends refused a path (the
+# Local server's "Path not allowed: ...", the PDF server's "... outside allowed roots: ...", or
+# a command's "...: Operation not permitted"), a line
+# under the chat names the folder and offers Allow a Folder... with the chooser opened there.
+# The path comes from a tool's output, which the model shapes, so it is a HINT and nothing more:
+# it decides where the chooser opens and what the line says. The folder allowed is still the one
+# the user chooses, and the refusals of allow_folder_refusal still apply to it. A hint that is
+# itself a folder never allowed (the home folder, "/") makes no offer.
+#
+# The line is one per window, the latest refusal's. Dismiss takes it away and the same folder
+# is not offered again in this window.
+allow_folder_offer_slot_id=562
+allow_folder_offer_row_id=563
+allow_folder_offer_path_id=564
+allow_folder_offer_button_id=565
+allow_folder_offer_dismiss_id=566
+# The two programs the offer runs that are not shell: what a result's text says was refused,
+# and the line's element.
+allow_folder_refused_awk="$OMC_APP_BUNDLE_PATH/Contents/Resources/Scripts/aichat.allow.folder.refused.awk"
+allow_folder_offer_jq="$OMC_APP_BUNDLE_PATH/Contents/Resources/Scripts/aichat.allow.folder.offer.jq"
+
+# allow_folder_refused_path <envelope>  ->  the path a finished tool call says it was refused, as
+# the tool wrote it, or nothing. A server's own refusal is looked for first, then the first
+# "Operation not permitted" line of a command's output that names an absolute path.
+allow_folder_refused_path() {
+    printf '%s\n' "$1" | /usr/bin/jq -r '.data.toolCall.contentText // ""' 2>/dev/null | /usr/bin/awk -f "$allow_folder_refused_awk"
+}
+
+# allow_folder_hint <path>  ->  the folder to offer for a refused path: the path itself when it is
+# a folder, otherwise the nearest folder above it that exists, as its real path. Nothing when the
+# path is not absolute.
+allow_folder_hint() {
+    local _path="$1"
+    case "$_path" in
+        /*) ;;
+        *)  return 0 ;;
+    esac
+    local _steps=0
+    while [ ! -d "$_path" ] && [ "$_steps" -lt 64 ]; do
+        _path="${_path%/*}"
+        if [ -z "$_path" ]; then
+            _path="/"
+        fi
+        _steps=$((_steps + 1))
+    done
+    allow_folder_real "$_path"
+}
+
+# _allow_folder_dismissed_file <window>  ->  the folders whose offer was dismissed in the window.
+_allow_folder_dismissed_file() {
+    printf '%s/window-folders-dismissed.txt\n' "$(aichat_session_config_dir "$1")"
+}
+
+# allow_folder_offer_hide <window>  ->  0. Takes the offer line away. Safe when there is none.
+allow_folder_offer_hide() {
+    "$dialog" "$1" "$allow_folder_offer_row_id" omc_remove_element 2>/dev/null
+    pb_set "aichatv2_folder_offer_$1" ""
+    return 0
+}
+
+# allow_folder_offer_dismiss <window>  ->  0. Dismiss on the line: it goes, and its folder is not
+# offered again in this window.
+allow_folder_offer_dismiss() {
+    local _folder="$(pb_get "aichatv2_folder_offer_$1")"
+    if [ -n "$_folder" ]; then
+        printf '%s\n' "$_folder" >> "$(_allow_folder_dismissed_file "$1")"
+    fi
+    allow_folder_offer_hide "$1"
+}
+
+# _allow_folder_offer_show <window> <folder>  ->  0. The part of allow_folder_offer done while it
+# holds the window's offer lock: what the window is offered now, what was dismissed and what it
+# already has are read here, so that two calls refused at the same moment cannot both pass.
+_allow_folder_offer_show() {
+    local _folder="$2"
+    if [ "$(pb_get "aichatv2_folder_offer_$1")" = "$_folder" ]; then
+        return 0
+    fi
+    local _dismissed="$(_allow_folder_dismissed_file "$1")"
+    local _count=0
+    if [ -f "$_dismissed" ]; then
+        _count="$(/usr/bin/grep -c -F -x -e "$_folder" "$_dismissed" 2>/dev/null)"
+    fi
+    if [ "${_count:-0}" != "0" ]; then
+        return 0
+    fi
+    local _covered
+    _covered="$(allow_folder_list "$1" | FOLDER="$_folder" /usr/bin/awk -F'\t' '$1 == "read-write" && index(ENVIRON["FOLDER"] "/", $2 "/") == 1 { n++ } END { print n + 0 }')"
+    if [ "${_covered:-0}" != "0" ]; then
+        return 0
+    fi
+
+    # The line shows the folder with the home folder as "~", which the chooser's starting
+    # folder (DEFAULT_LOCATION of aichat.chat.allow.folder.choose) reads as well.
+    local _shown="$_folder"
+    local _home="$(allow_folder_real "$HOME")"
+    case "$_folder" in
+        "$_home"/*) _shown="~${_folder#"$_home"}" ;;
+    esac
+    local _row
+    _row="$(/usr/bin/jq -c -n \
+        --argjson row "$allow_folder_offer_row_id" --argjson path "$allow_folder_offer_path_id" \
+        --argjson button "$allow_folder_offer_button_id" --argjson dismiss "$allow_folder_offer_dismiss_id" \
+        --arg help "$_folder" \
+        -f "$allow_folder_offer_jq")"
+    if [ -n "$_row" ]; then
+        "$dialog" "$1" "$allow_folder_offer_row_id" omc_remove_element 2>/dev/null
+        "$dialog" "$1" "$allow_folder_offer_slot_id" omc_insert_element "$_row"
+        "$dialog" "$1" "$allow_folder_offer_path_id" "$_shown"
+        pb_set "aichatv2_folder_offer_$1" "$_folder"
+        echo "allow folder: offered $_folder to window $1"
+    fi
+    return 0
+}
+
+# allow_folder_offer <window> <envelope>  ->  0. Shows the offer line for the folder a finished
+# tool call was refused, when a folder can be allowed for the window at all, the folder is one
+# that may be allowed, the window does not already have it read-write, and its offer was not
+# dismissed. One offer is made at a time: a call that finishes while another offer is being put
+# up is left out, and the next refusal offers again.
+allow_folder_offer() {
+    local _path="$(allow_folder_refused_path "$2")"
+    if [ -z "$_path" ]; then
+        return 0
+    fi
+    allow_folder_applies "$1"
+    local _applies=$?
+    if [ "$_applies" -ne 0 ]; then
+        return 0
+    fi
+    allow_folder_agent_reloads
+    local _reloads=$?
+    if [ "$_reloads" -ne 0 ]; then
+        return 0
+    fi
+    local _folder="$(allow_folder_hint "$_path")"
+    if [ -z "$_folder" ] || [ -n "$(allow_folder_refusal "$_folder")" ]; then
+        return 0
+    fi
+    local _lock="$(aichat_session_config_dir "$1")/window-folders-offer.lock"
+    /bin/mkdir "$_lock" 2>/dev/null
+    local _locked=$?
+    if [ "$_locked" -ne 0 ]; then
+        # A lock left by a handler that was ended is taken over after half a minute.
+        local _made="$(/usr/bin/stat -f %m "$_lock" 2>/dev/null)"
+        local _now="$(/bin/date +%s)"
+        if [ -z "$_made" ] || [ $((_now - _made)) -lt 30 ]; then
+            return 0
+        fi
+    fi
+    _allow_folder_offer_show "$1" "$_folder"
+    /bin/rmdir "$_lock" 2>/dev/null
     return 0
 }

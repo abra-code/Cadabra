@@ -218,6 +218,12 @@
           },
           {
             "type": "VStack",
+            "id": 562,
+            "properties": { "spacing": 0 },
+            "children": [ { "type": "EmptyView" } ]
+          },
+          {
+            "type": "VStack",
             "id": 560,
             "properties": { "spacing": 0 },
             "children": [ { "type": "EmptyView" } ]

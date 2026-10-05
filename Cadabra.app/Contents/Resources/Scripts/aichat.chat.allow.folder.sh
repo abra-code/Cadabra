@@ -66,4 +66,13 @@ if [ "$applied" -ne 0 ]; then
 fi
 
 allow_folder_button_help "$win"
+# The line that offered a folder after a refused tool call goes once that folder is allowed.
+offered="$(pb_get "aichatv2_folder_offer_$win")"
+if [ -n "$offered" ]; then
+    _allow_folder_within "$offered" "$folder"
+    covers=$?
+    if [ "$covers" -eq 0 ]; then
+        allow_folder_offer_hide "$win"
+    fi
+fi
 echo "allow folder: $folder ($access) for window $win"
