@@ -42,10 +42,9 @@
 		  "type": "Text",
 		  "id": 214,
 		  "properties": {
-			"text": "",
+			"text": "All available MCP servers.\nAgentic Session Tools chooses which ones a conversation gets, and where they run.",
 			"font": "footnote",
 			"foregroundStyle": "secondary",
-			"hidden": true,
 			"frame": { "maxWidth": "infinity", "alignment": "leading" },
 			"padding": { "top": 0, "leading": 6, "bottom": 0, "trailing": 6 }
 		  }

@@ -2,14 +2,19 @@
 # ──────────────────────────────────────────────────────────────
 # MCP Servers inspector (aichat.mcp.inspect dialog)
 # ──────────────────────────────────────────────────────────────
-# Read-only window into the tool surface an agentic session gets from the CURRENT
-# MCP prefs - the verification companion to the Configure MCP Servers dialog. On
-# init/refresh it generates the effective mlx-agent --mcp-config from the prefs
-# (exactly what the next launch would generate) and runs `mlx-agent tools`, which
-# spawns the stdio servers, performs the real initialize + tools/list handshake with
-# the same exposed-name collision rules the agent applies at session start, dumps the
-# result as JSON, and shuts the servers down. Selection handlers then read display
-# fragments out of that dump via mcp_tools_report.py - no MCP traffic after populate.
+# A CATALOG, NOT A MONITOR: the window lists every MCP server Cadabra has and the tools each
+# one offers. It follows no conversation and no setting: which servers a conversation gets, and
+# whether they run on this Mac or in an AgentVM box, is chosen in Agentic Session Tools, often
+# after this window was opened. So all four servers are listed whatever is turned on there, and
+# nothing in the window looks like a running state: a server that answered has no mark, one
+# that did not has a warning sign.
+#
+# On init/refresh it generates a config with every server (generate_mcp_configs.py
+# --all-servers) and runs `mlx-agent tools`, which starts the stdio servers, performs the real
+# initialize + tools/list handshake with the same exposed-name collision rules the agent
+# applies at session start, dumps the result as JSON, and shuts the servers down. Selection
+# handlers then read display fragments out of that dump via mcp_tools_report.py - no MCP
+# traffic after populate, and no server is left running.
 #
 # There is deliberately no start/stop/restart here (that was the proxy-era AIChat
 # inspector): Cadabra's MCP servers are stdio children owned by each window's
@@ -24,15 +29,14 @@ __AICHAT_MCP_INSPECT_LIB=1
 source "$OMC_APP_BUNDLE_PATH/Contents/Resources/Scripts/aichat.mcp.servers.library.sh"
 
 # Scratch dir for the generated inspection config + the current tools dump. The dump is
-# shared (not per-window): it reflects the global prefs, so any inspector window showing
-# it is showing the same truth, and every init/refresh regenerates it.
+# shared (not per-window): it is the same catalog for every inspector window, and every
+# init/refresh regenerates it.
 mcp_inspect_dir="$mcp_app_support/inspect"
 mcp_inspect_dump="$mcp_inspect_dir/tools.json"
 
 SERVER_TABLE_ID=200
 COMMAND_FIELD_ID=210
 STATUS_ID=212
-BOX_NOTE_ID=214
 TOOLS_TABLE_ID=300
 DESC_EDITOR_ID=402
 SCHEMA_EDITOR_ID=403
@@ -61,69 +65,18 @@ mcp_inspect_reset_detail() {
     pb_set "aichatv2_mcp_srv_${window_uuid}" ""
 }
 
-# mcp_inspect_box_note  ->  one line of text when Where tools run (Agentic Session Tools) names
-# an AgentVM box, nothing when it is this Mac. This window always starts and lists this Mac's
-# servers, with this Mac's server choices; a conversation whose tools run in a box starts the
-# servers chosen in the box pane, in the box, so what is listed here can differ from what the
-# model gets there. The name comes from the settings file, which can be edited by hand, so one
-# with characters agent-vm allows in no name (it takes a-z, 0-9, ".", "_" and "-") is not shown.
-mcp_inspect_box_note() {
-    local run_in="$(mcp_tools_run_in)"
-    local place
-    case "$run_in" in
-        mac)     return 0 ;;
-        damaged) echo "Where tools run cannot be read from the settings. Choose it again in Agentic Session Tools."
-                 return 0 ;;
-        box:*)   place="AgentVM box ${run_in#box:}" ;;
-        new:*)   place="a new AgentVM box made from image ${run_in#new:} for each conversation" ;;
-    esac
-    case "${run_in#*:}" in
-        *[!a-z0-9._-]*)
-            place="an AgentVM box" ;;
-    esac
-
-    local servers=""
-    local name title
-    for name in local pdf time internet; do
-        if [ "$(mcp_box_setting "$name")" != "true" ]; then
-            continue
-        fi
-        case "$name" in
-            local)    title="Files and shell" ;;
-            pdf)      title="PDF" ;;
-            time)     title="Date & Time" ;;
-            internet) title="Internet" ;;
-        esac
-        servers="${servers:+$servers, }$title"
-    done
-    echo "Tools are set to run in $place. A conversation starts these servers there: ${servers:-none}. The list above is what runs on this Mac."
-}
-
-# mcp_inspect_show_box_note <window_uuid>  ->  the note under the server table, shown only when
-# there is something to say.
-mcp_inspect_show_box_note() {
-    local note="$(mcp_inspect_box_note)"
-    "$dialog" "$1" $BOX_NOTE_ID "$note"
-    if [ -n "$note" ]; then
-        "$dialog" "$1" $BOX_NOTE_ID omc_show
-    else
-        "$dialog" "$1" $BOX_NOTE_ID omc_hide
-    fi
-}
-
 # mcp_inspect_populate <window_uuid>
-# Generates the effective config from the current prefs, runs `mlx-agent tools`
-# (spawns + handshakes the servers; bounded per server by the agent's own timeout),
-# and fills the server table: name, 🟢/🔴 handshake dot, hidden index column for the
+# Generates the config with every server, runs `mlx-agent tools` (starts and handshakes
+# the servers; bounded per server by the agent's own timeout), and fills the server table:
+# name, a warning sign for a server that did not answer, hidden index column for the
 # selection handler. Failure/empty states land on the status line.
 mcp_inspect_populate() {
     local window_uuid="$1"
 
     # Server is first so it (the longest column) is the one ActionUI grows to fill
-    # the pane; the handshake dot is a narrow last column (index stays hidden).
+    # the pane; the warning sign is a narrow last column (index stays hidden).
     "$dialog" "$window_uuid" $SERVER_TABLE_ID omc_table_set_columns "Server" "i"
     "$dialog" "$window_uuid" $SERVER_TABLE_ID omc_table_remove_all_rows
-    mcp_inspect_show_box_note "$window_uuid"
 
     local agent_bin="$OMC_APP_BUNDLE_PATH/Contents/Support/MLX/mlx-agent"
     if [ ! -x "$agent_bin" ]; then
@@ -134,7 +87,7 @@ mcp_inspect_populate() {
     /bin/mkdir -p "$mcp_inspect_dir"
     local cfg="$mcp_inspect_dir/mcp-config.json"
     "$dialog" "$window_uuid" $STATUS_ID "Launching MCP servers to query their tools…"
-    if ! generate_stdio_mcp_config "$cfg" 1>&2; then
+    if ! generate_stdio_mcp_config "$cfg" --all-servers 1>&2; then
         "$dialog" "$window_uuid" $STATUS_ID "Could not generate the MCP config (bundled Python missing?)."
         return 0
     fi
@@ -156,7 +109,7 @@ mcp_inspect_populate() {
     local rows
     rows=$(mcp_inspect_report servers)
     if [ -z "$rows" ]; then
-        "$dialog" "$window_uuid" $STATUS_ID "No MCP servers enabled. Use Tools > Configure MCP Servers… to enable some."
+        "$dialog" "$window_uuid" $STATUS_ID "No server could be listed."
         return 0
     fi
 

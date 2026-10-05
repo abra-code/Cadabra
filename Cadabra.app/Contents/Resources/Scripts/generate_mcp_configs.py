@@ -11,6 +11,7 @@
 #            [--box NAME --agent-vm PATH [--agent-vm-home DIR] --project DIR [--read-only]
 #             --guest-tools DIR --guest-pycache DIR [--client mac|in-box]]
 #            [--window-folders FILE]
+#            [--all-servers]
 #
 # BOX MODE (--box): the servers run in an agent-vm box while the model stays on this Mac. Each
 # server's command becomes `agent-vm exec --box NAME --project DIR [--read-only] [--env N=V ...]
@@ -37,6 +38,12 @@
 # --agent-vm-home, agent-vm's store when Cadabra uses another one, goes into each server's env,
 # for agent-vm itself. Every exec of a window shares one project and mode, as agent-vm requires.
 # The probe below runs each server exactly this way, so the box must be running.
+#
+# --all-servers is for the MCP Servers window, a catalog of every server and its tools: all four
+# servers, whatever is turned on, each with its full set of tools (PDF editing included). The
+# window follows no conversation, so no setting that chooses servers is read. The Local server
+# still gets its sandbox profile from the settings, which does not change its tool list. No
+# conversation is given this config.
 #
 # Almost all sandbox paths come from <mcp_prefs_plist>: the allow-network master
 # gate, per-server enabled flags, the prominent project workspace, and the
@@ -117,6 +124,7 @@ _box_parser.add_argument("--guest-tools", default="")
 _box_parser.add_argument("--guest-pycache", default="")
 _box_parser.add_argument("--client", default="mac", choices=("mac", "in-box"))
 _box_parser.add_argument("--window-folders", default="")
+_box_parser.add_argument("--all-servers", action="store_true")
 box = _box_parser.parse_args(_box_words)
 # --window-folders FILE is the one option of a window whose tools run on this Mac, and it
 # comes alone: a box sees one folder of this Mac, its project, fixed when the box starts.
@@ -125,6 +133,9 @@ if box.window_folders:
         sys.exit("generate_mcp_configs: --window-folders cannot be combined with box options")
     if not box.window_folders.startswith("/"):
         sys.exit("generate_mcp_configs: --window-folders must be an absolute path")
+elif box.all_servers:
+    if len(_box_words) != 1:
+        sys.exit("generate_mcp_configs: --all-servers cannot be combined with other options")
 elif _box_words and not box.box:
     sys.exit("generate_mcp_configs: box options need --box")
 if box.box:
@@ -200,12 +211,23 @@ def box_flag(name: str) -> bool:
 # clock and the time zone data, so it does not depend on it.
 allow_network = prefs.get("allow-network", True)
 
+def mac_server_on(name: str) -> bool:
+    """Whether a server is started on this Mac: its own setting, or every server with
+    --all-servers."""
+    if box.box:
+        return False
+    if box.all_servers:
+        return True
+    if name == "search":
+        return allow_network and srv_enabled("search")
+    return srv_enabled(name)
+
 # ── Build the per-server config table, honoring enabled flags ─────────────────
 servers = {}           # short name -> {command, args, env?}
 server_order = []      # short names in launch order
 user_project = ""      # set in the local block; pre-init so it's always defined
 
-if not box.box and srv_enabled("local"):
+if mac_server_on("local"):
     local_prefs = prefs.get("servers", {}).get("local", {})
     # ── replay sandbox paths ──────────────────────────────────────────────────
     # Every extra sandbox path is taken from the user-managed prefs (shown and
@@ -309,7 +331,7 @@ if not box.box and srv_enabled("local"):
     }
     server_order.append("local")
 
-if not box.box and srv_enabled("pdf"):
+if mac_server_on("pdf"):
     # pdfutil (github.com/abra-code/pdfutil, Apache 2.0): a network-free PDF server
     # exposing pdf_info / pdf_text / pdf_search / pdf_outline / pdf_render / pdf_ocr /
     # pdf_forms_list / pdf_list over MCP stdio, plus the mutating tier below when
@@ -330,6 +352,8 @@ if not box.box and srv_enabled("pdf"):
     # tools end up gated is not decided here: pdfutil annotates every tool with
     # readOnlyHint, and the emit step below reads those hints off the live server.
     pdf_writable = srv_flag("pdf", "writable", True)
+    if box.all_servers:
+        pdf_writable = True
     pdf_roots = []
 
     def _add_pdf_root(directory):
@@ -361,6 +385,9 @@ if not box.box and srv_enabled("pdf"):
     # to the whole home dir in exactly the configuration where the user asked for none,
     # and would also give pdf a broader set than replay. With no roots the toggle has
     # nothing to act on; enabling it takes effect again as soon as a sandbox path exists.
+    if box.all_servers and not pdf_roots:
+        # Only the tool list is wanted, and the server does not start without a folder.
+        pdf_roots = ["/private/tmp"]
     if pdf_roots:
         pdf_args = ["mcp"]
         for root in pdf_roots:
@@ -378,7 +405,7 @@ if not box.box and srv_enabled("pdf"):
 # The time server is a native program (time-mcp): it reads the clock and the system's time zone
 # files, uses no network and writes nothing. --local-timezone is the zone its tool descriptions
 # suggest when the user names none; in a box it is this Mac's zone, not the box's own.
-if not box.box and srv_enabled("time"):
+if mac_server_on("time"):
     servers["time"] = {
         "command": time_bin,
         "args": ["--local-timezone", tz],
@@ -390,7 +417,7 @@ if not box.box and srv_enabled("time"):
 # folder. A file there named like a module it imports (argparse.py, a duckduckgo_mcp_server
 # folder) would then run on this Mac, outside every sandbox, the next time a window starts its
 # tools: code left in the project by an earlier session, or shipped in a folder someone else made.
-if not box.box and allow_network and srv_enabled("search"):
+if mac_server_on("search"):
     servers["search"] = {
         "command": python3_bin,
         "args": ["-P", "-m", "duckduckgo_mcp_server.server"],

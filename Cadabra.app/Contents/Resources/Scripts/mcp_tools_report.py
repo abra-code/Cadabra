@@ -10,7 +10,8 @@ servers are stdio children of mlx-agent and have no endpoint to query).
 Usage:
   mcp_tools_report.py servers <dump.json>
       TSV rows for the server table: name<TAB>dot<TAB>index
-      (dot: green = handshake ok, red = failed to launch/handshake)
+      (dot: empty = handshake ok, a warning sign = failed to launch/handshake; no colored
+      dot, which read as "running" in a window that only lists what exists)
   mcp_tools_report.py command <dump.json> <server_index>
       The server's spawn command line (command + args, one line).
   mcp_tools_report.py summary <dump.json> <server_index>
@@ -30,8 +31,8 @@ caller can surface it directly).
 import json
 import sys
 
-GREEN = "\U0001F7E2"   # green circle
-RED = "\U0001F534"     # red circle
+HANDSHAKE_OK = ""
+HANDSHAKE_FAILED = "\u26A0\uFE0F"   # warning sign
 LOCK = "\U0001F512"    # lock: permission-gated tool
 
 
@@ -76,7 +77,7 @@ def main(argv):
     try:
         if query == "servers":
             for i, s in enumerate(servers):
-                dot = GREEN if s.get("status") == "ok" else RED
+                dot = HANDSHAKE_OK if s.get("status") == "ok" else HANDSHAKE_FAILED
                 print(f"{cell(s.get('name', f'server {i}'))}\t{dot}\t{i}")
             return 0
 
