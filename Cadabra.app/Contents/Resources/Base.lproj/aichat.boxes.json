@@ -22,6 +22,7 @@
           "id": 120,
           "properties": {
             "systemImage": "arrow.clockwise",
+            "imageScale": "large",
             "buttonStyle": "borderless",
             "help": "Read the boxes again",
             "actionID": "aichat.boxes.refresh"
@@ -62,29 +63,21 @@
       "children": [
         {
           "type": "Button",
-          "id": 130,
+          "id": 551,
           "properties": {
-            "title": "Open AgentVM",
-            "help": "Make, change and delete boxes and images in the AgentVM app",
-            "actionID": "aichat.boxes.agentvm.open"
-          }
-        },
-        { "type": "Spacer" },
-        {
-          "type": "Button",
-          "id": 553,
-          "properties": {
-            "title": "View",
+            "systemImage": "play.fill",
+            "imageScale": "large",
             "disabled": true,
-            "help": "Show the screen of the selected box",
-            "actionID": "aichat.boxes.box.view"
+            "help": "Start the selected box; it stops when Cadabra quits",
+            "actionID": "aichat.boxes.box.start"
           }
         },
         {
           "type": "Button",
           "id": 552,
           "properties": {
-            "title": "Stop",
+            "systemImage": "stop.fill",
+            "imageScale": "large",
             "disabled": true,
             "help": "Shut the selected box down",
             "actionID": "aichat.boxes.box.stop"
@@ -92,12 +85,35 @@
         },
         {
           "type": "Button",
-          "id": 551,
+          "id": 553,
           "properties": {
-            "title": "Start",
+            "title": "View",
+            "systemImage": "macwindow",
+            "imageScale": "large",
             "disabled": true,
-            "help": "Start the selected box; it stops when Cadabra quits",
-            "actionID": "aichat.boxes.box.start"
+            "help": "Show the screen of the selected box",
+            "actionID": "aichat.boxes.box.view"
+          }
+        },
+        { "type": "Spacer" },
+        {
+          "type": "Button",
+          "id": 130,
+          "properties": {
+            "title": "Open AgentVM",
+            "help": "Make, change and delete boxes and images in the AgentVM app",
+            "actionID": "aichat.boxes.agentvm.open"
+          }
+        },
+        {
+          "type": "Button",
+          "id": 131,
+          "properties": {
+            "systemImage": "questionmark.circle",
+            "imageScale": "large",
+            "buttonStyle": "plain",
+            "help": "About AgentVM boxes",
+            "actionID": "aichat.agentvm.help"
           }
         }
       ]

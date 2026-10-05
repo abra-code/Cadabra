@@ -56,6 +56,10 @@
           "title": "Cadabra Help",
           "actionID": "aichat.model.help",
           "keyboardShortcut": { "key": "?" }
+      } },
+      { "type": "Button", "properties": {
+          "title": "AgentVM Boxes Help",
+          "actionID": "aichat.agentvm.help"
       } }
     ]
   }

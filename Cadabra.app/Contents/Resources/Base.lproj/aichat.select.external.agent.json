@@ -389,6 +389,17 @@
           },
           {
             "type": "Spacer"
+          },
+          {
+            "type": "Button",
+            "id": 38,
+            "properties": {
+              "systemImage": "questionmark.circle",
+              "imageScale": "medium",
+              "buttonStyle": "plain",
+              "help": "About AgentVM boxes",
+              "actionID": "aichat.agentvm.help"
+            }
           }
         ]
       },

@@ -738,6 +738,27 @@
       "NAME" : "Cadabra"
     },
     {
+      "COMMAND_ID" : "aichat.agentvm.help",
+      "EXECUTION_MODE" : "exe_script_file",
+      "NAME" : "Cadabra"
+    },
+    {
+      "ACTIONUI_WINDOW" : {
+        "INIT_SUBCOMMAND_ID" : "aichat.agentvm.help.init",
+        "IS_BLOCKING" : false,
+        "JSON_NAME" : "aichat.model.help",
+        "WINDOW_TITLE" : "AgentVM Boxes Help"
+      },
+      "COMMAND_ID" : "aichat.agentvm.help.dialog",
+      "EXECUTION_MODE" : "exe_shell_script",
+      "NAME" : "Cadabra"
+    },
+    {
+      "COMMAND_ID" : "aichat.agentvm.help.init",
+      "EXECUTION_MODE" : "exe_script_file",
+      "NAME" : "Cadabra"
+    },
+    {
       "COMMAND_ID" : "aichat.history.selection.changed",
       "ENVIRONMENT_VARIABLES" : {
         "OMC_ACTIONUI_TABLE_510_COLUMN_2_VALUE" : ""

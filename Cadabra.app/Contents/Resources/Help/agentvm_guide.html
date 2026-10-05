@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Running Agents and Tools in an AgentVM Box</title>
+<style>
+  :root {
+    --bg: #ffffff;
+    --fg: #1d1d1f;
+    --muted: #6e6e73;
+    --accent: #0a6cff;
+    --card: #f5f5f7;
+    --border: #e2e2e6;
+    --code-bg: #f0f0f3;
+    --good: #1a8a3c;
+    --warn: #b06a00;
+    --bad: #c4341c;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #1e1e1f;
+      --fg: #f2f2f4;
+      --muted: #9a9aa0;
+      --accent: #4d9bff;
+      --card: #2a2a2c;
+      --border: #3a3a3d;
+      --code-bg: #2c2c2e;
+      --good: #4cd07a;
+      --warn: #e0a13a;
+      --bad: #ff6f5e;
+    }
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--fg);
+    font: 15px/1.6 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 820px; margin: 0 auto; padding: 32px 28px 80px; }
+  h1 { font-size: 28px; line-height: 1.2; margin: 0 0 6px; letter-spacing: -0.02em; }
+  h2 {
+    font-size: 20px; margin: 38px 0 10px; padding-top: 14px;
+    border-top: 1px solid var(--border); letter-spacing: -0.01em;
+  }
+  h3 { font-size: 16px; margin: 22px 0 6px; }
+  p { margin: 8px 0; }
+  .lede { color: var(--muted); font-size: 16px; margin-bottom: 8px; }
+  code, .mono {
+    font-family: "SF Mono", ui-monospace, Menlo, monospace;
+    font-size: 0.88em;
+    background: var(--code-bg);
+    padding: 1px 5px; border-radius: 5px;
+  }
+  table { border-collapse: collapse; width: 100%; margin: 12px 0; font-size: 14px; }
+  th, td { text-align: left; padding: 7px 10px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  th { font-weight: 600; color: var(--muted); font-size: 12.5px; text-transform: uppercase; letter-spacing: .03em; }
+  td code { white-space: nowrap; }
+  .good { color: var(--good); font-weight: 600; }
+  .warn { color: var(--warn); font-weight: 600; }
+  .bad  { color: var(--bad);  font-weight: 600; }
+  .callout {
+    background: var(--card); border-left: 3px solid var(--accent);
+    border-radius: 8px; padding: 12px 16px; margin: 16px 0;
+  }
+  .callout.warn { border-left-color: var(--warn); }
+  a { color: var(--accent); }
+  ul { margin: 8px 0; padding-left: 22px; }
+  li { margin: 4px 0; }
+  .footer { margin-top: 40px; color: var(--muted); font-size: 13px; border-top: 1px solid var(--border); padding-top: 14px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <h1>Running Agents and Tools in an AgentVM Box</h1>
+  <p class="lede">An agent that can run commands can do anything your account can. An AgentVM box is a separate macOS, running in a virtual machine on this Mac, that an agent or a model's tools can work in. What they do there stays there, apart from the one project folder you share with it.</p>
+
+  <h2>What you need</h2>
+  <ul>
+    <li><b>macOS 27 or later.</b> On an older macOS, Cadabra works as before and everything runs on this Mac.</li>
+    <li><b>The AgentVM app.</b> It is a separate application. It installs the <code>agent-vm</code> tools, downloads macOS for the virtual machines, and makes the images and boxes. Cadabra makes none of these itself. Get the app from <a href="https://github.com/abra-code/AgentVMApp/releases">github.com/abra-code/AgentVMApp/releases</a>.</li>
+  </ul>
+  <p>Where Cadabra needs AgentVM and it is not set up, a <b>Set Up AgentVM...</b> or <b>Open AgentVM</b> button opens the app, or its download page when the app is not on this Mac.</p>
+
+  <h2>Images and boxes</h2>
+  <table>
+    <tr><th>Word</th><th>What it is</th></tr>
+    <tr><td><b>Image</b></td><td>A prepared macOS with programs installed (developer tools, agents). It is a template and never runs your work.</td></tr>
+    <tr><td><b>Kept box</b></td><td>A copy of an image that you make in the AgentVM app and that stays until you delete it. What is installed or logged in there is still there next time.</td></tr>
+    <tr><td><b>New disposable box</b></td><td>A copy of an image that Cadabra makes for one chat window and deletes when the window closes. Nothing done inside it is left, except the changes in the project folder.</td></tr>
+  </table>
+  <p>macOS runs at most two macOS virtual machines at a time, so at most two boxes run at once. A box also uses the memory it was given for as long as it runs.</p>
+
+  <h2>Choosing where things run</h2>
+  <h3>An external agent (Claude Code, Codex, and others)</h3>
+  <p>In the <b>ACP Agents</b> window, the <b>Runs in</b> menu offers this Mac, each kept box, and a new disposable box from each image. In a box, the agent and every tool it starts run inside the box.</p>
+  <h3>A local model</h3>
+  <p>The model itself always runs on this Mac: it needs the Mac's memory and graphics processor, and it only produces text. Its tools are what act. In <b>Agentic Session Tools</b>, <b>Where tools run</b> offers this Mac, each kept box, and a new disposable box from each image. With a box chosen, the pane <b>Tools in the AgentVM Box</b> sets which tools run there:</p>
+  <ul>
+    <li><b>Files and shell</b> - files and commands, anywhere in the box.</li>
+    <li><b>Apply sandbox inside the VM box</b> - also limits Files and shell to the project and the box's temporary folders. Off by default: the box is the boundary.</li>
+    <li><b>PDF</b> and <b>Allow PDF editing</b>.</li>
+    <li><b>Date &amp; Time</b>.</li>
+    <li><b>Internet - search &amp; fetch</b> - off by default. A new disposable box then allows any public host.</li>
+    <li><b>Read-only project</b> - the tools can read the project and change nothing in it.</li>
+  </ul>
+
+  <h2>What the box can see</h2>
+  <ul>
+    <li><b>The project folder</b>, at the same path as on this Mac, shared live: a change made in the box is a change on this Mac at once. It can be shared read-only.</li>
+    <li><b>Nothing else of this Mac.</b> Not your home folder, your other projects, your Keychain, your browser or your mail.</li>
+    <li><b>The network the box allows.</b> A box has its own list of hosts it may reach. Everything else is refused and recorded.</li>
+  </ul>
+  <p>If the project is in a folder macOS protects, such as Desktop, Documents or Downloads, programs in the box may be refused it. Cadabra says so in the chat window, with the fix: give the box's image Full Disk Access in the AgentVM app.</p>
+
+  <h2>The box line in a chat window</h2>
+  <p>A chat window that uses a box shows a line under the model button: the box, how the project is shared, how many hosts were reached and how many were refused, and how many files changed. Hold the pointer over it for the host names.</p>
+  <ul>
+    <li><b>Network...</b> lists the hosts the box reached and those it was refused. <b>Allow in This Box...</b> allows a refused host now; the agent's next try gets through. <b>Allow for This Agent...</b> also allows it in every new disposable box made for that agent.</li>
+    <li><b>Changes...</b> opens Review Changes (below).</li>
+  </ul>
+
+  <h2>Keys and logins</h2>
+  <p>An agent in a box cannot read the keys on this Mac, so it has to be given one. <b>Keys...</b> in the ACP Agents window stores an API key or token in your login Keychain and gives it to the agent in its box.</p>
+  <div class="callout warn">Programs in the box can read the key they are given, and can send it to any host the box may reach. Prefer a key you can revoke.</div>
+  <p>An agent that logs in through a browser, with no key to store, needs a kept box: a login made in a disposable box is deleted with it. <b>Open a Shell in the AgentVM Box</b> in the Agent Keys window opens Terminal in the kept box to log in there once.</p>
+
+  <h2>Asking before acting</h2>
+  <p>In a box, an agent works without asking by default. That is the point of the box: it keeps the agent away from the rest of this Mac, and a snapshot lets you undo what it did to the project. The level can be changed in the ACP Agents window for agents that support it.</p>
+
+  <h2>Review and undo</h2>
+  <p>Before a session starts, Cadabra takes a snapshot of the project (<b>Snapshot the project first</b> in Agentic Session Tools; on by default for a box, off for this Mac). Afterwards, <b>Changes...</b> on the chat window's line, or <b>Review Changes</b> on a conversation in the history, shows what changed:</p>
+  <ul>
+    <li>Changes that could run something on this Mac later are flagged and listed first: a git hook, an install script, a link that leads out of the project.</li>
+    <li><b>Undo This Change...</b> puts one entry back as it was. <b>Undo All...</b> puts everything back.</li>
+    <li><b>Keep Changes...</b> deletes the snapshot. After that nothing can be undone.</li>
+  </ul>
+  <p>When a window closes with flagged changes, Cadabra offers the review before the snapshot goes.</p>
+
+  <h2>What a box does not protect</h2>
+  <div class="callout warn">
+    <ul>
+      <li><b>The project itself.</b> The agent can change or delete anything in it. That is what the snapshot is for.</li>
+      <li><b>Secrets inside the project</b>, such as a <code>.env</code> file. The box can read them and send them to any host it may reach.</li>
+      <li><b>The key you gave the agent.</b></li>
+      <li><b>What comes back.</b> A file the agent leaves in the project can run on this Mac later, when you build, install or commit. Look at the flagged changes before you do.</li>
+      <li><b>Anything sent to an allowed host.</b> Allow only the hosts the work needs.</li>
+    </ul>
+  </div>
+
+  <h2>Tools &gt; AgentVM Boxes</h2>
+  <p>A small window listing the boxes and what each is doing. The play button starts the selected box (it stops when Cadabra quits), the stop button shuts it down, and <b>View</b> shows its screen. <b>Open AgentVM</b> opens the AgentVM app, where boxes and images are made, changed and deleted.</p>
+  <p>A kept box keeps running when its chat windows close, holding one of the two virtual machine slots, unless you stop it. Closing the last window that uses it asks.</p>
+
+  <h2>If something does not work</h2>
+  <table>
+    <tr><th>What you see</th><th>What to do</th></tr>
+    <tr><td>"AgentVM is not set up on this Mac"</td><td>Press <b>Set Up AgentVM...</b> or <b>Open AgentVM</b>. The app installs what is missing.</td></tr>
+    <tr><td>"AgentVM on this Mac needs an update"</td><td>Open the AgentVM app and update there. Cadabra always needs the newest version.</td></tr>
+    <tr><td>No box or image to choose</td><td>Make an image, and a box if you want a kept one, in the AgentVM app.</td></tr>
+    <tr><td>No free virtual machine slot</td><td>Two boxes are running. Stop one in Tools &gt; AgentVM Boxes.</td></tr>
+    <tr><td>A host is refused</td><td><b>Network...</b> on the box line, then <b>Allow in This Box...</b></td></tr>
+    <tr><td>A program in the box waits for a permission prompt</td><td>Nobody sees the prompt in the box. Answer it on the box's screen: <b>View</b> in Tools &gt; AgentVM Boxes.</td></tr>
+  </table>
+
+  <div class="footer">
+    Boxes, images and the <code>agent-vm</code> tools belong to the AgentVM app. Its documentation covers making images, recipes, and using a box from Terminal.
+  </div>
+
+</div>
+</body>
+</html>

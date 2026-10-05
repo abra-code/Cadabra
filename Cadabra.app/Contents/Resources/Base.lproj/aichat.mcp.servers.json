@@ -55,7 +55,18 @@
             "actionID": "aichat.agentvm.app.open"
           }
         },
-        { "type": "Spacer" }
+        { "type": "Spacer" },
+        {
+          "type": "Button",
+          "id": 294,
+          "properties": {
+            "systemImage": "questionmark.circle",
+            "imageScale": "medium",
+            "buttonStyle": "plain",
+            "help": "About AgentVM boxes",
+            "actionID": "aichat.agentvm.help"
+          }
+        }
       ]
     },
     {

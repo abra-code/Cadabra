@@ -529,3 +529,17 @@ process_start_stamp() { # <pid>
 # (chat_model_bar_set), the facts line describes the conversation (chat_info_refresh), the
 # loading overlay describes a load in progress (above), a failure raises the alert it always
 # raised, and aichat.chat.error.sh's toast is the pattern for anything transient.
+
+# help_show_page <window_uuid> <page file in Resources/Help>  ->  loads the page into the Help
+# window's WebView (id 2 of aichat.model.help.json, which every help window uses). The address is
+# a percent-encoded file URL, so a space in the application's path does no harm.
+help_show_page() {
+    local _html="$OMC_APP_BUNDLE_PATH/Contents/Resources/Help/$2"
+    local _python3="$OMC_APP_BUNDLE_PATH/Contents/Library/Python/bin/python3"
+    local _url
+    _url=$("$_python3" -c 'import sys, pathlib; print(pathlib.Path(sys.argv[1]).as_uri())' "$_html" 2>/dev/null)
+    if [ -z "$_url" ]; then
+        _url="file://$_html"
+    fi
+    "$dialog" "$1" 2 "$_url"
+}
