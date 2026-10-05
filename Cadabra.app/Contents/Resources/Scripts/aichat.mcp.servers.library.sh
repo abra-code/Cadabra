@@ -27,6 +27,8 @@ source "$OMC_APP_BUNDLE_PATH/Contents/Resources/Scripts/aichat.library.sh"
 #   /servers/local/allowed-write  : array<string>  (additional RW paths)
 #   /servers/local/allowed-read   : array<string>  (additional RO paths)
 #   /servers/local/include-session-tmpdir : bool  (grant the login session $TMPDIR RW)
+#   /servers/local/packs          : array<string>  (ids of the ticked sandbox packs, named
+#                                   sets of folders: sandbox_packs.py; absent == none)
 #
 # allow-network is a master switch surfaced as the "Allow Network" checkbox. When
 # false, the Web Search & Fetch server is not started and the local (replay) server is

@@ -1,0 +1,15 @@
+{
+  "formatVersion": 1,
+  "id": "homebrew",
+  "title": "Homebrew tools",
+  "description": "Run the command line tools installed with Homebrew.",
+  "read_only": [
+    "$HOMEBREW_PREFIX"
+  ],
+  "requires": [
+    "$HOMEBREW_PREFIX/bin/brew"
+  ],
+  "notes": [
+    "Installing or updating with brew is not covered: the tools can be read and run, not changed."
+  ]
+}

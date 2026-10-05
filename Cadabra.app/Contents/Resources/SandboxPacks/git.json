@@ -1,0 +1,16 @@
+{
+  "formatVersion": 1,
+  "id": "git",
+  "title": "Git settings",
+  "description": "Let git read your own settings: your name, aliases and ignore rules.",
+  "read_only_files": [
+    "~/.gitconfig",
+    "~/.config/git/config",
+    "~/.config/git/ignore",
+    "~/.config/git/attributes"
+  ],
+  "notes": [
+    "Pushing over SSH and signing commits are not covered: keys stay out of reach.",
+    "Where git comes with Xcode, tick Xcode and Swift builds as well."
+  ]
+}

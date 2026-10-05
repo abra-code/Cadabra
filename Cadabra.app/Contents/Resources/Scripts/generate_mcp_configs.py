@@ -46,7 +46,10 @@
 # own enabled flag (plus its own writable flag) and reuses the local sandbox's readable
 # dirs as its --root confinement (see the pdf block below). That plist is seeded with Homebrew, nvm, temp, third-party tool/data
 # dirs, and the app bundle by mcp_prefs_write_defaults() in aichat.library.sh, so
-# nothing is granted to the sandbox invisibly here. (The system executable dirs and
+# nothing is granted to the sandbox invisibly here. The ticked SANDBOX PACKS
+# (servers/local/packs, an array of pack ids; sandbox_packs.py) add their folders to the Local
+# server's sandbox after the user's own paths. They do not widen the pdf server's roots: a pack
+# is for tools that build, not for reading documents. (The system executable dirs and
 # macOS system libraries are granted by replay's sandbox baseline and are deliberately
 # absent, as is the app bundle — replay self-sandboxes at startup and the local server
 # has no playlist to re-read, so nothing under the bundle is read once the sandbox is
@@ -94,6 +97,12 @@ out_abs = os.path.abspath(out_json)
 os.makedirs(os.path.dirname(out_abs), exist_ok=True)
 if os.path.exists(out_abs):
     os.remove(out_abs)
+
+# sandbox_packs.py is beside this file. Imported here, after the prior config is gone, like
+# everything else that can fail. No bytecode for it: a cache folder written into the
+# application would break its signature.
+sys.dont_write_bytecode = True
+import sandbox_packs
 
 # No abbreviations: "--read" must not quietly mean --read-only. Bad options end the script with
 # no config, which the transport builder reads as a chat with no tools - never as tools on this
@@ -211,6 +220,17 @@ if not box.box and srv_enabled("local"):
     # self-sandboxes at startup and the local server has no playlist to re-read.)
     allowed_read = [directory for directory in (local_prefs.get("allowed-read") or []) if directory]
     allowed_read += [directory for directory in window_read_only if directory not in allowed_read]
+    # The ticked sandbox packs: their folders, and their single files to read, after the user's
+    # own. User packs are beside the settings file. A pack that is invalid or not installed
+    # grants nothing and says so in the log.
+    pack_read_only, pack_read_write, pack_files, pack_messages = sandbox_packs.grants(
+        local_prefs.get(sandbox_packs.PREFS_KEY),
+        app_bundle,
+        os.path.join(os.path.dirname(os.path.abspath(mcp_prefs_plist)), sandbox_packs.USER_DIR_NAME) if mcp_prefs_plist else "",
+        (local_prefs.get("project") or "").strip())
+    for _message in pack_messages:
+        print(f"  warning: {_message}")
+    allowed_read += [path for path in pack_read_only + pack_files if path not in allowed_read]
 
     # Project workspace: the prominent read-write directory chosen by the user.
     # It is passed as the single explicit --allow-write so replay treats it as the
@@ -226,7 +246,7 @@ if not box.box and srv_enabled("local"):
     # the soft MCP path layer stays in sync with the kernel sandbox either way.
     # additional read-write dirs (everything the user added beyond the project):
     profile_read_write = []
-    for directory in (local_prefs.get("allowed-write") or []) + window_read_write:
+    for directory in (local_prefs.get("allowed-write") or []) + window_read_write + pack_read_write:
         if directory and directory != user_project and directory not in profile_read_write:
             profile_read_write.append(directory)
     # Per-login-session temp dir ($TMPDIR, e.g. /var/folders/xx/.../T): granted
