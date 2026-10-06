@@ -1,0 +1,29 @@
+{
+  "formatVersion": 1,
+  "id": "cmake",
+  "title": "CMake builds",
+  "description": "Configure and build with cmake, from CMake.app or installed with Homebrew.",
+  "read_only": [
+    "/Applications/CMake.app",
+    "/usr/local/bin"
+  ],
+  "requires_any": [
+    "/Applications/CMake.app",
+    "/usr/local/bin/cmake",
+    "$HOMEBREW_PREFIX/bin/cmake"
+  ],
+  "uses": [
+    "xcode",
+    "homebrew"
+  ],
+  "notes": [
+    "The compiler comes with the Xcode pack, and a cmake installed with Homebrew with the Homebrew pack: both come with this one.",
+    "Not covered: a cmake installed another way (MacPorts, pip, a folder of your own). Record a pack for it.",
+    "A project whose build reads folders outside the project, such as a dependency checked out beside it, needs those added."
+  ],
+  "recorded": {
+    "by": "sandbox-discover, with CMake.app 4.3.3 and Homebrew's cmake 4.4.3, then a build under each pack's folders alone",
+    "command": "cmake -S . -B build && cmake --build build",
+    "date": "2026-10-06"
+  }
+}

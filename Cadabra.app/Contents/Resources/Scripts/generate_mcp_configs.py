@@ -291,6 +291,12 @@ if mac_server_on("local"):
             profile_read_write.append(session_tmpdir)
     # read-only dirs all live in the profile (drop any also granted read-write):
     profile_read_only = [directory for directory in allowed_read if directory not in profile_read_write]
+    # The system's own programs can be run under replay's sandbox without any grant, but their
+    # folders cannot be listed or read, and tools that look for another program do both: cmake
+    # crashes when it cannot list /usr/bin. They hold nothing but what macOS ships, so they are
+    # always readable; the dialog says so beside its tables.
+    profile_read_only += [directory for directory in sandbox_packs.SYSTEM_PROGRAM_FOLDERS
+                          if directory not in profile_read_only and directory not in profile_read_write]
 
     replay_args = ["--mcp-server"]
     if not allow_network:

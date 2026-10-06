@@ -25,6 +25,9 @@
 #     "read_write": ["~/Library/Developer/Xcode/DerivedData", ...],   folders: read and written
 #     "read_only_files": ["~/.gitconfig"],      single files that can be read
 #     "requires": ["$DEVELOPER_DIR"],           what must exist for the pack to be usable here
+#     "requires_any": ["/Applications/CMake.app", "$HOMEBREW_PREFIX/bin/cmake"],
+#                                               and at least one of these, when the key is there
+#     "uses": ["xcode"],                        ids of packs whose folders come with this one
 #     "notes": ["What the pack does not cover."],
 #     "recorded": { ... }                       how the pack was made; not read here
 #   }
@@ -39,6 +42,11 @@
 #   $DARWIN_USER_TEMP_DIR    getconf DARWIN_USER_TEMP_DIR
 #   $PROJECT                 the session's Project folder
 # A token with no value here drops the paths that use it. An unknown token makes the pack invalid.
+#
+# A pack that USES others grants what they hold too, when it is ticked: a build tool's pack uses
+# the compiler's. A used pack that is not there, not installed or invalid is left out, with a
+# line in the log; the pack that uses it still grants its own folders. The packs a used pack
+# uses come along as well.
 #
 # SEED PACKS ship in the application (Contents/Resources/SandboxPacks); USER PACKS are in
 # Application Support/Cadabra/SandboxPacks, and one with a seed pack's id replaces it.
@@ -68,11 +76,16 @@ SEED_DIR_IN_BUNDLE = "Contents/Resources/SandboxPacks"
 USER_DIR_NAME = "SandboxPacks"
 PREFS_KEY = "packs"
 
+# The folders of the system's own programs, readable in every session's sandbox
+# (generate_mcp_configs.py), so no pack needs to name them.
+SYSTEM_PROGRAM_FOLDERS = ("/bin", "/sbin", "/usr/bin", "/usr/sbin")
+
 TOKENS = ("DEVELOPER_DIR", "HOMEBREW_PREFIX", "DARWIN_USER_CACHE_DIR", "DARWIN_USER_TEMP_DIR", "PROJECT")
 _ID_PATTERN = re.compile(r"[a-z0-9][a-z0-9-]{0,63}\Z")
 _TOKEN_PATTERN = re.compile(r"\$([A-Z_]+)(/.*)?\Z", re.DOTALL)
 _MAX_PACK_BYTES = 256 * 1024
 _MAX_PATHS = 200
+_MAX_USES = 20
 
 # Relative to the home folder. A pack may not name one of these, anything inside one, or a folder
 # that contains one.
@@ -289,6 +302,7 @@ class PackResult:
         self.title = pack_id
         self.description = ""
         self.notes = []
+        self.uses = []
         self.state = "invalid"
         self.reason = ""
         self.read_only = []
@@ -299,7 +313,7 @@ class PackResult:
     def as_json(self):
         return {
             "id": self.id, "source": self.source, "path": self.path, "title": self.title,
-            "description": self.description, "notes": self.notes, "state": self.state,
+            "description": self.description, "notes": self.notes, "uses": self.uses, "state": self.state,
             "reason": self.reason, "read_only": self.read_only, "read_write": self.read_write,
             "read_only_files": self.read_only_files,
             "dropped": [{"path": path, "reason": reason} for path, reason in self.dropped],
@@ -335,6 +349,10 @@ def _resolve_into(result, pack, values):
     result.title = title.strip()
     result.description = description.strip()
     result.notes = [note.strip() for note in _string_list(pack, "notes") if note.strip()]
+    uses = list(dict.fromkeys(_string_list(pack, "uses")))
+    if len(uses) > _MAX_USES or result.id in uses or not all(is_pack_id(used) for used in uses):
+        raise PackError('"uses" is not a short list of other packs\' ids')
+    result.uses = uses
 
     home = values.get("HOME", "")
     read_only, read_write, files, dropped = [], [], [], []
@@ -385,6 +403,15 @@ def _resolve_into(result, pack, values):
             result.state = "not-installed"
             result.reason = f"{written} is not on this Mac"
             return
+    any_of = _string_list(pack, "requires_any")
+    there = False
+    for written in any_of:
+        path, why = _expand(written, values)
+        there = there or bool(path and os.path.exists(path))
+    if any_of and not there:
+        result.state = "not-installed"
+        result.reason = "none of " + ", ".join(any_of) + " is on this Mac"
+        return
     result.state = "ok"
     result.read_only, result.read_write, result.read_only_files = read_only, read_write, files
     result.dropped = dropped
@@ -448,24 +475,44 @@ def sourced_grants(ticked, packs):
     """What the ticked ones of `packs` (PackResults) grant, with the packs each path comes from:
     (read_only, read_write, read_only_files, messages). The first three are dicts in the order
     granted, true path -> [pack title, ...]; a folder some pack grants read-write is left out of
-    read_only. messages has a line for each ticked pack that grants nothing, and for each path
-    of a usable one that is left out."""
+    read_only. A pack that came along because a ticked one uses it is named with that one:
+    "Xcode and Swift builds (with CMake builds)". messages has a line for each ticked or used
+    pack that grants nothing, and for each path of a usable one that is left out."""
     read_only, read_write, files, messages = {}, {}, {}, []
     by_id = {pack.id: pack for pack in packs}
-    for pack_id in ticked_ids(ticked):
+    direct = ticked_ids(ticked)
+    # (pack id, the title of the ticked pack it came with, or "" for a ticked one), each pack
+    # once: the ticked ones first, then what they use, and what those use.
+    wanted = [(pack_id, "") for pack_id in direct]
+    taken = set(direct)
+    at = 0
+    while at < len(wanted):
+        pack_id, came_with = wanted[at]
+        at += 1
         pack = by_id.get(pack_id)
+        if pack is None or pack.state != "ok":
+            continue
+        for used in pack.uses:
+            if used not in taken:
+                taken.add(used)
+                wanted.append((used, came_with or pack.title))
+    for pack_id, came_with in wanted:
+        pack = by_id.get(pack_id)
+        how = f"used by {came_with!r}" if came_with else "ticked"
         if pack is None:
-            messages.append(f"sandbox pack {pack_id!r} is ticked but there is no such pack")
+            messages.append(f"sandbox pack {pack_id!r} is {how} but there is no such pack")
             continue
         if pack.state != "ok":
-            messages.append(f"sandbox pack {pack_id!r} grants nothing: {pack.reason}")
+            messages.append(f"sandbox pack {pack_id!r}" + (f" ({how})" if came_with else "")
+                            + f" grants nothing: {pack.reason}")
             continue
         for written, reason in pack.dropped:
             messages.append(f"sandbox pack {pack_id!r}: {written} left out ({reason})")
+        source = f"{pack.title} (with {came_with})" if came_with else pack.title
         for granted, paths in ((read_write, pack.read_write), (read_only, pack.read_only),
                                (files, pack.read_only_files)):
             for path in paths:
-                granted.setdefault(path, []).append(pack.title)
+                granted.setdefault(path, []).append(source)
     for path in read_write:
         read_only.pop(path, None)
     return read_only, read_write, files, messages

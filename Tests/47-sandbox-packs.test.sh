@@ -54,7 +54,7 @@ state_of() {
 TOKENS="--token DEVELOPER_DIR=$WORK/xcode/Xcode.app/Contents/Developer --token HOMEBREW_PREFIX=$WORK/brew --token DARWIN_USER_CACHE_DIR=$WORK/cache --token DARWIN_USER_TEMP_DIR=$WORK/build"
 
 section "the packs that ship with the application"
-check "there are three"                        "git homebrew xcode" "$(/bin/ls "$SEEDS" | /usr/bin/sed 's/\.json$//' | /usr/bin/tr '\n' ' ' | /usr/bin/sed 's/ $//')"
+check "there are four"                         "cmake git homebrew xcode" "$(/bin/ls "$SEEDS" | /usr/bin/sed 's/\.json$//' | /usr/bin/tr '\n' ' ' | /usr/bin/sed 's/ $//')"
 for seed in git homebrew xcode; do
     check "$seed is usable where its tools are" "ok" "$(field .state "$SEEDS/$seed.json" $TOKENS)"
     check "  and has a title and a description" "2" "$(field '[.title, .description] | map(select(length > 3)) | length' "$SEEDS/$seed.json" $TOKENS)"
@@ -66,8 +66,27 @@ check "  and then grants nothing"              "0" "$(field '[.read_only[], .rea
 check "homebrew without brew is not installed" "not-installed" "$(field .state "$SEEDS/homebrew.json" --token HOMEBREW_PREFIX=)"
 check "git grants one file to read"            "$HOME_REAL/.gitconfig" "$(field '.read_only_files | join(" ")' "$SEEDS/git.json")"
 check "  and no folder: a credentials file can be beside git's settings" "0" "$(field '.read_only | length' "$SEEDS/git.json")"
-check "the list has all three, none invalid"   "git:seed homebrew:seed xcode:seed|0" \
+check "the list has all four, none invalid"    "cmake:seed git:seed homebrew:seed xcode:seed|0" \
     "$("$PY" -B "$PACKS_PY" list --bundle "$OMC_APP_BUNDLE_PATH" $TOKENS | /usr/bin/jq -r '([.[] | .id + ":" + .source] | join(" ")) + "|" + ([.[] | select(.state == "invalid")] | length | tostring)')"
+
+# cmake's own folders are where this Mac has them or not; what is tested is its two keys.
+check "cmake needs any one of the places a cmake is installed" "3" "$(/usr/bin/jq -r '.requires_any | length' "$SEEDS/cmake.json")"
+check "  and comes with the compiler's pack and Homebrew's"    "xcode homebrew" "$(/usr/bin/jq -r '.uses | join(" ")' "$SEEDS/cmake.json")"
+check "  both of which ship with the application"              "2" "$(for used in $(/usr/bin/jq -r '.uses[]' "$SEEDS/cmake.json"); do [ -f "$SEEDS/$used.json" ] && echo yes; done | /usr/bin/wc -l | /usr/bin/tr -d ' ')"
+
+section "a pack usable where any one of several things is"
+check "one of them is enough"          "ok: " "$(state_of anyone "\"title\": \"Any\", \"read_only\": [\"$WORK/tools\"], \"requires_any\": [\"$WORK/no-such-tool\", \"$WORK/tools\"]")"
+check "none of them is not installed"  "not-installed: none of $WORK/no-such-tool, $WORK/nor-this is on this Mac" \
+    "$(state_of anyone "\"title\": \"Any\", \"read_only\": [\"$WORK/tools\"], \"requires_any\": [\"$WORK/no-such-tool\", \"$WORK/nor-this\"]")"
+check "an empty list asks for nothing" "ok: " "$(state_of anyone "\"title\": \"Any\", \"read_only\": [\"$WORK/tools\"], \"requires_any\": []")"
+check "what must all be there still must" "not-installed" \
+    "$(state_of anyone "\"title\": \"Any\", \"requires\": [\"$WORK/no-such-tool\"], \"requires_any\": [\"$WORK/tools\"]" | /usr/bin/cut -d: -f1)"
+
+section "a pack that uses other packs: the file"
+check "their ids are kept, each once"  "a b" "$(field '.uses | join(" ")' "$(write_pack user "\"title\": \"User\", \"uses\": [\"a\", \"b\", \"a\"]")")"
+check "a pack cannot use itself"       "invalid" "$(state_of selfish "\"title\": \"Selfish\", \"uses\": [\"selfish\"]" | /usr/bin/cut -d: -f1)"
+check "what it uses must be pack ids"  "invalid" "$(state_of sloppy "\"title\": \"Sloppy\", \"uses\": [\"../x\"]" | /usr/bin/cut -d: -f1)"
+check "  and a list"                   "invalid" "$(state_of sloppy "\"title\": \"Sloppy\", \"uses\": \"xcode\"" | /usr/bin/cut -d: -f1)"
 
 section "the pack file"
 check "a plain pack is usable"                 "ok: " "$(state_of plain "\"title\": \"Plain\", \"read_only\": [\"$WORK/tools\"]")"
@@ -191,10 +210,20 @@ printf '{"formatVersion": 1, "id": "mine", "title": "Mine", "read_only": ["%s", 
 printf '{"formatVersion": 1, "id": "greedy", "title": "Greedy", "read_only": ["%s", "~/.ssh"]}\n' "$WORK/target" > "$USER_PACKS/greedy.json"
 printf '{"formatVersion": 1, "id": "odd", "title": "Odd", "read_only": ["%s", "/nowhere/x\\udc80", "$DARWIN_USER_TEMP_DIR/x\\ud800"]}\n' "$WORK/target" > "$USER_PACKS/odd.json"
 
+# A pack that uses another, which uses a third and, to close a ring, the first; one that is not
+# installed; and one that is not there.
+/bin/mkdir -p "$WORK/chain-a" "$WORK/chain-b" "$WORK/chain-c"
+printf '{"formatVersion": 1, "id": "chain-a", "title": "Chain A", "read_only": ["%s"], "uses": ["chain-b", "absent-pack", "away-pack"]}\n' "$WORK/chain-a" > "$USER_PACKS/chain-a.json"
+printf '{"formatVersion": 1, "id": "chain-b", "title": "Chain B", "read_write": ["%s"], "uses": ["chain-c"]}\n' "$WORK/chain-b" > "$USER_PACKS/chain-b.json"
+printf '{"formatVersion": 1, "id": "chain-c", "title": "Chain C", "read_only": ["%s"], "uses": ["chain-a"]}\n' "$WORK/chain-c" > "$USER_PACKS/chain-c.json"
+printf '{"formatVersion": 1, "id": "away-pack", "title": "Away", "read_only": ["%s"], "requires": ["%s/not-here"]}\n' "$WORK/target" "$WORK" > "$USER_PACKS/away-pack.json"
+
 generate >/dev/null
 check "with no pack ticked: the three servers" "local pdf time" "$(names "$CFG")"
 BASE_SUM="$(/usr/bin/shasum "$(profile_of "$CFG")" | /usr/bin/cut -d' ' -f1)"
 check "  and no pack folder in the profile"    "0|0" "$(in_profile read_only "$WORK/tools")|$(in_profile read_write "$WORK/build")"
+check "the system's program folders are always readable, so a tool can look for another" "1|1|1|1" \
+    "$(in_profile read_only /bin)|$(in_profile read_only /sbin)|$(in_profile read_only /usr/bin)|$(in_profile read_only /usr/sbin)"
 
 tick mine
 OUT="$(generate)"
@@ -215,6 +244,19 @@ check "a pack that asks for keys grants nothing" "0|0" "$(in_profile read_only "
 check "  and the log says why"                 "1" "$(cad_has "$OUT" "sandbox pack 'greedy' grants nothing")"
 check "  a ticked id with no pack is named too" "1" "$(cad_has "$OUT" "'nosuch' is ticked but there is no such pack")"
 check "  the good pack beside them still applies, once" "1|1" "$(in_profile read_only "$WORK/tools")|$(in_profile read_write "$WORK/build")"
+
+tick chain-a
+said="$(generate 2>&1)"
+check "a ticked pack brings the packs it uses, and theirs" "1|1|1" \
+    "$(in_profile read_only "$WORK/chain-a")|$(in_profile read_write "$WORK/chain-b")|$(in_profile read_only "$WORK/chain-c")"
+check "  a used pack that is not installed grants nothing, and the log says who uses it" "0|1" \
+    "$(in_profile read_only "$WORK/target")|$(cad_has "$said" "'away-pack' (used by 'Chain A') grants nothing")"
+check "  and one that is not there is said to be missing" "1" "$(cad_has "$said" "'absent-pack' is used by 'Chain A' but there is no such pack")"
+tick chain-c
+generate >/dev/null
+check "a ring of packs ends: each is taken once" "1|1|1" \
+    "$(in_profile read_only "$WORK/chain-a")|$(in_profile read_write "$WORK/chain-b")|$(in_profile read_only "$WORK/chain-c")"
+
 check "  and the servers start"                "local pdf time" "$(names "$CFG")"
 
 /bin/rm -rf "$WORK/build"

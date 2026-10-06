@@ -255,6 +255,30 @@ def preview(options):
         if pack["dropped"]:
             lines += ["", "**Left out on this Mac**", ""]
             lines += [f"- {_md_code(item['path'])} ({_md_text(item['reason'])})" for item in pack["dropped"]]
+    if pack.get("uses") and pack["state"] != "invalid":
+        # The packs it uses come with it when it is ticked, and so do the ones those use: the
+        # whole chain is named, as sandbox_packs.sourced_grants follows it. One that cannot be
+        # used here is said to be so, since its folders will be missing.
+        others = {other["id"]: other for other in _read_list(options.list)}
+        lines += ["", "**Comes with these packs**", ""]
+        chain = [(used, "") for used in pack["uses"]]
+        named = {pack["id"]} | set(pack["uses"])
+        at = 0
+        while at < len(chain):
+            used, through = chain[at]
+            at += 1
+            other = others.get(used)
+            how = f", through {_md_text(through)}" if through else ""
+            if other is None:
+                lines.append(f"- {_md_code(used)} (there is no such pack{how})")
+            elif other["state"] != "ok":
+                lines.append(f"- {_md_text(other['title'])} ({_state_word(other['state'])} on this Mac{how})")
+            else:
+                lines.append("- " + _md_text(other["title"]) + (f" ({how[2:]})" if how else ""))
+                for further in other.get("uses") or []:
+                    if further not in named:
+                        named.add(further)
+                        chain.append((further, other["title"]))
     if pack["notes"]:
         lines += ["", "**Notes**", ""] + ["- " + _md_text(note) for note in pack["notes"]]
     if pack["source"] == "user":

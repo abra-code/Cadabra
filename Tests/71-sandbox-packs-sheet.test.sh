@@ -209,6 +209,28 @@ check "  and can be unticked"        "minus.square" "$(image_of away)"
 omc_run aichat.mcp.servers.packs.use
 check "a tick with no pack is dropped when the packs are stored" "" "$(stored)"
 
+section "a pack that uses others shows them, and their folders say whom they came with"
+/bin/mkdir -p "$WORK/base"
+cat_pack base "\"title\": \"Base tools\", \"read_only\": [\"$WORK/base\"], \"uses\": [\"work\", \"upper\"]"
+cat_pack upper "\"title\": \"Upper tools\", \"read_write\": [\"$WORK/cache\"], \"uses\": [\"base\", \"away\", \"nowhere\"]"
+fresh_window
+omc_run aichat.mcp.servers.packs
+omc_table_cell "$PACKS_TABLE_ID" 3 upper
+omc_run aichat.mcp.servers.packs.selection.changed
+preview="$(ui_value "$PREVIEW_ID")"
+check "the preview names the packs it comes with" "1|1" "$(cad_has "$preview" '**Comes with these packs**')|$(cad_has "$preview" '- Base tools')"
+check "  and the pack one of them uses, with the one it comes through, a ring ending" "1|0" \
+    "$(cad_has "$preview" '- Work tools (through Base tools)')|$(cad_has "$preview" '- Upper tools')"
+check "  one that is not installed is said to be" "1" "$(cad_has "$preview" '- Away tools (not installed on this Mac)')"
+check "  and one that is not there"               "1" "$(cad_has "$preview" "- \`nowhere\` (there is no such pack)")"
+click upper
+omc_run aichat.mcp.servers.packs.use
+check "only the ticked pack is stored"            "upper" "$(stored)"
+check "  and named in the line"                   "Sandbox packs: Upper tools" "$(ui_value "$SUMMARY_ID")"
+check "its own folder is from it, and from the pack down the chain that holds it too" "$WORK/cache	Upper tools, Work tools (with Upper tools)	pack" "$(ui_rows "$RW_TABLE_ID" | /usr/bin/grep "^$WORK/cache	")"
+check "the used pack's folder says whom it came with" "$WORK/base	Base tools (with Upper tools)	pack" "$(ui_rows "$RO_TABLE_ID" | /usr/bin/grep "^$WORK/base	")"
+/bin/rm -f "$USER_PACKS/base.json" "$USER_PACKS/upper.json"
+
 section "Reset to Defaults unticks every pack"
 fresh_window
 omc_run aichat.mcp.servers.packs
