@@ -60,6 +60,7 @@ echo "saved sandbox pack: $pack_id"
 
 parent="$(pb_get "aichatv2_packsrecord_parent_${window_uuid}")"
 pb_set "aichatv2_packsrecord_parent_${window_uuid}" ""
+pb_set "aichatv2_packsrecord_base_${window_uuid}" ""
 record_forget "$window_uuid"
 "$dialog" "$window_uuid" omc_window omc_terminate_ok
 if [ -n "$parent" ]; then

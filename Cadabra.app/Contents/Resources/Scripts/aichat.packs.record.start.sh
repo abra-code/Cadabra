@@ -56,8 +56,14 @@ done
 tab="$(printf '\t')"
 outcome=""
 message=""
+# On top of the packs the window was opened with, while its switch is on.
+base=""
+if [ "${OMC_ACTIONUI_VIEW_708_VALUE:-}" = "true" ]; then
+    base="$(pb_get "aichatv2_packsrecord_base_${window_uuid}")"
+fi
 PATH="$run_path" record_py run --discover "$record_discover" --folder "$folder" --state "$state" \
-    --pid-file "$(record_pid_file "$window_uuid")" -- "$command_line" > "$state.steps" &
+    --pid-file "$(record_pid_file "$window_uuid")" --base-packs="$base" \
+    --bundle "$OMC_APP_BUNDLE_PATH" --user-dir "$record_user_packs" -- "$command_line" > "$state.steps" &
 runner=$!
 # The steps are read as they come: one line per pass or check, the last one the outcome.
 shown=0

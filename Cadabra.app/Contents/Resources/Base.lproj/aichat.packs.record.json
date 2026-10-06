@@ -58,6 +58,17 @@
               ]
             },
             {
+              "type": "Toggle",
+              "id": 708,
+              "properties": {
+                "title": "Start with the packs ticked in Choose Packs",
+                "style": "checkbox",
+                "isOn": false,
+                "help": "The recording is given what those packs hold from the start, and the pack you save then holds only what the command needs beyond them, and names them as the packs it uses.",
+                "padding": { "leading": 78 }
+              }
+            },
+            {
               "type": "HStack",
               "properties": { "spacing": 8 },
               "children": [

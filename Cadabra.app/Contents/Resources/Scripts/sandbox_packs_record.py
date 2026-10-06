@@ -7,7 +7,11 @@
 # what was found in a state file of the window's own, and writes the pack.
 #
 # Usage: python3 sandbox_packs_record.py run --discover <sandbox-discover.py> --folder <dir>
-#                                            --state <file> --pid-file <file> -- <command line>
+#                                            --state <file> --pid-file <file>
+#                                            [--base-packs <id,id...> --bundle <Cadabra.app>
+#                                             --user-dir <dir>] -- <command line>
+#        python3 sandbox_packs_record.py titles --bundle <Cadabra.app> --user-dir <dir>
+#                                               --ids <id,id...>
 #        python3 sandbox_packs_record.py rows --state <file>
 #        python3 sandbox_packs_record.py keep --state <file> --row <index>
 #        python3 sandbox_packs_record.py access --state <file> --row <index>
@@ -31,6 +35,11 @@
 #           a tool that asks whether it may read a path, before opening it, is refused without
 #           a record. Its own process id is in --pid-file while it runs; ended with SIGTERM
 #           it stops the command and everything the command started.
+#           With --base-packs the recording is made ON TOP OF those packs: what they grant
+#           here (and the packs they use) is given from the start and left out of what is
+#           found, and the pack saved names them under "uses", so it holds only what the
+#           command needs beyond them. A base pack that is not usable here is left out.
+#   titles  prints the titles of the usable packs among the ids, with ", " between.
 #   rows    prints the review table: a checkbox image name, the path as the pack would hold it,
 #           the access in words, a note.
 #   keep    ticks or unticks a row (0-based). A row that can never be in a pack stays unticked.
@@ -41,9 +50,10 @@
 #           pack with that id is already there: one of the user's own, or one in --seed-dir (the
 #           packs that come with the application), whose place a user pack with its id takes.
 #           1, with the reason on standard error, for anything else that keeps the pack from
-#           being written.
+#           being written, the id of a pack the recording was made on top of among it.
 #
-# A STATE FILE is {"command", "folder", "outcome", "rows": [row, ...]}; a row is
+# A STATE FILE is {"command", "folder", "outcome", "base_packs": [id, ...], "rows": [row, ...]};
+# a row is
 #   {"path": the true path found, "written": the same with a token where one fits,
 #    "access": "read_write" | "read_only" | "file", "keep": bool, "locked": bool, "note": text}
 # A locked row is one no pack may hold; it is shown so the user knows the command touched it.
@@ -136,10 +146,12 @@ def bundle_of(path):
     return match.group(1) if match else ""
 
 
-def review_rows(done, folder, values, temp_folders=(), succeeded=True):
+def review_rows(done, folder, values, temp_folders=(), succeeded=True, base_read=(), base_write=()):
     """The rows for a recorder's `done` event (read_only, read_write, folder_only, unverified).
     The run's own folder and what is inside it are left out, and so is what the recording
-    started with (above). What was read inside an
+    started with (above), the base packs' folders among it: what they let the command read
+    (base_read) is no row to read, and what they let it change (base_write) is no row at all.
+    What was read inside an
     application bundle becomes one row, the application: its tools read the rest of it, some of
     it in ways the recorder cannot see, and a pack cannot grant a bundle's own listing alone."""
     home = values.get("HOME", "")
@@ -149,14 +161,19 @@ def review_rows(done, folder, values, temp_folders=(), succeeded=True):
     # not because the log showed them refused. After a command that ran they are checked as
     # needed; after one that still fails they are guesses, and start unticked.
     guessed = set() if succeeded else set(done.get("hinted") or [])
-    started_with = session_read_folders() + ("/dev",) + tuple(temp_folders)
+    started_with = session_read_folders() + ("/dev",) + tuple(temp_folders) + tuple(base_write)
     rows = []
     seen = set()
+
+    def given(path, access):
+        if any(_within(path, always) for always in started_with):
+            return True
+        return access != "read_write" and any(_within(path, read) for read in base_read)
 
     def add(path, access, locked_note=""):
         if not isinstance(path, str) or not path.startswith("/"):
             return
-        if any(_within(path, always) for always in started_with):
+        if given(path, access):
             return
         reported = path
         place = sandbox_packs.guarded_place(path, home)
@@ -170,7 +187,7 @@ def review_rows(done, folder, values, temp_folders=(), succeeded=True):
             return
         if folder and _within(path, folder):
             return
-        if any(_within(path, always) for always in started_with):
+        if given(path, access):
             return
         seen.add(path)
         row = {"path": path, "written": tokenized(path, values), "access": access,
@@ -208,12 +225,16 @@ def review_rows(done, folder, values, temp_folders=(), succeeded=True):
     bundles = {}
     for path in (done.get("read_only") or []) + (done.get("folder_only") or []):
         bundle = bundle_of(path) if isinstance(path, str) else ""
-        if bundle:
+        # Not for a path a base pack gives: the recorder reports what it was given along with
+        # what it found, and a base pack's folder inside an application is not a need for the
+        # whole application.
+        if bundle and not given(path, "read_only"):
             bundles[bundle] = bundles.get(bundle, False) or path in unverified
     for bundle, doubted in bundles.items():
         if doubted:
             unverified.add(bundle)
-        inside = [path for path in (done.get("read_only") or []) if isinstance(path, str) and bundle_of(path) == bundle]
+        inside = [path for path in (done.get("read_only") or []) if isinstance(path, str)
+                  and bundle_of(path) == bundle and not given(path, "read_only")]
         if inside and all(path in guessed for path in inside):
             guessed.add(bundle)
         add(bundle, "read_only")
@@ -262,10 +283,34 @@ def _end_group(group, patience=2.0):
         pass
 
 
+def _ids(text):
+    return [pack_id for pack_id in (text or "").split(",") if sandbox_packs.is_pack_id(pack_id)]
+
+
+def base_grants(ids, bundle, user_dir, project):
+    """What the base packs grant here: (ids of the usable ones, folders and files to read,
+    folders to change). The packs they use come with them, as when they are ticked."""
+    if not ids or not bundle:
+        return [], [], []
+    packs = sandbox_packs.all_packs(bundle, user_dir, project)
+    usable = [pack.id for pack in packs if pack.id in ids and pack.state == "ok"]
+    usable.sort(key=ids.index)
+    read_only, read_write, files, _ = sandbox_packs.sourced_grants(usable, packs)
+    return usable, list(read_only) + list(files), list(read_write)
+
+
+def titles(options):
+    ids = _ids(options.ids)
+    packs = {pack.id: pack for pack in sandbox_packs.all_packs(options.bundle, options.user_dir)}
+    print(_one_line(", ".join(packs[pack_id].title for pack_id in ids
+                              if pack_id in packs and packs[pack_id].state == "ok")))
+    return 0
+
+
 def run(options):
     command = " ".join(options.command).strip()
     folder = sandbox_packs.true_path(options.folder)
-    state = {"command": command, "folder": folder, "outcome": "failed", "rows": []}
+    state = {"command": command, "folder": folder, "outcome": "failed", "base_packs": [], "rows": []}
     if not command or not folder or not os.path.isdir(folder):
         _write_state(options.state, state)
         _say("end", "failed", "There is no command, or the folder to run it in is not a folder.")
@@ -286,8 +331,15 @@ def run(options):
         argv += ["--allow-read", always]
     for temp in temp_folders:
         argv += ["--allow-write", temp]
+    base_ids, base_read, base_write = base_grants(_ids(options.base_packs), options.bundle,
+                                                  options.user_dir, folder)
+    state["base_packs"] = base_ids
+    for given in base_read:
+        argv += ["--allow-read", given]
+    for given in base_write:
+        argv += ["--allow-write", given]
     argv += ["--", "/bin/sh", "-c", command]
-    started_with = session_read_folders() + ("/dev",) + tuple(temp_folders)
+    started_with = session_read_folders() + ("/dev",) + tuple(temp_folders) + tuple(base_read) + tuple(base_write)
     child = None
     stopping = False
 
@@ -357,7 +409,8 @@ def run(options):
                  + (f" It said: {said}" if said else ""))
         return 0
     stopped = done.get("stopped")
-    state["rows"] = review_rows(done, folder, values, temp_folders, succeeded=stopped == "success")
+    state["rows"] = review_rows(done, folder, values, temp_folders, succeeded=stopped == "success",
+                                base_read=base_read, base_write=base_write)
     if stopped == "success":
         state["outcome"] = "success"
         message = f"The command ran after {done.get('passes', '?')} passes."
@@ -368,7 +421,8 @@ def run(options):
                    "A folder may not be what it lacks: a system service, the network, or a tool that "
                    "starts a sandbox of its own.")
     if not state["rows"]:
-        message += " It needed no folder beyond its own."
+        message += (" It needed nothing beyond the packs it started with." if base_ids
+                    else " It needed no folder beyond its own.")
     _write_state(options.state, state)
     _say("end", state["outcome"], message)
     return 0
@@ -427,6 +481,13 @@ def save(options):
     if not kept:
         print("No folder is ticked, so there is nothing to put in a pack.", file=sys.stderr)
         return 1
+    base = [pack_id for pack_id in state.get("base_packs") or [] if sandbox_packs.is_pack_id(pack_id)]
+    if options.id in base:
+        # It would take that pack's place holding only what was found beyond it: the folders
+        # the pack has now would be gone, from it and from every pack that uses it.
+        print("The recording was made on top of the pack with this id, so the new pack cannot "
+              "take its place. Give it another id.", file=sys.stderr)
+        return 1
     path = os.path.join(options.user_dir, options.id + ".json")
     if not options.replace:
         if os.path.lexists(path):
@@ -445,6 +506,7 @@ def save(options):
         "read_only": [row["written"] for row in kept if row["access"] == "read_only"],
         "read_write": [row["written"] for row in kept if row["access"] == "read_write"],
         "read_only_files": [row["written"] for row in kept if row["access"] == "file"],
+        "uses": base,
         "recorded": {"by": "sandbox-discover", "command": state.get("command", ""),
                      "date": datetime.date.today().isoformat()},
     }
@@ -479,6 +541,11 @@ def main(argv):
     runner = commands.add_parser("run", allow_abbrev=False)
     for option in ("--discover", "--folder", "--state", "--pid-file"):
         runner.add_argument(option, required=True)
+    for option in ("--base-packs", "--bundle", "--user-dir"):
+        runner.add_argument(option, default="")
+    namer = commands.add_parser("titles", allow_abbrev=False)
+    for option in ("--bundle", "--user-dir", "--ids"):
+        namer.add_argument(option, required=True)
     runner.add_argument("command", nargs=argparse.REMAINDER)
     for name in ("rows", "keep", "access"):
         sub = commands.add_parser(name, allow_abbrev=False)
@@ -496,7 +563,7 @@ def main(argv):
     options = parser.parse_args(argv)
     if options.command_name == "run" and options.command[:1] == ["--"]:
         options.command = options.command[1:]
-    handlers = {"run": run, "rows": rows, "keep": keep, "access": access, "slug": slug, "save": save}
+    handlers = {"titles": titles, "run": run, "rows": rows, "keep": keep, "access": access, "slug": slug, "save": save}
     try:
         return handlers[options.command_name](options)
     except (OSError, ValueError, KeyError, TypeError) as e:

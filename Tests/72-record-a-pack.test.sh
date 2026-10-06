@@ -338,13 +338,103 @@ check "there is a recording"            "1" "$(/bin/ls "$RUN" | /usr/bin/grep -c
 omc_run aichat.packs.record.close
 check "  and none after the window closed" "0" "$(/bin/ls "$RUN" | /usr/bin/grep -c "^packs-record\.$OMC_ACTIONUI_WINDOW_UUID")"
 
+section "recording on top of packs"
+V_base="$(cad_lib_var record_base_view $LIB)"
+/bin/mkdir -p "$USER_PACKS"
+printf '{"formatVersion": 1, "id": "basepack", "title": "Base pack", "read_only": ["%s"], "read_write": ["%s"]}\n' "$WORK/tools" "$WORK/cache" > "$USER_PACKS/basepack.json"
+printf '{"formatVersion": 1, "id": "awaypack", "title": "Away pack", "read_only": ["%s"], "requires": ["%s/not-here"]}\n' "$WORK/tools" "$WORK" > "$USER_PACKS/awaypack.json"
+scenario success 0
+cad_pb_set aichatv2_packsrecord_base "basepack,awaypack,no-such-pack"
+fresh_window
+omc_run aichat.packs.record.init
+check "the switch names the usable packs handed over, and is on" "Start with the packs ticked in Choose Packs: Base pack|true|1" \
+    "$(ui_prop "$V_base" title)|$(ui_value "$V_base")|$(ui_enabled "$V_base")"
+check "  and the handover is taken"  "" "$(cad_pb_get aichatv2_packsrecord_base)"
+omc_control "$V_base" true
+record "make all"
+check "the recording is given what the pack holds" "1|1" \
+    "$(/usr/bin/grep -A1 -x -- '--allow-read' "$FAKE_DISCOVER_ARGV" | /usr/bin/grep -c -x "$WORK/tools")|$(/usr/bin/grep -A1 -x -- '--allow-write' "$FAKE_DISCOVER_ARGV" | /usr/bin/grep -c -x "$WORK/cache")"
+check "  and that is left out of what is found" "0|0" "$(ui_rows "$V_table" | /usr/bin/grep -c -F 'settings.conf')|$(ui_rows "$V_table" | /usr/bin/grep -c -F "$SHOWN/cache")"
+check "  what the pack does not hold is still found" "1" "$(ui_rows "$V_table" | /usr/bin/grep -c -F '~/dev/tools')"
+alerts_reset
+omc_control "$V_title" "On top"
+omc_control "$V_id" ""
+omc_control "$V_description" ""
+omc_run aichat.packs.record.save
+check "the saved pack names the pack it was recorded on top of" "basepack" "$(/usr/bin/jq -r '.uses | join(" ")' "$USER_PACKS/on-top.json")"
+check "  and does not repeat its folders"                       "0" "$(/usr/bin/grep -c -F '/tools/settings.conf' "$USER_PACKS/on-top.json")"
+check "  and the application reads it as usable"                "ok" \
+    "$("$OMC_APP_BUNDLE_PATH/Contents/Library/Python/bin/python3" -B "$OMC_APP_BUNDLE_PATH/Contents/Resources/Scripts/sandbox_packs.py" check "$USER_PACKS/on-top.json" | /usr/bin/jq -r .state)"
+
+# Saved under the base pack's own id, the new pack would replace it with only what was found
+# beyond it.
+fresh_window
+cad_pb_set aichatv2_packsrecord_base "basepack"
+omc_run aichat.packs.record.init
+omc_control "$V_base" true
+record "make all"
+alerts_reset
+alert_answers_reset
+alert_answer 0
+omc_control "$V_title" "Base pack"
+omc_control "$V_id" "basepack"
+omc_control "$V_description" ""
+omc_run aichat.packs.record.save
+check "the id of a pack it was recorded on top of is refused" "1|0" "$(alerts_mention 'on top of the pack with this id')|$(alerts_mention 'Replace the pack')"
+check "  and that pack keeps its folders" "$WORK/tools" "$(/usr/bin/jq -r '.read_only | join(" ")' "$USER_PACKS/basepack.json")"
+alert_answers_reset
+omc_run aichat.packs.record.close
+
+# The recorder reports the folders it was given with the ones it found. A base pack's folder
+# inside an application is not a need for the whole application.
+printf '{"formatVersion": 1, "id": "binpack", "title": "Bin pack", "read_only": ["%s"]}\n' "$WORK/Tool.app/Contents/bin" > "$USER_PACKS/binpack.json"
+/usr/bin/jq -n --arg work "$WORK" '{ exit: 0, events: [ { event: "done", passes: 1, exit: 0, stopped: "success",
+    read_write: [], read_only: [($work + "/Tool.app/Contents/bin"), ($work + "/tools")], folder_only: [], unverified: [], hinted: [] } ] }' > "$FAKE_DISCOVER_SCENARIO"
+fresh_window
+cad_pb_set aichatv2_packsrecord_base "binpack"
+omc_run aichat.packs.record.init
+omc_control "$V_base" true
+record "make all"
+check "a base pack's folder inside an application makes no row for the application" "0|1" \
+    "$(ui_rows "$V_table" | /usr/bin/grep -c -F 'Tool.app')|$(ui_rows "$V_table" | /usr/bin/grep -c -F "$SHOWN/tools")"
+omc_run aichat.packs.record.close
+/bin/rm -f "$USER_PACKS/binpack.json"
+scenario success 0
+
+fresh_window
+cad_pb_set aichatv2_packsrecord_base "basepack"
+omc_run aichat.packs.record.init
+omc_control "$V_base" false
+record "make all"
+check "with the switch off the recording starts without the pack" "0|1" \
+    "$(/usr/bin/grep -A1 -x -- '--allow-read' "$FAKE_DISCOVER_ARGV" | /usr/bin/grep -c -x "$WORK/tools")|$(ui_rows "$V_table" | /usr/bin/grep -c -F 'settings.conf')"
+
+fresh_window
+cad_pb_set aichatv2_packsrecord_base "awaypack"
+omc_run aichat.packs.record.init
+check "with no usable pack handed over the switch is off and cannot be turned on" "None of the packs ticked in Choose Packs can be used on this Mac|false|0" \
+    "$(ui_prop "$V_base" title)|$(ui_value "$V_base")|$(ui_enabled "$V_base")"
+fresh_window
+cad_pb_set aichatv2_packsrecord_base ""
+omc_run aichat.packs.record.init
+check "  and with none ticked it says that" "No pack was ticked in Choose Packs to start with|false|0" \
+    "$(ui_prop "$V_base" title)|$(ui_value "$V_base")|$(ui_enabled "$V_base")"
+omc_run aichat.packs.record.close
+
 section "Record a Pack... in the Choose Packs sheet"
 omc_control_defaults aichat.mcp.servers
 ui_reset
 cad_journal_reset
 chains_reset
 omc_run aichat.mcp.servers.packs
+PACKS_TABLE_ID="$(cad_lib_var mcp_packs_table_view aichat.mcp.servers.library.sh)"
+omc_trigger "$PACKS_TABLE_ID" "" "$(ui_rows "$PACKS_TABLE_ID" | /usr/bin/awk -F'\t' '$3 == "basepack" { print NR - 1 }')"
+omc_run aichat.mcp.servers.packs.toggle
 omc_run aichat.mcp.servers.packs.record
+# The sheet's ticks start from the stored packs (the two saved above), so those go along too.
+check "the packs ticked in the sheet go with it: the stored ones and the one just ticked, which is not stored" "my-build-tools,on-top,basepack|" \
+    "$(cad_pb_get aichatv2_packsrecord_base)|$(cad_call mcp_prefs_array_list servers/local/packs | /usr/bin/grep -x basepack)"
+cad_pb_set aichatv2_packsrecord_base ""
 check "the sheet goes"                   "1" "$(cad_has "$(cad_journal omc_window)" 'omc_dismiss_modal')"
 check "the Record a Pack window is asked for" "1" "$(chain_asked aichat.packs.record)"
 check "  and told which window to refresh" "$OMC_ACTIONUI_WINDOW_UUID" "$(cad_pb_get aichatv2_packsrecord_parent)"

@@ -13,6 +13,7 @@ record_command_view=701
 record_folder_view=702
 record_start_view=704
 record_stop_view=705
+record_base_view=708
 record_status_view=706
 record_progress_view=707
 record_table_view=710
@@ -30,6 +31,10 @@ record_seed_packs="$OMC_APP_BUNDLE_PATH/Contents/Resources/SandboxPacks"
 # The Agentic Session Tools window Record a Pack... was clicked in, handed to the next Record a
 # Pack window to open; that window keeps it under its own key and refreshes it after a save.
 RECORD_PARENT_KEY="aichatv2_packsrecord_parent"
+# The packs ticked in the Choose Packs sheet when Record a Pack... was clicked there, as ids
+# with "," between, handed over the same way: the recording can be made on top of them, and the
+# pack saved then names them as the packs it uses.
+RECORD_BASE_KEY="aichatv2_packsrecord_base"
 
 # record_state_file <window>  ->  what the window's last recording found (sandbox_packs_record.py).
 record_state_file() {
