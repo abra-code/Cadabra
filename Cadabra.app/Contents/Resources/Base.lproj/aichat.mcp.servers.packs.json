@@ -30,6 +30,7 @@
     },
     {
       "type": "Text",
+      "id": 606,
       "properties": {
         "text": "A pack is a set of folders for one kind of work. Tick the packs whose folders the tools on this Mac may use. Select a pack to see what it holds; nothing changes until you click Use These Packs.",
         "foregroundStyle": "secondary",

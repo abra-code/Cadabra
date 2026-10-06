@@ -644,9 +644,35 @@ mcp_packs_show() {
     "$dialog" "$1" $mcp_packs_preview_view "$(mcp_packs_view preview --list "$list" --id="$3")"
 }
 
-# mcp_packs_forget <window_uuid>  ->  the sheet's two files go.
+# The sheet also opens from a chat window (aichat.chat.packs.sh), where Use These Packs has the
+# window's running tools follow at once. A third file says the sheet is that one.
+mcp_packs_chat_file() {
+    cadabra_run_file "tools-packs.$1.chat"
+}
+
+# mcp_packs_forget <window_uuid>  ->  the sheet's files go.
 mcp_packs_forget() {
-    /bin/rm -f "$(mcp_packs_list_file "$1")" "$(mcp_packs_ticked_file "$1")"
+    /bin/rm -f "$(mcp_packs_list_file "$1")" "$(mcp_packs_ticked_file "$1")" "$(mcp_packs_chat_file "$1")"
+}
+
+# mcp_packs_sheet_open <window_uuid>  ->  0 with the Choose Packs sheet up over the window, its
+# draft the stored packs and its first pack selected, so the preview is never empty. 1 when the
+# packs could not be listed, which an alert has said.
+mcp_packs_sheet_open() {
+    local list="$(mcp_packs_list_file "$1")"
+    mcp_packs_view open --prefs "$mcp_prefs" --bundle "$OMC_APP_BUNDLE_PATH" \
+        --list "$list" --ticked "$(mcp_packs_ticked_file "$1")"
+    local status=$?
+    if [ "$status" -ne 0 ]; then
+        mcp_packs_forget "$1"
+        "$alert" --level "stop" --title "$APPLET_NAME" --ok "OK" \
+            "The sandbox packs could not be listed. Check that ~/Library/Application Support/Cadabra is writable."
+        return 1
+    fi
+    "$dialog" "$1" omc_window omc_present_modal "aichat.mcp.servers.packs"
+    local first="$(/usr/bin/jq -r '.[0].id // empty' "$list" 2>/dev/null)"
+    mcp_packs_show "$1" 0 "$first"
+    return 0
 }
 
 # mcp_prefs_set_packs <ids, one per line>  ->  0 once /servers/local/packs holds exactly them.

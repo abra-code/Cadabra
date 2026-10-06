@@ -198,6 +198,7 @@ allow_folder_agent_pid() {
 # say). Its tooltip lists the folders already allowed for the window.
 allow_folder_button() {
     "$dialog" "$1" "$allow_folder_button_id" omc_remove_element 2>/dev/null
+    "$dialog" "$1" "$allow_packs_button_id" omc_remove_element 2>/dev/null
     allow_folder_applies "$1"
     local _applies=$?
     if [ "$_applies" -ne 0 ]; then
@@ -215,6 +216,11 @@ allow_folder_button() {
     fi
     "$dialog" "$1" "$allow_folder_slot_id" omc_insert_element "{\"type\":\"Button\",\"id\":$allow_folder_button_id,\"properties\":{\"title\":\"Allow a Folder...\",\"systemImage\":\"folder.badge.plus\",\"buttonStyle\":\"bordered\",\"controlSize\":\"small\",\"actionID\":\"aichat.chat.allow.folder\"}}"
     allow_folder_button_help "$1"
+    allow_packs_applies "$1"
+    local _packs=$?
+    if [ "$_packs" -eq 0 ]; then
+        "$dialog" "$1" "$allow_folder_slot_id" omc_insert_element "{\"type\":\"Button\",\"id\":$allow_packs_button_id,\"properties\":{\"title\":\"Allow Packs...\",\"systemImage\":\"shippingbox\",\"buttonStyle\":\"bordered\",\"controlSize\":\"small\",\"padding\":{\"leading\":6},\"help\":\"Choose the sandbox packs, sets of folders for one kind of work, that the tools on this Mac may use. This conversation follows from your next message, and so does every new one.\",\"actionID\":\"aichat.chat.packs\"}}"
+    fi
     return 0
 }
 
@@ -298,8 +304,16 @@ allow_folder_apply() {
     fi
     if [ -z "$_after" ] || [ "$_after" != "$_before" ]; then
         /bin/rm -f "$_next"
-        allow_folder_error="The tools could not be prepared with this folder (servers before: ${_before:-none}; after: ${_after:-none})."
+        allow_folder_error="The tools could not be prepared again (servers before: ${_before:-none}; after: ${_after:-none})."
         return 1
+    fi
+    # Nothing to tell the agent when the config comes out as it is (the profile's name follows
+    # its content, so the same config means the same folders).
+    /usr/bin/cmp -s "$_next" "$_config"
+    local _differs=$?
+    if [ "$_differs" -eq 0 ]; then
+        /bin/rm -f "$_next"
+        return 0
     fi
     local _pid="$(allow_folder_agent_pid "$1")"
     if [ -z "$_pid" ]; then
@@ -334,6 +348,78 @@ allow_folder_apply() {
     fi
     /bin/rm -f "$_kept"
     echo "allow folder: window $1 config regenerated, SIGHUP to mlx-agent $_pid"
+    return 0
+}
+
+# ALLOW PACKS... IN A CHAT WINDOW. The sandbox packs are one setting of the application, not the
+# window's: the button beside Allow a Folder... opens the Choose Packs sheet of Agentic Session
+# Tools over the chat window (aichat.chat.packs.sh), and Use These Packs stores the ticks as it
+# does there. What differs is that the window's tools then follow at once, by the same way a
+# folder allowed for the window takes: the config generated again, and SIGHUP to the agent.
+# Other windows that are open keep what they have until their tools are next started.
+allow_packs_button_id=567
+# The sheet's Record a Pack... button and its line of introduction (aichat.mcp.servers.packs.json).
+allow_packs_record_id=604
+allow_packs_intro_id=606
+
+# allow_packs_applies <window>  ->  0 when packs can be chosen from the window: a folder can be
+# allowed for it and the Local server, the one that packs widen, is among its servers.
+allow_packs_applies() {
+    allow_folder_applies "$1"
+    local _applies=$?
+    if [ "$_applies" -ne 0 ]; then
+        return 1
+    fi
+    case " $(_allow_folder_server_names "$(allow_folder_config "$1")") " in
+        *" local "*) return 0 ;;
+    esac
+    return 1
+}
+
+# _allow_packs_sorted <ids>  ->  the ids on one line, in order.
+_allow_packs_sorted() {
+    printf '%s\n' $1 | /usr/bin/sort | /usr/bin/tr '\n' ' '
+}
+
+# allow_packs_apply <window> <ids before> <ids now>  ->  0 when the window's tools will run with
+# the packs now stored, 1 when they could not be started again: the stored packs are then put
+# back as they were before, and an alert says so.
+#
+# The stored packs being the ones ticked does not mean the window runs with them: they may have
+# been changed in Agentic Session Tools since the window's tools started. So the config is
+# always generated again, and allow_folder_apply leaves the agent alone when it comes out the
+# same.
+#
+# The window gets a list of its own folders, an empty one when it had none: the generator names
+# replay's profile after its content only for a window with a list, and the agent restarts a
+# server only when its command line changed.
+allow_packs_apply() {
+    local _file="$(allow_folder_file "$1")"
+    local _made=0
+    if [ ! -f "$_file" ]; then
+        /bin/mkdir -p "$(aichat_session_config_dir "$1")" 2>/dev/null
+        printf '{}\n' > "$_file"
+        _made=1
+    fi
+    allow_folder_apply "$1"
+    local _applied=$?
+    if [ "$_applied" -ne 0 ]; then
+        echo "choose packs: not applied (status $_applied): $allow_folder_error"
+        mcp_prefs_set_packs "$2"
+        local _restored=$?
+        if [ "$_made" -eq 1 ]; then
+            /bin/rm -f "$_file"
+        fi
+        if [ "$_restored" -ne 0 ]; then
+            echo "choose packs: the packs stored before could not be put back (status $_restored)"
+            "$alert" --level caution --title "The packs were not changed for this conversation" --ok "OK" \
+                "$allow_folder_error The chosen packs were stored all the same, and the ones before could not be put back: new conversations use what Choose Packs... in Agentic Session Tools shows."
+            return 1
+        fi
+        "$alert" --level caution --title "The packs were not changed" --ok "OK" "$allow_folder_error"
+        return 1
+    fi
+    echo "choose packs: window $1 now runs with: $(_allow_packs_sorted "$3")"
     return 0
 }
 

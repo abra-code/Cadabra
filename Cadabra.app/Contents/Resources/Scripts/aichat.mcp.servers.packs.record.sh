@@ -12,6 +12,12 @@ echo "[$(/usr/bin/basename "$0")]"
 
 window_uuid="$OMC_ACTIONUI_WINDOW_UUID"
 
+# Not from the sheet a chat window opened: the button is hidden there, but only once the sheet
+# is up.
+if [ -f "$(mcp_packs_chat_file "$window_uuid")" ]; then
+    exit 0
+fi
+
 base="$(mcp_packs_view chosen --list "$(mcp_packs_list_file "$window_uuid")" \
     --ticked "$(mcp_packs_ticked_file "$window_uuid")" 2>/dev/null | /usr/bin/tr '\n' ',')"
 pb_set "$RECORD_BASE_KEY" "${base%,}"

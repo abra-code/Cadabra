@@ -319,12 +319,14 @@ if mac_server_on("local"):
         if profile_read_write:
             sandbox_profile["read_write"] = profile_read_write
         profile_text = json.dumps(sandbox_profile, indent=2)
-        # With the window's own folders the profile gets a name of its own, from its content:
-        # mlx-agent restarts a server on a reload only when its command line changed, and replay
-        # reads the profile once, at its start. It also leaves the profile a running session's
-        # replay may still be about to read untouched until the new config replaces the old.
+        # For a window with a list of its own (even an empty one: the window's sandbox packs
+        # were changed during its conversation) the profile gets a name of its own, from its
+        # content: mlx-agent restarts a server on a reload only when its command line changed,
+        # and replay reads the profile once, at its start. It also leaves the profile a running
+        # session's replay may still be about to read untouched until the new config replaces
+        # the old.
         profile_name = "mcp-replay-sandbox.json"
-        if window_read_only or window_read_write:
+        if box.window_folders:
             profile_name = "mcp-replay-sandbox-%s.json" % hashlib.sha256(profile_text.encode("utf-8")).hexdigest()[:12]
         sandbox_profile_path = os.path.join(session_dir, profile_name)
         with open(sandbox_profile_path, "w") as profile_file:

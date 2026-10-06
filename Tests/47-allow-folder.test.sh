@@ -257,7 +257,7 @@ check "the button goes into the model bar's slot" "1" "$(cad_journal 548 | /usr/
 check "  with its plain tooltip"               "1" "$(cad_has "$(ui_prop 549 help)" "one more folder")"
 cad_pb_set aichatv2_agent_w1 "opencode"
 allow allow_folder_button w1
-check "an external agent's window: taken out, not put back" "2|1" "$(cad_journal 549 | /usr/bin/grep -c omc_remove_element)|$(cad_journal 548 | /usr/bin/grep -c omc_insert_element)"
+check "an external agent's window: taken out, not put back" "2|1" "$(cad_journal 549 | /usr/bin/grep -c omc_remove_element)|$(cad_journal 548 | /usr/bin/grep -c 'omc_insert_element {"type":"Button","id":549')"
 cad_pb_set aichatv2_agent_w1 ""
 allow allow_folder_button w1
 

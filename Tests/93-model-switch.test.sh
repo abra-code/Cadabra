@@ -36,7 +36,7 @@ lib() { cad_call_lib aichat.library.sh "$@"; }
 # The loading overlay is inserted into declared slot 550 and removed again, so its own id only
 # exists at runtime. Declared here rather than silently tripping the undeclared-id check.
 # The same for the Allow a Folder... button, put into slot 548 after a load and a switch.
-ui_declare_ids "$BASE_CHAT_OVERLAY_ELEM_ID" "$HL_CAD_SUMMARIZE_PICKER_ID" "$(cad_lib_var allow_folder_button_id aichat.allow.folder.library.sh)"
+ui_declare_ids "$BASE_CHAT_OVERLAY_ELEM_ID" "$HL_CAD_SUMMARIZE_PICKER_ID" "$(cad_lib_var allow_folder_button_id aichat.allow.folder.library.sh)" "$(cad_lib_var allow_packs_button_id aichat.allow.folder.library.sh)"
 
 # ---------------------------------------------------------------------------
 # Fixtures: models that EXIST, because model_engine tests the filesystem rather than the name.
