@@ -1,0 +1,95 @@
+{
+  "type": "VStack",
+  "properties": {
+    "spacing": 12,
+    "alignment": "leading",
+    "padding": "default",
+    "frame": { "width": 760, "height": 460 }
+  },
+  "children": [
+    {
+      "type": "Text",
+      "properties": { "text": "Sandbox Packs", "font": "headline" }
+    },
+    {
+      "type": "Text",
+      "properties": {
+        "text": "A pack is a set of folders for one kind of work. Tick the packs whose folders the tools on this Mac may use. Select a pack to see what it holds; nothing changes until you click Use These Packs.",
+        "foregroundStyle": "secondary",
+        "font": "callout",
+        "frame": { "maxWidth": "infinity", "alignment": "leading" }
+      }
+    },
+    {
+      "type": "HStack",
+      "properties": {
+        "spacing": 12,
+        "alignment": "top",
+        "frame": { "maxWidth": "infinity", "maxHeight": "infinity" }
+      },
+      "children": [
+        {
+          "type": "Table",
+          "id": 600,
+          "properties": {
+            "columns": ["", "Pack"],
+            "columnTypes": [
+              {
+                "viewType": "Button",
+                "dataInterpretation": "systemName",
+                "actionContext": "rowIndex",
+                "actionID": "aichat.mcp.servers.packs.toggle"
+              },
+              { "viewType": "Text" }
+            ],
+            "widths": [28, 240],
+            "minWidths": [28, 160],
+            "actionID": "aichat.mcp.servers.packs.selection.changed",
+            "frame": { "minWidth": 290, "maxWidth": 290, "maxHeight": "infinity" }
+          }
+        },
+        {
+          "type": "ScrollView",
+          "properties": {
+            "frame": { "maxWidth": "infinity", "maxHeight": "infinity", "alignment": "topLeading" }
+          },
+          "content": {
+            "type": "RichText",
+            "id": 601,
+            "properties": {
+              "markdown": "",
+              "remoteImages": "never",
+              "frame": { "maxWidth": "infinity", "alignment": "leading" }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "type": "HStack",
+      "children": [
+        { "type": "Spacer" },
+        {
+          "type": "Button",
+          "id": 602,
+          "properties": {
+            "title": "Cancel",
+            "buttonStyle": "bordered",
+            "keyboardShortcut": { "key": "escape" },
+            "actionID": "aichat.mcp.servers.packs.cancel"
+          }
+        },
+        {
+          "type": "Button",
+          "id": 603,
+          "properties": {
+            "title": "Use These Packs",
+            "buttonStyle": "borderedProminent",
+            "keyboardShortcut": { "key": "return" },
+            "actionID": "aichat.mcp.servers.packs.use"
+          }
+        }
+      ]
+    }
+  ]
+}

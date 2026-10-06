@@ -17,9 +17,7 @@ NETWORK_TOGGLE_ID=240
 PDF_TOGGLE_ID=260
 PDF_WRITABLE_TOGGLE_ID=261
 PROJECT_FIELD_ID=310
-RW_TABLE_ID=320
 RW_REMOVE_BTN_ID=322
-RO_TABLE_ID=330
 RO_REMOVE_BTN_ID=332
 
 mcp_prefs_init_if_missing
@@ -55,16 +53,10 @@ fi
 project_path=$(mcp_prefs_get_string servers/local/project)
 "$dialog" "$window_uuid" $PROJECT_FIELD_ID "$project_path"
 
-# Configure single-column tables
-"$dialog" "$window_uuid" $RW_TABLE_ID omc_table_set_columns "Path"
-"$dialog" "$window_uuid" $RW_TABLE_ID omc_table_set_column_widths 560
-"$dialog" "$window_uuid" $RO_TABLE_ID omc_table_set_columns "Path"
-"$dialog" "$window_uuid" $RO_TABLE_ID omc_table_set_column_widths 560
-
-# Populate path tables from prefs. The read-write table also shows the session
-# $TMPDIR as a removable (but unstored) row; see mcp_refresh_rw_table.
-mcp_refresh_rw_table "$window_uuid" $RW_TABLE_ID
-mcp_refresh_path_table "$window_uuid" $RO_TABLE_ID servers/local/allowed-read
+# Populate the path tables and the Sandbox packs line from prefs: the user's own folders, the
+# session $TMPDIR as a removable (but unstored) row, and what the ticked sandbox packs grant; see
+# mcp_refresh_granted.
+mcp_refresh_granted "$window_uuid"
 
 # - buttons start disabled until the user picks a row
 "$dialog" "$window_uuid" $RW_REMOVE_BTN_ID omc_disable

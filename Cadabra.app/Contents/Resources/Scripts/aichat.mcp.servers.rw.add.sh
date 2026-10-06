@@ -7,7 +7,6 @@ source "$OMC_APP_BUNDLE_PATH/Contents/Resources/Scripts/aichat.mcp.servers.libra
 echo "[$(/usr/bin/basename "$0")]"
 
 window_uuid="$OMC_ACTIONUI_WINDOW_UUID"
-RW_TABLE_ID=320
 
 mcp_prefs_init_if_missing
 
@@ -24,9 +23,9 @@ chosen_real=$(cd "$chosen" 2>/dev/null && pwd -P)
 session_tmpdir=$(mcp_session_tmpdir)
 if [ -n "$session_tmpdir" ] && [ "$chosen_real" = "$session_tmpdir" ]; then
     mcp_prefs_set_bool servers/local/include-session-tmpdir true
-    mcp_refresh_rw_table "$window_uuid" $RW_TABLE_ID
+    mcp_refresh_granted "$window_uuid"
 elif mcp_prefs_array_append servers/local/allowed-write "$chosen"; then
-    mcp_refresh_rw_table "$window_uuid" $RW_TABLE_ID
+    mcp_refresh_granted "$window_uuid"
 else
     echo "already present: $chosen"
 fi

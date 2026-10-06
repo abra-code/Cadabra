@@ -130,6 +130,8 @@ pb_set "aichatv2_toolsrunin_${window_uuid}" ""
 /bin/rm -f "$(cadabra_run_file "runin-places.${window_uuid}")"
 # And an information sheet's file, when the window goes with one up (mcp_info_sheet).
 /bin/rm -f "$(mcp_info_sheet_file "$window_uuid")"
+# And the Choose Packs sheet's, with its draft of ticks.
+mcp_packs_forget "$window_uuid"
 
 mcp_prefs_set_bool   allow-network          "${OMC_ACTIONUI_VIEW_240_VALUE:-true}"
 mcp_prefs_set_bool   servers/time/enabled   "${OMC_ACTIONUI_VIEW_210_VALUE:-true}"

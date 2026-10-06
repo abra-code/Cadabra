@@ -90,6 +90,11 @@ NEVER_GRANT = (
 )
 
 
+def is_pack_id(text):
+    """True for text that can be a pack's id: lowercase letters, digits and "-"."""
+    return isinstance(text, str) and bool(_ID_PATTERN.match(text))
+
+
 class PackError(Exception):
     """Why a pack file is not a pack. The text is shown to the user."""
 
@@ -372,7 +377,7 @@ def load_pack(path, source, values):
     name = os.path.basename(path)
     result = PackResult(name[:-5] if name.endswith(".json") else name, source, path)
     try:
-        if not _ID_PATTERN.match(result.id):
+        if not is_pack_id(result.id):
             raise PackError("its file name is not a pack id (lowercase letters, digits and -)")
         with open(path, "rb") as fh:
             raw = fh.read(_MAX_PACK_BYTES + 1)
@@ -410,24 +415,16 @@ def all_packs(bundle, user_dir="", project="", given_tokens=None):
     return list(packs.values())
 
 
-def grants(ticked, bundle, user_dir="", project="", given_tokens=None):
-    """What the ticked packs grant here: (read_only, read_write, read_only_files, messages).
-    The lists are true paths without repeats, a folder some pack grants read-write left out of
+def sourced_grants(ticked, packs):
+    """What the ticked ones of `packs` (PackResults) grant, with the packs each path comes from:
+    (read_only, read_write, read_only_files, messages). The first three are dicts in the order
+    granted, true path -> [pack title, ...]; a folder some pack grants read-write is left out of
     read_only. messages has a line for each ticked pack that grants nothing, and for each path
     of a usable one that is left out."""
-    read_only, read_write, files, messages = [], [], [], []
-    if not isinstance(ticked, list):
-        return read_only, read_write, files, messages
-    wanted = []
-    for pack_id in ticked:
-        if isinstance(pack_id, str) and pack_id not in wanted:
-            wanted.append(pack_id)
-    if not wanted:
-        # Nothing ticked, which is most sessions: no pack is read and no tool is asked.
-        return read_only, read_write, files, messages
-    packs = {pack.id: pack for pack in all_packs(bundle, user_dir, project, given_tokens)}
-    for pack_id in wanted:
-        pack = packs.get(pack_id)
+    read_only, read_write, files, messages = {}, {}, {}, []
+    by_id = {pack.id: pack for pack in packs}
+    for pack_id in ticked_ids(ticked):
+        pack = by_id.get(pack_id)
         if pack is None:
             messages.append(f"sandbox pack {pack_id!r} is ticked but there is no such pack")
             continue
@@ -436,11 +433,36 @@ def grants(ticked, bundle, user_dir="", project="", given_tokens=None):
             continue
         for written, reason in pack.dropped:
             messages.append(f"sandbox pack {pack_id!r}: {written} left out ({reason})")
-        read_write += [path for path in pack.read_write if path not in read_write]
-        read_only += [path for path in pack.read_only if path not in read_only]
-        files += [path for path in pack.read_only_files if path not in files]
-    read_only = [path for path in read_only if path not in read_write]
+        for granted, paths in ((read_write, pack.read_write), (read_only, pack.read_only),
+                               (files, pack.read_only_files)):
+            for path in paths:
+                granted.setdefault(path, []).append(pack.title)
+    for path in read_write:
+        read_only.pop(path, None)
     return read_only, read_write, files, messages
+
+
+def ticked_ids(ticked):
+    """The pack ids in a stored list of ticked packs, each once; [] for anything that is not a
+    list (a hand-edited settings file)."""
+    wanted = []
+    if isinstance(ticked, list):
+        for pack_id in ticked:
+            if isinstance(pack_id, str) and pack_id not in wanted:
+                wanted.append(pack_id)
+    return wanted
+
+
+def grants(ticked, bundle, user_dir="", project="", given_tokens=None):
+    """What the ticked packs grant here: (read_only, read_write, read_only_files, messages).
+    The lists are true paths without repeats, a folder some pack grants read-write left out of
+    read_only. messages is sourced_grants'."""
+    if not ticked_ids(ticked):
+        # Nothing ticked, which is most sessions: no pack is read and no tool is asked.
+        return [], [], [], []
+    read_only, read_write, files, messages = sourced_grants(
+        ticked, all_packs(bundle, user_dir, project, given_tokens))
+    return list(read_only), list(read_write), list(files), messages
 
 
 def _given_tokens(words):

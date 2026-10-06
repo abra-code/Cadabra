@@ -4,7 +4,8 @@
 # dialog owns (stashed window-scoped by init) so nothing inherits it. Harmless no-op
 # when the dialog was opened from the Tools menu (nothing queued).
 
-source "$OMC_APP_BUNDLE_PATH/Contents/Resources/Scripts/aichat.library.sh"
+# The servers library, for the sheets' files (mcp_info_sheet_file, mcp_packs_forget).
+source "$OMC_APP_BUNDLE_PATH/Contents/Resources/Scripts/aichat.mcp.servers.library.sh"
 
 echo "[$(/usr/bin/basename "$0")]"
 
@@ -16,4 +17,6 @@ pb_set "aichatv2_toolsrunin_${OMC_ACTIONUI_WINDOW_UUID}" ""
 /bin/rm -f "$(cadabra_run_file "runin-places.${OMC_ACTIONUI_WINDOW_UUID}")"
 # And an information sheet's file, when the window goes with one up (mcp_info_sheet).
 /bin/rm -f "$(mcp_info_sheet_file "$OMC_ACTIONUI_WINDOW_UUID")"
+# And the Choose Packs sheet's, with its draft of ticks.
+mcp_packs_forget "$OMC_ACTIONUI_WINDOW_UUID"
 pb_set "aichatv2_toolsboxpane_${OMC_ACTIONUI_WINDOW_UUID}" ""

@@ -26,8 +26,7 @@
   ],
   "notes": [
     "xcodebuild needs OTHER_SWIFT_FLAGS='$(inherited) -disable-sandbox' for code that uses Swift macros such as @State, and swift build needs --disable-sandbox: neither can start a sandbox of its own inside this one.",
-    "Not covered: a project with Swift packages built by xcodebuild, a target with an Icon Composer icon, running tests, a simulator, and signing with a certificate. Each needs more than folders.",
-    "Tried with a clean and an incremental xcodebuild build of a project with Swift, Objective-C and C++ targets, and with swift build on a small package."
+    "Not covered: a project with Swift packages built by xcodebuild, a target with an Icon Composer icon, running tests, a simulator, and signing with a certificate. Each needs more than folders."
   ],
   "recorded": {
     "by": "hand, checked with sandbox-discover and a build under replay's sandbox rules",

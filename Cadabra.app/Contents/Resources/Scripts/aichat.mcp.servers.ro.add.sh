@@ -7,7 +7,6 @@ source "$OMC_APP_BUNDLE_PATH/Contents/Resources/Scripts/aichat.mcp.servers.libra
 echo "[$(/usr/bin/basename "$0")]"
 
 window_uuid="$OMC_ACTIONUI_WINDOW_UUID"
-RO_TABLE_ID=330
 
 mcp_prefs_init_if_missing
 
@@ -18,7 +17,7 @@ chosen="$OMC_DLG_CHOOSE_OBJECT_PATH"
 chosen="${chosen%/}"
 
 if mcp_prefs_array_append servers/local/allowed-read "$chosen"; then
-    mcp_refresh_path_table "$window_uuid" $RO_TABLE_ID servers/local/allowed-read
+    mcp_refresh_granted "$window_uuid"
 else
     echo "already present: $chosen"
 fi

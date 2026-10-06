@@ -537,17 +537,28 @@ mcp_box_tools_clear() {
     pb_set "aichatv2_boxtools_$1" ""
 }
 
-# mcp_refresh_path_table <window_uuid> <table_id> <prefs_key>
-# Repopulates a single-column path table from the prefs array.
-mcp_refresh_path_table() {
-    local window_uuid="$1"
-    local table_id="$2"
-    local key="$3"
-    "$dialog" "$window_uuid" "$table_id" omc_table_remove_all_rows
-    local buffer=$(mcp_prefs_array_list "$key")
-    if [ -n "$buffer" ]; then
-        printf "%s\n" "$buffer" | "$dialog" "$window_uuid" "$table_id" omc_table_set_rows_from_stdin
+# THE FOLDERS GRANTED ON THIS MAC, as Agentic Session Tools shows them: the read-write table (320)
+# and the read-only table (330), each row a path, where it comes from and a hidden kind
+# (sandbox_packs_view.py pane): "user" for a folder of the user's own list, "session" for the
+# session's temporary folder, "pack" for one only a ticked sandbox pack grants. The - buttons
+# remove the first two kinds; a pack's folders go when the pack is unticked in Choose Packs...
+mcp_rw_table_view=320
+mcp_ro_table_view=330
+mcp_packs_summary_view=340
+# The Choose Packs sheet (aichat.mcp.servers.packs.json): its table of packs and the preview.
+mcp_packs_table_view=600
+mcp_packs_preview_view=601
+
+# mcp_packs_view <command> [options...]  ->  runs sandbox_packs_view.py; 1 when the bundled
+# Python or the script is missing.
+mcp_packs_view() {
+    local python3="$OMC_APP_BUNDLE_PATH/Contents/Library/Python/bin/python3"
+    local script="$OMC_APP_BUNDLE_PATH/Contents/Resources/Scripts/sandbox_packs_view.py"
+    if [ ! -f "$python3" ] || [ ! -f "$script" ]; then
+        echo "mcp_packs_view: bundled Python or sandbox_packs_view.py missing" >&2
+        return 1
     fi
+    "$python3" "$script" "$@"
 }
 
 # mcp_session_tmpdir  ->  canonical realpath of $TMPDIR, or empty
@@ -561,20 +572,78 @@ mcp_session_tmpdir() {
     ( cd "$TMPDIR" 2>/dev/null && pwd -P )
 }
 
-# mcp_refresh_rw_table <window_uuid> <table_id>
-# Repopulates the read-write table from the persisted allowed-write array, then
-# appends the session $TMPDIR as a synthetic (non-persisted) row when
-# include-session-tmpdir is on. The row is shown so the user can see the temp grant
-# and, by removing it, deny it — only that decision is stored, never the volatile path.
-mcp_refresh_rw_table() {
-    local window_uuid="$1"
-    local table_id="$2"
-    mcp_refresh_path_table "$window_uuid" "$table_id" servers/local/allowed-write
+# mcp_refresh_granted <window_uuid>  ->  fills both tables and the Sandbox packs line from the
+# settings. The session $TMPDIR is a row of the read-write table while include-session-tmpdir is
+# on: shown so the user can see the temp grant and, by removing it, deny it - only that decision
+# is stored, never the volatile path. 1 when the rows could not be worked out; the tables are
+# then left as they were.
+mcp_refresh_granted() {
+    local out="$(cadabra_run_file "tools-granted.$1")"
+    local tmpdir=""
     if [ "$(mcp_prefs_get_bool servers/local/include-session-tmpdir)" = "true" ]; then
-        local td=$(mcp_session_tmpdir)
-        [ -n "$td" ] && printf "%s\n" "$td" \
-            | "$dialog" "$window_uuid" "$table_id" omc_table_add_rows_from_stdin
+        tmpdir="$(mcp_session_tmpdir)"
     fi
+    mcp_packs_view pane --prefs "$mcp_prefs" --bundle "$OMC_APP_BUNDLE_PATH" --out "$out" --session-tmpdir "$tmpdir"
+    local status=$?
+    if [ "$status" -ne 0 ]; then
+        echo "mcp_refresh_granted: the granted folders could not be listed"
+        /bin/rm -f "$out.rw.tsv" "$out.ro.tsv" "$out.summary"
+        return 1
+    fi
+    "$dialog" "$1" $mcp_rw_table_view omc_table_remove_all_rows
+    if [ -s "$out.rw.tsv" ]; then
+        "$dialog" "$1" $mcp_rw_table_view omc_table_set_rows_from_stdin < "$out.rw.tsv"
+    fi
+    "$dialog" "$1" $mcp_ro_table_view omc_table_remove_all_rows
+    if [ -s "$out.ro.tsv" ]; then
+        "$dialog" "$1" $mcp_ro_table_view omc_table_set_rows_from_stdin < "$out.ro.tsv"
+    fi
+    local summary=""
+    IFS= read -r summary < "$out.summary"
+    "$dialog" "$1" $mcp_packs_summary_view "Sandbox packs: ${summary:-None}"
+    /bin/rm -f "$out.rw.tsv" "$out.ro.tsv" "$out.summary"
+    return 0
+}
+
+# THE CHOOSE PACKS SHEET keeps two files of the window's own while it is up: every pack as
+# resolved when it opened, and the ticks as a draft, stored only by Use These Packs.
+mcp_packs_list_file() {
+    cadabra_run_file "tools-packs.$1.json"
+}
+
+mcp_packs_ticked_file() {
+    cadabra_run_file "tools-packs.$1.ticked"
+}
+
+# mcp_packs_show <window_uuid> <row> <pack-id>  ->  the sheet's table from the draft, with the
+# row (0-based) selected and that pack previewed beside it.
+mcp_packs_show() {
+    local list="$(mcp_packs_list_file "$1")"
+    mcp_packs_view rows --list "$list" --ticked "$(mcp_packs_ticked_file "$1")" \
+        | "$dialog" "$1" $mcp_packs_table_view omc_table_set_rows_from_stdin
+    "$dialog" "$1" $mcp_packs_table_view omc_select_row "$2"
+    "$dialog" "$1" $mcp_packs_preview_view "$(mcp_packs_view preview --list "$list" --id="$3")"
+}
+
+# mcp_packs_forget <window_uuid>  ->  the sheet's two files go.
+mcp_packs_forget() {
+    /bin/rm -f "$(mcp_packs_list_file "$1")" "$(mcp_packs_ticked_file "$1")"
+}
+
+# mcp_prefs_set_packs <ids, one per line>  ->  0 once /servers/local/packs holds exactly them.
+mcp_prefs_set_packs() {
+    "$plister" remove "$mcp_prefs" /servers/local/packs >/dev/null 2>&1
+    "$plister" insert "packs" array "$mcp_prefs" /servers/local
+    local status=$?
+    local pack_id
+    # Pack ids are lowercase letters, digits and "-" (sandbox_packs_view.py chosen), so the
+    # lines split as words.
+    for pack_id in $1; do
+        [ "$status" -eq 0 ] || break
+        "$plister" append string "$pack_id" "$mcp_prefs" /servers/local/packs
+        status=$?
+    done
+    return "$status"
 }
 
 # ──────────────────────────────────────────────────────────────

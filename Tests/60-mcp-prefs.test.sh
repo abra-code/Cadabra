@@ -11,6 +11,16 @@
 . "$OMCTEST_TESTS/lib.test.cadabra.sh"
 
 cad_import_ids aichat.mcp.servers.init.sh MCP_
+# The two path tables are the library's (mcp_refresh_granted fills both).
+MCP_RW_TABLE_ID="$(cad_lib_var mcp_rw_table_view aichat.mcp.servers.library.sh)"
+MCP_RO_TABLE_ID="$(cad_lib_var mcp_ro_table_view aichat.mcp.servers.library.sh)"
+if [ -z "$MCP_RW_TABLE_ID" ] || [ -z "$MCP_RO_TABLE_ID" ]; then
+    printf '%s: the ids of the path tables were not found in the servers library\n' "$0" >&2
+    exit 1
+fi
+# table_paths <table-id>  ->  the paths of a path table, one per line: the first column of its
+# rows, which also carry where the folder comes from and a hidden kind.
+table_paths() { ui_rows "$1" | /usr/bin/cut -f1; }
 
 # in_list <key-path> <value>  ->  1 when the array holds exactly that value.
 # -Fx, not a substring match: "/private/tmp" and "/private/tmpfoo" are different grants.
@@ -161,18 +171,18 @@ cad_reset
 cad_call mcp_prefs_write_defaults >/dev/null 2>&1
 cad_call mcp_prefs_array_append servers/local/allowed-read /Users/Shared
 ui_reset
-cad_call mcp_refresh_path_table "$OMC_ACTIONUI_WINDOW_UUID" "$MCP_RO_TABLE_ID" servers/local/allowed-read
+cad_call mcp_refresh_granted "$OMC_ACTIONUI_WINDOW_UUID"
 # Asserted as a DELTA rather than against mcp_prefs_array_count, which is the same library
 # reading the same array - a comparison that agrees with itself by construction.
 rows_before=$(ui_row_count "$MCP_RO_TABLE_ID")
 cad_call mcp_prefs_array_append servers/local/allowed-read /Users/Shared/second
-cad_call mcp_refresh_path_table "$OMC_ACTIONUI_WINDOW_UUID" "$MCP_RO_TABLE_ID" servers/local/allowed-read
+cad_call mcp_refresh_granted "$OMC_ACTIONUI_WINDOW_UUID"
 check "one more grant is one more row" "$((rows_before + 1))" "$(ui_row_count "$MCP_RO_TABLE_ID")"
 cad_call mcp_prefs_array_remove_value servers/local/allowed-read /Users/Shared/second
-cad_call mcp_refresh_path_table "$OMC_ACTIONUI_WINDOW_UUID" "$MCP_RO_TABLE_ID" servers/local/allowed-read
+cad_call mcp_refresh_granted "$OMC_ACTIONUI_WINDOW_UUID"
 check "  and revoking is one fewer"    "$rows_before" "$(ui_row_count "$MCP_RO_TABLE_ID")"
 check "  including the one just added" "1" \
-    "$(ui_rows "$MCP_RO_TABLE_ID" | /usr/bin/grep -Fxq /Users/Shared && echo 1 || echo 0)"
+    "$(table_paths "$MCP_RO_TABLE_ID" | /usr/bin/grep -Fxq /Users/Shared && echo 1 || echo 0)"
 
 section "an emptied array leaves an empty table, not a stale one"
 # The refresh removes all rows and only then writes: a repaint that appended would leave the
@@ -187,27 +197,27 @@ while [ -n "$(cad_call mcp_prefs_array_list servers/local/allowed-read)" ]; do
     [ "$drain_guard" -gt 50 ] && break
 done
 check "the array drained rather than spun" "1" "$([ "$drain_guard" -le 50 ] && echo 1 || echo 0)"
-cad_call mcp_refresh_path_table "$OMC_ACTIONUI_WINDOW_UUID" "$MCP_RO_TABLE_ID" servers/local/allowed-read
+cad_call mcp_refresh_granted "$OMC_ACTIONUI_WINDOW_UUID"
 check "no rows remain" "0" "$(ui_row_count "$MCP_RO_TABLE_ID")"
 
 section "the read-write table shows the session temp as a row it never stores"
 cad_reset
 cad_call mcp_prefs_write_defaults >/dev/null 2>&1
 ui_reset
-cad_call mcp_refresh_rw_table "$OMC_ACTIONUI_WINDOW_UUID" "$MCP_RW_TABLE_ID"
+cad_call mcp_refresh_granted "$OMC_ACTIONUI_WINDOW_UUID"
 check "the stored path is shown"  "1" \
-    "$(ui_rows "$MCP_RW_TABLE_ID" | /usr/bin/grep -Fxq /private/tmp && echo 1 || echo 0)"
+    "$(table_paths "$MCP_RW_TABLE_ID" | /usr/bin/grep -Fxq /private/tmp && echo 1 || echo 0)"
 check "the session temp is shown" "1" \
-    "$(ui_rows "$MCP_RW_TABLE_ID" | /usr/bin/grep -Fxq "$td" && echo 1 || echo 0)"
+    "$(table_paths "$MCP_RW_TABLE_ID" | /usr/bin/grep -Fxq "$td" && echo 1 || echo 0)"
 check "  but was never stored"    "0" "$(in_list servers/local/allowed-write "$td")"
 check "two rows, no more"         "2" "$(ui_row_count "$MCP_RW_TABLE_ID")"
 
 section "revoking the session temp hides the row"
 cad_call mcp_prefs_set_bool servers/local/include-session-tmpdir false
 ui_reset
-cad_call mcp_refresh_rw_table "$OMC_ACTIONUI_WINDOW_UUID" "$MCP_RW_TABLE_ID"
+cad_call mcp_refresh_granted "$OMC_ACTIONUI_WINDOW_UUID"
 check "only the stored path is left" "1" "$(ui_row_count "$MCP_RW_TABLE_ID")"
-check "  and it is the stored one"   "/private/tmp" "$(ui_rows "$MCP_RW_TABLE_ID")"
+check "  and it is the stored one"   "/private/tmp" "$(table_paths "$MCP_RW_TABLE_ID")"
 
 section "cumulative: no handler wrote to a view id the window does not declare"
 # Cumulative across the whole file, which is what makes one check at the end meaningful.

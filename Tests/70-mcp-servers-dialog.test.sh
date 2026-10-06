@@ -13,6 +13,16 @@
 . "$OMCTEST_TESTS/lib.test.cadabra.sh"
 
 cad_import_ids aichat.mcp.servers.init.sh MCP_
+# The two path tables are the library's (mcp_refresh_granted fills both).
+MCP_RW_TABLE_ID="$(cad_lib_var mcp_rw_table_view aichat.mcp.servers.library.sh)"
+MCP_RO_TABLE_ID="$(cad_lib_var mcp_ro_table_view aichat.mcp.servers.library.sh)"
+if [ -z "$MCP_RW_TABLE_ID" ] || [ -z "$MCP_RO_TABLE_ID" ]; then
+    printf '%s: the ids of the path tables were not found in the servers library\n' "$0" >&2
+    exit 1
+fi
+# table_paths <table-id>  ->  the paths of a path table, one per line: the first column of its
+# rows, which also carry where the folder comes from and a hidden kind.
+table_paths() { ui_rows "$1" | /usr/bin/cut -f1; }
 
 # The window as it opens, then the one thing each section is about. Blanking every control
 # with omc_reset_controls would describe a window no user has ever seen - six toggles off is
@@ -70,16 +80,17 @@ check "pdf shows on"     "true" "$(ui_value "$MCP_PDF_TOGGLE_ID")"
 check "pdf editing shows on" "true" "$(ui_value "$MCP_PDF_WRITABLE_TOGGLE_ID")"
 check "network shows on" "true" "$(ui_value "$MCP_NETWORK_TOGGLE_ID")"
 check "the project field is empty" "" "$(ui_value "$MCP_PROJECT_FIELD_ID")"
-check "both path tables are titled" "Path" "$(ui_columns "$MCP_RW_TABLE_ID")"
-check "  the read-only one too"     "Path" "$(ui_columns "$MCP_RO_TABLE_ID")"
+check "a folder of the user's own list says so" "/private/tmp	You	user" "$(ui_rows "$MCP_RW_TABLE_ID" | /usr/bin/grep '^/private/tmp	')"
+check "  and the session's temporary folder too"  "This session	session" "$(ui_rows "$MCP_RW_TABLE_ID" | /usr/bin/grep -v '^/private/tmp	' | /usr/bin/cut -f2-)"
+check "no sandbox pack is chosen"                 "Sandbox packs: None" "$(ui_value "$(cad_lib_var mcp_packs_summary_view aichat.mcp.servers.library.sh)")"
 check "the read-write table is populated" "2" "$(ui_row_count "$MCP_RW_TABLE_ID")"
 # Named paths rather than a count: the seeded read-only list is guarded by [ -d ] per entry, so
 # its length is machine-dependent, but /usr/share exists everywhere and /usr/bin must never be
 # in it (the sandbox baseline grants the system bin dirs, this array does not).
 check "a system data dir is a row"   "1" \
-    "$(ui_rows "$MCP_RO_TABLE_ID" | /usr/bin/grep -Fxq /usr/share && echo 1 || echo 0)"
+    "$(table_paths "$MCP_RO_TABLE_ID" | /usr/bin/grep -Fxq /usr/share && echo 1 || echo 0)"
 check "  and a system bin dir is not" "0" \
-    "$(ui_rows "$MCP_RO_TABLE_ID" | /usr/bin/grep -Fxq /usr/bin && echo 1 || echo 0)"
+    "$(table_paths "$MCP_RO_TABLE_ID" | /usr/bin/grep -Fxq /usr/bin && echo 1 || echo 0)"
 check "the - buttons start disabled" "0" "$(ui_enabled "$MCP_RW_REMOVE_BTN_ID")"
 check "  both of them"               "0" "$(ui_enabled "$MCP_RO_REMOVE_BTN_ID")"
 
@@ -171,7 +182,7 @@ check_status "the add handler ran" 0
 check "the folder is granted" "1" \
     "$(cad_call mcp_prefs_array_list servers/local/allowed-read | /usr/bin/grep -Fxq "$OMCTEST_WORK/grant me" && echo 1 || echo 0)"
 check "  and appears in the table" "1" \
-    "$(ui_rows "$MCP_RO_TABLE_ID" | /usr/bin/grep -Fxq "$OMCTEST_WORK/grant me" && echo 1 || echo 0)"
+    "$(table_paths "$MCP_RO_TABLE_ID" | /usr/bin/grep -Fxq "$OMCTEST_WORK/grant me" && echo 1 || echo 0)"
 
 section "a trailing slash is stripped before storing"
 # Otherwise "/foo" and "/foo/" are two different entries in a list whose whole purpose is to
@@ -200,7 +211,7 @@ check_status "the remove handler ran" 0
 check "the grant is gone" "0" \
     "$(cad_call mcp_prefs_array_list servers/local/allowed-read | /usr/bin/grep -Fxq "$OMCTEST_WORK/grant me" && echo 1 || echo 0)"
 check "  and so is the row" "0" \
-    "$(ui_rows "$MCP_RO_TABLE_ID" | /usr/bin/grep -Fxq "$OMCTEST_WORK/grant me" && echo 1 || echo 0)"
+    "$(table_paths "$MCP_RO_TABLE_ID" | /usr/bin/grep -Fxq "$OMCTEST_WORK/grant me" && echo 1 || echo 0)"
 check "the - button disables itself" "0" "$(ui_enabled "$MCP_RO_REMOVE_BTN_ID")"
 
 section "revoking with no selection does nothing at all"

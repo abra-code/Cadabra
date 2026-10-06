@@ -363,6 +363,30 @@
                   },
                   "children": [
                     {
+                      "type": "HStack",
+                      "properties": { "spacing": 8 },
+                      "children": [
+                        {
+                          "type": "Text",
+                          "id": 340,
+                          "properties": {
+                            "text": "Sandbox packs: None",
+                            "help": "Sets of folders for one kind of work, such as building with Xcode. Their folders are listed below, marked with the pack they come from.",
+                            "frame": { "maxWidth": "infinity", "alignment": "leading" }
+                          }
+                        },
+                        {
+                          "type": "Button",
+                          "id": 341,
+                          "properties": {
+                            "title": "Choose Packs...",
+                            "actionID": "aichat.mcp.servers.packs",
+                            "help": "Choose sets of folders to allow, and see what each holds"
+                          }
+                        }
+                      ]
+                    },
+                    {
                       "type": "VStack",
                       "properties": {
                         "spacing": 4,
@@ -378,7 +402,9 @@
                           "type": "Table",
                           "id": 320,
                           "properties": {
-                            "columns": ["Path"],
+                            "columns": ["Path", "From"],
+                            "widths": [230, 130],
+                            "minWidths": [120, 80],
                             "actionID": "aichat.mcp.servers.rw.selection.changed",
                             "frame": { "minHeight": 80, "maxWidth": "infinity", "maxHeight": "infinity" }
                           }
@@ -431,7 +457,9 @@
                           "type": "Table",
                           "id": 330,
                           "properties": {
-                            "columns": ["Path"],
+                            "columns": ["Path", "From"],
+                            "widths": [230, 130],
+                            "minWidths": [120, 80],
                             "actionID": "aichat.mcp.servers.ro.selection.changed",
                             "frame": { "minHeight": 80, "maxWidth": "infinity", "maxHeight": "infinity" }
                           }

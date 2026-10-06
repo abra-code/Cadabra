@@ -21,9 +21,7 @@ NETWORK_TOGGLE_ID=240
 PDF_TOGGLE_ID=260
 PDF_WRITABLE_TOGGLE_ID=261
 PROJECT_FIELD_ID=310
-RW_TABLE_ID=320
 RW_REMOVE_BTN_ID=322
-RO_TABLE_ID=330
 RO_REMOVE_BTN_ID=332
 BOX_LOCAL_TOGGLE_ID=522
 BOX_CONFINE_TOGGLE_ID=523
@@ -67,8 +65,8 @@ if [ "$(pb_get "aichatv2_toolsrunin_${window_uuid}")" = "yes" ]; then
 fi
 mcp_snapshot_apply "$window_uuid" "$snapshot_place" false show
 
-mcp_refresh_rw_table "$window_uuid" $RW_TABLE_ID
-mcp_refresh_path_table "$window_uuid" $RO_TABLE_ID servers/local/allowed-read
+# The ticked sandbox packs went with /servers, so their folders leave the tables too.
+mcp_refresh_granted "$window_uuid"
 
 "$dialog" "$window_uuid" $RW_REMOVE_BTN_ID omc_disable
 "$dialog" "$window_uuid" $RO_REMOVE_BTN_ID omc_disable
