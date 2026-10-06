@@ -68,6 +68,15 @@
     {
       "type": "HStack",
       "children": [
+        {
+          "type": "Button",
+          "id": 604,
+          "properties": {
+            "title": "Record a Pack...",
+            "actionID": "aichat.mcp.servers.packs.record",
+            "help": "Make a pack of your own by running a command and recording the folders it needs. Closes this sheet without changing the chosen packs."
+          }
+        },
         { "type": "Spacer" },
         {
           "type": "Button",

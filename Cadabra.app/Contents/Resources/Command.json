@@ -620,6 +620,67 @@
       "NAME" : "Cadabra"
     },
     {
+      "COMMAND_ID" : "aichat.mcp.servers.packs.record",
+      "EXECUTION_MODE" : "exe_script_file",
+      "NAME" : "Cadabra"
+    },
+    {
+      "ACTIONUI_WINDOW" : {
+        "END_CANCEL_SUBCOMMAND_ID" : "aichat.packs.record.close",
+        "INIT_SUBCOMMAND_ID" : "aichat.packs.record.init",
+        "IS_BLOCKING" : false,
+        "JSON_NAME" : "aichat.packs.record",
+        "WINDOW_TITLE" : "Record a Sandbox Pack"
+      },
+      "COMMAND_ID" : "aichat.packs.record",
+      "EXECUTION_MODE" : "exe_shell_script",
+      "NAME" : "Cadabra"
+    },
+    {
+      "COMMAND_ID" : "aichat.packs.record.init",
+      "EXECUTION_MODE" : "exe_script_file",
+      "NAME" : "Cadabra"
+    },
+    {
+      "CHOOSE_FOLDER_DIALOG" : {
+        "MESSAGE" : "Choose the folder to run the command in",
+        "SHOW_INVISIBLE_ITEMS" : true
+      },
+      "COMMAND_ID" : "aichat.packs.record.choose.folder",
+      "EXECUTION_MODE" : "exe_script_file",
+      "NAME" : "Cadabra"
+    },
+    {
+      "COMMAND_ID" : "aichat.packs.record.start",
+      "EXECUTION_MODE" : "exe_script_file",
+      "NAME" : "Cadabra"
+    },
+    {
+      "COMMAND_ID" : "aichat.packs.record.stop",
+      "EXECUTION_MODE" : "exe_script_file",
+      "NAME" : "Cadabra"
+    },
+    {
+      "COMMAND_ID" : "aichat.packs.record.keep",
+      "EXECUTION_MODE" : "exe_script_file",
+      "NAME" : "Cadabra"
+    },
+    {
+      "COMMAND_ID" : "aichat.packs.record.access",
+      "EXECUTION_MODE" : "exe_script_file",
+      "NAME" : "Cadabra"
+    },
+    {
+      "COMMAND_ID" : "aichat.packs.record.save",
+      "EXECUTION_MODE" : "exe_script_file",
+      "NAME" : "Cadabra"
+    },
+    {
+      "COMMAND_ID" : "aichat.packs.record.close",
+      "EXECUTION_MODE" : "exe_script_file",
+      "NAME" : "Cadabra"
+    },
+    {
       "COMMAND_ID" : "aichat.mcp.servers.toggle.network",
       "EXECUTION_MODE" : "exe_script_file",
       "NAME" : "Cadabra"

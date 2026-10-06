@@ -409,6 +409,17 @@ def load_pack(path, source, values):
     return result
 
 
+def pack_from_content(pack_id, content, values):
+    """The pack a parsed JSON value would be under that id, as load_pack reads one from a file:
+    for checking a pack before it is written."""
+    result = PackResult(pack_id, "content", "")
+    try:
+        _resolve_into(result, content, values)
+    except PackError as e:
+        result.reason = str(e)
+    return result
+
+
 def _pack_files(folder):
     try:
         names = sorted(os.listdir(folder))

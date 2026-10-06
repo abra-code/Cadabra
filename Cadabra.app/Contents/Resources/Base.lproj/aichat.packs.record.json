@@ -1,0 +1,188 @@
+{
+  "type": "VStack",
+  "properties": {
+    "spacing": 12,
+    "alignment": "leading",
+    "padding": "default",
+    "frame": { "minWidth": 760, "idealWidth": 820, "minHeight": 560, "idealHeight": 600 }
+  },
+  "children": [
+    {
+      "type": "Text",
+      "properties": {
+        "text": "Run a command the way a session's tools would: under a sandbox that allows only the folder it runs in. What it is refused is allowed and it is run again, until it succeeds. The folders found can then be saved as a pack.",
+        "foregroundStyle": "secondary",
+        "font": "callout",
+        "frame": { "maxWidth": "infinity", "alignment": "leading" }
+      }
+    },
+    {
+      "type": "GroupBox",
+      "properties": { "title": "What to Record" },
+      "children": [
+        {
+          "type": "VStack",
+          "properties": { "spacing": 8, "alignment": "leading" },
+          "children": [
+            {
+              "type": "HStack",
+              "properties": { "spacing": 8 },
+              "children": [
+                { "type": "Text", "properties": { "text": "Command", "frame": { "width": 70, "alignment": "trailing" } } },
+                {
+                  "type": "TextField",
+                  "id": 701,
+                  "properties": {
+                    "prompt": "xcodebuild -scheme App build",
+                    "font": { "size": 12, "design": "monospaced" },
+                    "frame": { "maxWidth": "infinity" }
+                  }
+                }
+              ]
+            },
+            {
+              "type": "HStack",
+              "properties": { "spacing": 8 },
+              "children": [
+                { "type": "Text", "properties": { "text": "Run in", "frame": { "width": 70, "alignment": "trailing" } } },
+                {
+                  "type": "TextField",
+                  "id": 702,
+                  "properties": { "prompt": "The folder to run the command in", "frame": { "maxWidth": "infinity" } }
+                },
+                {
+                  "type": "Button",
+                  "id": 703,
+                  "properties": { "title": "Choose...", "actionID": "aichat.packs.record.choose.folder" }
+                }
+              ]
+            },
+            {
+              "type": "HStack",
+              "properties": { "spacing": 8 },
+              "children": [
+                {
+                  "type": "Text",
+                  "id": 706,
+                  "properties": {
+                    "text": "The command runs for real, several times. Use one that is safe to repeat.",
+                    "foregroundStyle": "secondary",
+                    "font": "callout",
+                    "frame": { "maxWidth": "infinity", "alignment": "leading" }
+                  }
+                },
+                {
+                  "type": "ProgressView",
+                  "id": 707,
+                  "properties": { "hidden": true, "controlSize": "small" }
+                },
+                {
+                  "type": "Button",
+                  "id": 705,
+                  "properties": { "title": "Stop", "disabled": true, "actionID": "aichat.packs.record.stop" }
+                },
+                {
+                  "type": "Button",
+                  "id": 704,
+                  "properties": { "title": "Record", "actionID": "aichat.packs.record.start" }
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "Text",
+      "properties": { "text": "Folders found. Untick what the pack should not hold; click an access to change it.", "font": "subheadline" }
+    },
+    {
+      "type": "Table",
+      "id": 710,
+      "properties": {
+        "columns": ["", "Folder or File", "Access", "Note"],
+        "columnTypes": [
+          {
+            "viewType": "Button",
+            "dataInterpretation": "systemName",
+            "actionContext": "rowIndex",
+            "actionID": "aichat.packs.record.keep"
+          },
+          { "viewType": "Text" },
+          {
+            "viewType": "Button",
+            "actionContext": "rowIndex",
+            "actionID": "aichat.packs.record.access"
+          },
+          { "viewType": "Text" }
+        ],
+        "widths": [28, 330, 130, 240],
+        "minWidths": [28, 160, 110, 80],
+        "frame": { "minHeight": 160, "maxWidth": "infinity", "maxHeight": "infinity" }
+      }
+    },
+    {
+      "type": "GroupBox",
+      "properties": { "title": "The Pack" },
+      "children": [
+        {
+          "type": "VStack",
+          "properties": { "spacing": 8, "alignment": "leading" },
+          "children": [
+            {
+              "type": "HStack",
+              "properties": { "spacing": 8 },
+              "children": [
+                { "type": "Text", "properties": { "text": "Title", "frame": { "width": 70, "alignment": "trailing" } } },
+                {
+                  "type": "TextField",
+                  "id": 720,
+                  "properties": { "prompt": "Xcode and Swift builds", "frame": { "maxWidth": "infinity" } }
+                },
+                { "type": "Text", "properties": { "text": "Id" } },
+                {
+                  "type": "TextField",
+                  "id": 721,
+                  "properties": {
+                    "prompt": "from the title",
+                    "help": "The pack's file name: lowercase letters, digits and \"-\". Left empty, it is made from the title.",
+                    "frame": { "width": 180 }
+                  }
+                }
+              ]
+            },
+            {
+              "type": "HStack",
+              "properties": { "spacing": 8 },
+              "children": [
+                { "type": "Text", "properties": { "text": "Description", "frame": { "width": 70, "alignment": "trailing" } } },
+                {
+                  "type": "TextField",
+                  "id": 722,
+                  "properties": { "prompt": "What the pack is for, in one line", "frame": { "maxWidth": "infinity" } }
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "HStack",
+      "children": [
+        { "type": "Spacer" },
+        {
+          "type": "Button",
+          "id": 730,
+          "properties": {
+            "title": "Save Pack",
+            "buttonStyle": "borderedProminent",
+            "disabled": true,
+            "keyboardShortcut": { "key": "return" },
+            "actionID": "aichat.packs.record.save"
+          }
+        }
+      ]
+    }
+  ]
+}

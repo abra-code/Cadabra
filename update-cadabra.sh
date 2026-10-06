@@ -1085,6 +1085,11 @@ update_replay() {
         || fail "Deployed replay differs from the build product - copy did not take."
 
     [ -f "$REPLAY_REPO/LICENSE" ] && /bin/cp -f "$REPLAY_REPO/LICENSE" "${REPLAY_BIN}.LICENSE"
+    # replay's recorder, which the Record a Pack window runs with the bundled Python.
+    [ -f "$REPLAY_REPO/sandbox/sandbox-discover.py" ] \
+        || fail "No sandbox/sandbox-discover.py in the replay checkout at $REPLAY_REPO."
+    /bin/cp -f "$REPLAY_REPO/sandbox/sandbox-discover.py" "$APP_BUNDLE/Contents/Support/sandbox-discover.py" \
+        || fail "Could not copy sandbox-discover.py into the bundle"
 
     REPLAY_STATUS="deployed${REPLAY_TAG:+ ($REPLAY_TAG)}"
     echo "  ${GREEN}Deployed${RESET} replay"
