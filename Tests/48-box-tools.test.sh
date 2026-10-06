@@ -526,6 +526,43 @@ check "a backtick in a rule stays inside its code span" "0|1" \
     "$(cad_has "$(net_text box:odd)" '`[docs]')|$(cad_has "$(net_text box:odd)" "- \`x'[docs](https://example.invalid)'\`")"
 /bin/rm -f "$net_places"
 
+section "the sandbox inside a box allows what the sandbox on this Mac allows by default"
+# One profile for every box (replay-box-sandbox.json), written by hand; the Mac's side is the
+# settings' defaults plus the folders the generator always adds. A folder added to one side and
+# not the other is what this section is for: cmake crashes where it cannot list /usr/bin.
+BOX_PROFILE="$OMC_APP_BUNDLE_PATH/Contents/Resources/replay-box-sandbox.json"
+# box_covers <path>  ->  1 when the box profile lets its tools read the path, else 0.
+box_covers() {
+    _path="$1"
+    case "$_path" in
+        /var/*) _path="/private$_path" ;;
+    esac
+    /usr/bin/jq -r '(.read_only + .read_write)[]' "$BOX_PROFILE" | while IFS= read -r _granted; do
+        case "$_path/" in
+            "$_granted"/*) echo 1; break ;;
+        esac
+    done | /usr/bin/grep -c 1
+}
+always="$("$OMC_APP_BUNDLE_PATH/Contents/Library/Python/bin/python3" -B -c 'import sys; sys.path.insert(0, sys.argv[1]); import sandbox_packs; print("\n".join(sandbox_packs.SYSTEM_PROGRAM_FOLDERS))' "$OMC_APP_BUNDLE_PATH/Contents/Resources/Scripts")"
+check "the generator has folders it always adds on this Mac" "4" "$(printf '%s\n' "$always" | /usr/bin/grep -c '^/')"
+for folder in $always; do
+    check "  $folder can be read in a box too" "1" "$(box_covers "$folder")"
+done
+cad_reset
+cad_call mcp_prefs_write_defaults >/dev/null 2>&1
+defaults="$(cad_call mcp_prefs_array_list servers/local/allowed-read; cad_call mcp_prefs_array_list servers/local/allowed-write)"
+check "the settings' defaults were read" "1" "$(printf '%s\n' "$defaults" | /usr/bin/grep -c -x /usr/share)"
+missing=""
+for folder in $defaults; do
+    case "$folder" in
+        "$HOME"/*) continue ;;
+    esac
+    if [ "$(box_covers "$folder")" != "1" ]; then
+        missing="$missing $folder"
+    fi
+done
+check "every default folder of this Mac's sandbox outside the home folder can be read in a box" "" "$missing"
+
 section "the Python server on this Mac never imports from the project folder"
 # The servers run with the project as their working folder. A file there named like a module
 # the Python one imports must not run on this Mac: it would be code a session left in the project, run

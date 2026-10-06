@@ -1,5 +1,9 @@
 {
   "read_only": [
+    "/bin",
+    "/sbin",
+    "/usr/bin",
+    "/usr/sbin",
     "/opt/homebrew",
     "/usr/local",
     "/Library/Developer/CommandLineTools",
