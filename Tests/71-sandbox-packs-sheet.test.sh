@@ -233,6 +233,42 @@ omc_run aichat.mcp.servers.packs.use
 check_status "the handler exits cleanly" 0
 check "nothing is written to the window" "0" "$(cad_writes omc_window)"
 
+section "adding a folder that holds keys by hand asks first"
+cad_reset
+cad_call mcp_prefs_write_defaults >/dev/null 2>&1
+/bin/mkdir -p "$HOME/.ssh" "$WORK/plain"
+alerts_reset
+alert_answers_reset
+alert_answer 1
+fresh_window
+omc_dialog_answer choose_object "$HOME/.ssh"
+omc_run aichat.mcp.servers.ro.add
+check_status "the add handler ran" 0
+check "the user is asked"            "1" "$(alerts_count)"
+check "  and told what the folder is" "1" "$(alerts_mention 'is in ~/\.ssh, which holds keys')"
+check "Cancel adds nothing"          "0" "$(cad_call mcp_prefs_array_list servers/local/allowed-read | /usr/bin/grep -c '/\.ssh$')"
+check "  and the table is not repainted" "0" "$(cad_writes "$RO_TABLE_ID")"
+alerts_reset
+alert_answer 0
+fresh_window
+omc_dialog_answer choose_object "$HOME/.ssh"
+omc_run aichat.mcp.servers.ro.add
+check "Add Anyway adds it"           "1" "$(cad_call mcp_prefs_array_list servers/local/allowed-read | /usr/bin/grep -c '/\.ssh$')"
+alerts_reset
+alert_answer 1
+fresh_window
+omc_dialog_answer choose_object "$HOME"
+omc_run aichat.mcp.servers.rw.add
+check "the home folder asks too, for read-write" "1|1" "$(alerts_count)|$(alerts_mention 'home folder.*read and change')"
+check "  and Cancel adds nothing"    "0" "$(cad_call mcp_prefs_array_list servers/local/allowed-write | /usr/bin/grep -Fxc "$HOME")"
+alerts_reset
+alert_answers_reset
+fresh_window
+omc_dialog_answer choose_object "$WORK/plain"
+omc_run aichat.mcp.servers.rw.add
+check "an ordinary folder is added without a question" "0|1" \
+    "$(alerts_count)|$(cad_call mcp_prefs_array_list servers/local/allowed-write | /usr/bin/grep -Fxc "$WORK/plain")"
+
 section "cumulative: no handler wrote to a view id the window does not declare"
 check "no undeclared ids" "" "$(ui_unknown_writes)"
 

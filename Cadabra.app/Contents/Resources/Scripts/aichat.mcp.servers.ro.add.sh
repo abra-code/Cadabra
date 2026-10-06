@@ -16,6 +16,13 @@ chosen="$OMC_DLG_CHOOSE_OBJECT_PATH"
 [ -z "$chosen" ] && exit 0
 chosen="${chosen%/}"
 
+mcp_confirm_folder "$chosen" "read"
+confirmed=$?
+if [ "$confirmed" -ne 0 ]; then
+    echo "not added: $chosen"
+    exit 0
+fi
+
 if mcp_prefs_array_append servers/local/allowed-read "$chosen"; then
     mcp_refresh_granted "$window_uuid"
 else

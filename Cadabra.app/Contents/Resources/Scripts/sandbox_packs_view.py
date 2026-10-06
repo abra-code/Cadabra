@@ -13,6 +13,7 @@
 #        python3 sandbox_packs_view.py toggle --list <file> --ticked <file> --row <index>
 #        python3 sandbox_packs_view.py preview --list <file> --id <pack id>
 #        python3 sandbox_packs_view.py chosen --list <file> --ticked <file>
+#        python3 sandbox_packs_view.py guard --path <folder>
 #
 #   pane     writes three files for the pane: <prefix>.rw.tsv and <prefix>.ro.tsv, the rows of the
 #            read-write and read-only tables (path, From, and a hidden kind: "user" for a folder
@@ -27,6 +28,10 @@
 #   preview  prints Markdown for one pack: what it grants here, what it leaves out, its notes.
 #   chosen   prints the ids to store, one per line: the draft's, without ids no pack has.
 #            Each is a pack id as sandbox_packs.py defines one, so a line is one word.
+#   guard    prints one sentence when a folder the user is adding by hand is one no pack may
+#            grant (the whole disk, the home folder, a folder that holds keys, mail or browser
+#            data, or one that contains such a folder), and nothing for any other folder. The
+#            user's own lists may hold such a folder; the + buttons ask first.
 #
 # The sheet works from the --list file, so the rows, the preview and what is stored agree with
 # each other however long the sheet is open.
@@ -266,6 +271,25 @@ def chosen(options):
     return 0
 
 
+def guard(options):
+    path = sandbox_packs.true_path(options.path) or options.path
+    if not path.startswith("/"):
+        return 0
+    place = sandbox_packs.guarded_place(path, sandbox_packs.true_path(os.path.expanduser("~")))
+    if place is None:
+        return 0
+    kind, entry = place
+    sentence = {
+        "disk": "This folder contains the whole disk.",
+        "home": "This is the home folder, or a folder that contains it.",
+        "in": f"This folder is in ~/{entry}, which holds keys or private data.",
+        "contains": f"This folder contains ~/{entry}, which holds keys or private data.",
+    }.get(kind)
+    if sentence:
+        print(_one_line(sentence))
+    return 0
+
+
 def main(argv):
     parser = argparse.ArgumentParser(prog="sandbox_packs_view.py", allow_abbrev=False)
     commands = parser.add_subparsers(dest="command", required=True)
@@ -276,6 +300,7 @@ def main(argv):
         "toggle": (toggle, ("--list", "--ticked")),
         "preview": (preview, ("--list", "--id")),
         "chosen": (chosen, ("--list", "--ticked")),
+        "guard": (guard, ("--path",)),
     }
     for name, (_, required) in takes.items():
         sub = commands.add_parser(name, allow_abbrev=False)

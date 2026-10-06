@@ -16,6 +16,13 @@ chosen="$OMC_DLG_CHOOSE_OBJECT_PATH"
 [ -z "$chosen" ] && exit 0
 chosen="${chosen%/}"
 
+mcp_confirm_folder "$chosen" "read and change"
+confirmed=$?
+if [ "$confirmed" -ne 0 ]; then
+    echo "not added: $chosen"
+    exit 0
+fi
+
 # If the user re-adds the session $TMPDIR (matched by canonical realpath, so either
 # the /var or /private/var form resolves), restore the include-session-tmpdir decision
 # instead of persisting its per-session path into the array (which would go stale).

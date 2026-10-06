@@ -572,6 +572,25 @@ mcp_session_tmpdir() {
     ( cd "$TMPDIR" 2>/dev/null && pwd -P )
 }
 
+# mcp_confirm_folder <path> <read|read and change>  ->  0 when the folder may go into the user's
+# own list: at once for an ordinary folder, and after the user confirmed for one no sandbox pack
+# may grant (sandbox_packs_view.py guard: the home folder, a folder of keys or private data, or
+# one that contains such a folder). 1 when the user cancelled. A check that cannot be made adds
+# the folder without asking, as before there was a check.
+mcp_confirm_folder() {
+    local warning="$(mcp_packs_view guard --path="$1")"
+    if [ -z "$warning" ]; then
+        return 0
+    fi
+    "$alert" --level caution --title "Add this folder for every conversation?" --ok "Add Anyway" --cancel "Cancel" \
+        "$warning The file and shell tools of every conversation on this Mac could then $2 everything in it: $1"
+    local answer=$?
+    if [ "$answer" -ne 0 ]; then
+        return 1
+    fi
+    return 0
+}
+
 # mcp_refresh_granted <window_uuid>  ->  fills both tables and the Sandbox packs line from the
 # settings. The session $TMPDIR is a row of the read-write table while include-session-tmpdir is
 # on: shown so the user can see the temp grant and, by removing it, deny it - only that decision

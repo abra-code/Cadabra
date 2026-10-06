@@ -239,21 +239,39 @@ def _guarded(home):
     return tuple(found)
 
 
-def never_grant_reason(path, home):
-    """Why a plain absolute path can never be granted by a pack, or ""."""
+def guarded_place(path, home):
+    """What a plain absolute path has to do with the guarded folders: None when nothing, or
+    (kind, entry) with kind "disk" (the whole disk), "no-home" (the home folder cannot be found,
+    so nothing can be checked), "home" (the home folder or a folder that contains it), "in" (in
+    the NEVER_GRANT folder `entry`) or "contains" (contains it). entry is "" for the first three."""
     path = _without_data_volume(path)
     if path.casefold() in ("/", "/system", "/system/volumes"):
-        return "it contains the whole disk"
+        return "disk", ""
     if not home:
-        return "the home folder cannot be found, so nothing can be checked against it"
+        return "no-home", ""
     if _within(home, path):
-        return "it is the home folder or contains it"
+        return "home", ""
     for entry, guarded in _guarded(home):
         if _within(path, guarded):
-            return f"it is in ~/{entry}, which no pack may open"
+            return "in", entry
         if _within(guarded, path):
-            return f"it contains ~/{entry}, which no pack may open"
-    return ""
+            return "contains", entry
+    return None
+
+
+def never_grant_reason(path, home):
+    """Why a plain absolute path can never be granted by a pack, or ""."""
+    place = guarded_place(path, home)
+    if place is None:
+        return ""
+    kind, entry = place
+    return {
+        "disk": "it contains the whole disk",
+        "no-home": "the home folder cannot be found, so nothing can be checked against it",
+        "home": "it is the home folder or contains it",
+        "in": f"it is in ~/{entry}, which no pack may open",
+        "contains": f"it contains ~/{entry}, which no pack may open",
+    }[kind]
 
 
 class PackResult:
