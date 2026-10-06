@@ -605,6 +605,11 @@
       "NAME" : "Cadabra"
     },
     {
+      "COMMAND_ID" : "aichat.mcp.servers.packs.reveal",
+      "EXECUTION_MODE" : "exe_script_file",
+      "NAME" : "Cadabra"
+    },
+    {
       "COMMAND_ID" : "aichat.mcp.servers.packs.toggle",
       "EXECUTION_MODE" : "exe_script_file",
       "NAME" : "Cadabra"

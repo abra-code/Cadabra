@@ -88,6 +88,15 @@
       "children": [
         {
           "type": "Button",
+          "id": 607,
+          "properties": {
+            "title": "Reveal User Packs",
+            "actionID": "aichat.mcp.servers.packs.reveal",
+            "help": "Show the folder of the packs you saved in the Finder. Each pack is one file; delete a file to remove its pack."
+          }
+        },
+        {
+          "type": "Button",
           "id": 604,
           "properties": {
             "title": "Record a Pack...",

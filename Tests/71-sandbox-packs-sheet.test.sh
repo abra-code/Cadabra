@@ -119,6 +119,23 @@ omc_trigger "$PACKS_TABLE_ID" "" "99"
 omc_run aichat.mcp.servers.packs.toggle
 check "  and so is a row past the end"  "square" "$(image_of work)"
 
+section "Reveal User Packs opens the folder of the user's packs"
+OPENED="$WORK/opened"
+printf '#!/bin/sh\nprintf "%%s\\n" "$@" >> "%s"\n' "$OPENED" > "$WORK/open-tool"
+/bin/chmod +x "$WORK/open-tool"
+CADABRA_OPEN_TOOL="$WORK/open-tool"
+export CADABRA_OPEN_TOOL
+cad_journal_reset
+omc_run aichat.mcp.servers.packs.reveal
+check "the folder is opened"            "$USER_PACKS" "$(/bin/cat "$OPENED" 2>/dev/null)"
+check "  and the sheet stays"           "0" "$(cad_journal omc_window | /usr/bin/grep -c omc_dismiss_modal)"
+/bin/mv "$USER_PACKS" "$USER_PACKS.aside"
+/bin/rm -f "$OPENED"
+omc_run aichat.mcp.servers.packs.reveal
+check "with no pack saved yet, the folder is made first" "yes|$USER_PACKS" "$([ -d "$USER_PACKS" ] && echo yes)|$(/bin/cat "$OPENED" 2>/dev/null)"
+/bin/rmdir "$USER_PACKS"
+/bin/mv "$USER_PACKS.aside" "$USER_PACKS"
+
 section "Cancel keeps what was stored"
 click work
 cad_journal_reset
