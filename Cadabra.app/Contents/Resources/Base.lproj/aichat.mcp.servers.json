@@ -383,6 +383,17 @@
                             "actionID": "aichat.mcp.servers.packs",
                             "help": "Choose sets of folders to allow, and see what each holds"
                           }
+                        },
+                        {
+                          "type": "Button",
+                          "id": 342,
+                          "properties": {
+                            "systemImage": "questionmark.circle",
+                            "imageScale": "medium",
+                            "buttonStyle": "plain",
+                            "help": "About sandbox packs",
+                            "actionID": "aichat.packs.help"
+                          }
                         }
                       ]
                     },

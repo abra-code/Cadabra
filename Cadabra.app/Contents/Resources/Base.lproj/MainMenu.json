@@ -60,6 +60,10 @@
       { "type": "Button", "properties": {
           "title": "AgentVM Boxes Help",
           "actionID": "aichat.agentvm.help"
+      } },
+      { "type": "Button", "properties": {
+          "title": "Sandbox Packs Help",
+          "actionID": "aichat.packs.help"
       } }
     ]
   }

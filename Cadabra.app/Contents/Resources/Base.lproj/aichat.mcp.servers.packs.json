@@ -8,8 +8,25 @@
   },
   "children": [
     {
-      "type": "Text",
-      "properties": { "text": "Sandbox Packs", "font": "headline" }
+      "type": "HStack",
+      "children": [
+        {
+          "type": "Text",
+          "properties": { "text": "Sandbox Packs", "font": "headline" }
+        },
+        { "type": "Spacer" },
+        {
+          "type": "Button",
+          "id": 605,
+          "properties": {
+            "systemImage": "questionmark.circle",
+            "imageScale": "medium",
+            "buttonStyle": "plain",
+            "help": "About sandbox packs",
+            "actionID": "aichat.packs.help"
+          }
+        }
+      ]
     },
     {
       "type": "Text",

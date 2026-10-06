@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sandbox Packs</title>
+<style>
+  :root {
+    --bg: #ffffff;
+    --fg: #1d1d1f;
+    --muted: #6e6e73;
+    --accent: #0a6cff;
+    --card: #f5f5f7;
+    --border: #e2e2e6;
+    --code-bg: #f0f0f3;
+    --good: #1a8a3c;
+    --warn: #b06a00;
+    --bad: #c4341c;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #1e1e1f;
+      --fg: #f2f2f4;
+      --muted: #9a9aa0;
+      --accent: #4d9bff;
+      --card: #2a2a2c;
+      --border: #3a3a3d;
+      --code-bg: #2c2c2e;
+      --good: #4cd07a;
+      --warn: #e0a13a;
+      --bad: #ff6f5e;
+    }
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--fg);
+    font: 15px/1.6 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 820px; margin: 0 auto; padding: 32px 28px 80px; }
+  h1 { font-size: 28px; line-height: 1.2; margin: 0 0 6px; letter-spacing: -0.02em; }
+  h2 {
+    font-size: 20px; margin: 38px 0 10px; padding-top: 14px;
+    border-top: 1px solid var(--border); letter-spacing: -0.01em;
+  }
+  h3 { font-size: 16px; margin: 22px 0 6px; }
+  p { margin: 8px 0; }
+  .lede { color: var(--muted); font-size: 16px; margin-bottom: 8px; }
+  code, .mono {
+    font-family: "SF Mono", ui-monospace, Menlo, monospace;
+    font-size: 0.88em;
+    background: var(--code-bg);
+    padding: 1px 5px; border-radius: 5px;
+  }
+  table { border-collapse: collapse; width: 100%; margin: 12px 0; font-size: 14px; }
+  th, td { text-align: left; padding: 7px 10px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  th { font-weight: 600; color: var(--muted); font-size: 12.5px; text-transform: uppercase; letter-spacing: .03em; }
+  td code { white-space: nowrap; }
+  .good { color: var(--good); font-weight: 600; }
+  .warn { color: var(--warn); font-weight: 600; }
+  .bad  { color: var(--bad);  font-weight: 600; }
+  .callout {
+    background: var(--card); border-left: 3px solid var(--accent);
+    border-radius: 8px; padding: 12px 16px; margin: 16px 0;
+  }
+  .callout.warn { border-left-color: var(--warn); }
+  a { color: var(--accent); }
+  ul, ol { margin: 8px 0; padding-left: 22px; }
+  li { margin: 4px 0; }
+  .footer { margin-top: 40px; color: var(--muted); font-size: 13px; border-top: 1px solid var(--border); padding-top: 14px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <h1>Sandbox Packs</h1>
+  <p class="lede">When a model's tools run on this Mac, they run in a sandbox: they can use the project folder and little else. A sandbox pack is a named set of folders for one kind of work, such as building with Xcode or installing packages with npm. You tick the pack instead of adding each folder a tool turns out to need.</p>
+
+  <h2>What the tools can use without any pack</h2>
+  <ul>
+    <li><b>The project folder</b>, to read and change. It is the Project Workspace of <b>Agentic Session Tools</b>.</li>
+    <li><b>The temporary folders</b>, to read and change, unless you removed them from the tables.</li>
+    <li><b>The system's own programs and libraries</b> (<code>/bin</code>, <code>/usr/bin</code>, <code>/sbin</code>, <code>/usr/sbin</code>, <code>/usr/lib</code>, <code>/System/Library</code>), to read and run.</li>
+    <li><b>The folders in the two tables</b> of Agentic Session Tools: a few common tool folders to start with, and the ones you add.</li>
+  </ul>
+  <p>Anything else is refused. A build tool that reads its own files from another folder then fails, often with a message that does not mention the sandbox at all.</p>
+
+  <h2>Choosing packs</h2>
+  <ol>
+    <li>Open <b>Agentic Session Tools</b> (it opens when you load a model with tools, and from the Tools menu).</li>
+    <li>Under <b>Additional Local Sandbox Paths</b>, click <b>Choose Packs...</b></li>
+    <li>Tick the packs you want. Select a pack to see on the right what it holds on this Mac: the folders to read, the folders to read and change, single files, and what it leaves out here.</li>
+    <li>Click <b>Use These Packs</b>. Nothing changes before that, and <b>Cancel</b> keeps things as they were.</li>
+  </ol>
+  <p>The two tables then list everything the sandbox is given, each folder with where it comes from: <b>You</b> for a folder you added, <b>This session</b> for the temporary folder, or the name of a pack. A pack's folders cannot be removed one by one; untick the pack instead.</p>
+  <div class="callout">Packs apply to the conversations you start after choosing them, on this Mac. A window that is already open keeps what it started with. Tools that run in an AgentVM box do not use packs: the box is their boundary.</div>
+
+  <h2>The packs that come with Cadabra</h2>
+  <table>
+    <tr><th>Pack</th><th>For</th><th>Comes with</th></tr>
+    <tr><td><b>Make and C or C++ builds</b></td><td><code>make</code>, <code>cc</code>, <code>clang</code>: the build tools of Xcode or of the Command Line Tools. Nothing outside the project is changed.</td><td></td></tr>
+    <tr><td><b>CMake builds</b></td><td><code>cmake</code> from CMake.app or from Homebrew, building with Makefiles.</td><td>Make, Homebrew</td></tr>
+    <tr><td><b>Xcode and Swift builds</b></td><td><code>xcodebuild</code> and <code>swift</code>, with their caches and build folders outside the project.</td><td></td></tr>
+    <tr><td><b>Node.js and npm</b></td><td><code>node</code>, and installing packages into the project with <code>npm</code>.</td><td>Homebrew</td></tr>
+    <tr><td><b>Python, pip and uv</b></td><td>Python from python.org, from Xcode, from Homebrew, from uv or pyenv; virtual environments and packages in the project.</td><td>Make, Homebrew</td></tr>
+    <tr><td><b>Homebrew tools</b></td><td>Running the command line tools installed with Homebrew.</td><td></td></tr>
+    <tr><td><b>Git settings</b></td><td>Your git settings files, so <code>git</code> knows your name and your ignore rules.</td><td></td></tr>
+  </table>
+  <p>A pack whose tool is not on this Mac is shown as <b>not installed</b> and cannot be ticked. Each pack has notes in its preview that say what it does not cover.</p>
+
+  <h3>Packs that come with other packs</h3>
+  <p>A pack can use others: CMake builds needs a compiler, so the Make pack comes with it. You tick one pack, and the tables show the folders of the others as "Make and C or C++ builds (with CMake builds)". A pack that comes along but is not installed is simply left out.</p>
+
+  <h2>What no pack can hold</h2>
+  <p>A pack that names one of these is refused as a whole, whoever wrote it:</p>
+  <ul>
+    <li>the home folder itself, its Library as a whole, or the whole disk;</li>
+    <li>folders of keys and logins, such as <code>~/.ssh</code>, <code>~/.aws</code>, <code>~/.gnupg</code> and the Keychains;</li>
+    <li>Mail, Messages, calendars, contacts and the data of web browsers;</li>
+    <li>Cadabra's own data.</li>
+  </ul>
+  <p>You can still add such a folder to the tables yourself with the <b>+</b> buttons. Cadabra asks first, and says what the folder is.</p>
+
+  <h2>Recording a pack of your own</h2>
+  <p>When no pack fits, let Cadabra find out what a command needs. In the Choose Packs sheet, click <b>Record a Pack...</b></p>
+  <ol>
+    <li><b>Command.</b> Type the command, for example <code>cmake -S . -B build &amp;&amp; cmake --build build</code>. It is run for real, several times, so use one that is safe to repeat.</li>
+    <li><b>Run in.</b> The folder to run it in, normally the project.</li>
+    <li><b>Start with the packs ticked in Choose Packs.</b> With this on, the recording starts with those packs and finds only what the command needs beyond them. The pack you save then comes with them. Tick the packs in the sheet first, then click Record a Pack...</li>
+    <li><b>Record.</b> Cadabra runs the command in a sandbox, allows what it was refused, and runs it again, until it succeeds. The line beside the buttons says how far it is. <b>Stop</b> ends it.</li>
+    <li><b>Review.</b> The table lists what was found. Untick what the pack should not hold, and click an access to switch a folder between <b>Read</b> and <b>Read and change</b>.</li>
+    <li><b>Save Pack.</b> Give the pack a title. It is saved, ticked, and listed with the other packs from then on.</li>
+  </ol>
+
+  <h3>What the notes in the review table mean</h3>
+  <table>
+    <tr><th>Row</th><th>Meaning</th></tr>
+    <tr><td>Ticked, no note</td><td>The command was refused this folder and ran once it was allowed.</td></tr>
+    <tr><td>Unticked, <b>Wide</b></td><td>The folder holds the data of many programs. Keep it only if nothing narrower works.</td></tr>
+    <tr><td>Unticked, <b>Contains the folder the command ran in</b></td><td>The folder above the project, with every project beside it. Most commands only look at it and work without it.</td></tr>
+    <tr><td><b>Unverified</b></td><td>The folder may have been refused to another program that ran at the same time. Check that it belongs to your command.</td></tr>
+    <tr><td>Unticked, <b>A guess</b></td><td>The command still fails, and this folder was only tried because the command named it or its tools are beside it.</td></tr>
+    <tr><td>Locked (a dash in the box)</td><td>The command touched it, but no pack can hold it: one of the folders above, a single file to change, or a folder of which only the listing was needed.</td></tr>
+  </table>
+  <p>A whole application, such as <code>/Applications/CMake.app</code>, is one row: a tool reads many parts of the application it is in.</p>
+
+  <h3>When a recording does not succeed</h3>
+  <ul>
+    <li><b>The tool starts a sandbox of its own.</b> macOS does not allow one sandbox inside another. <code>swift build</code> needs <code>--disable-sandbox</code>, and <code>xcodebuild</code> needs <code>OTHER_SWIFT_FLAGS='$(inherited) -disable-sandbox'</code> for code that uses Swift macros.</li>
+    <li><b>The tool needs something that is not a folder</b>: a system service, a simulator, a signing certificate. No pack can give that.</li>
+    <li><b>The tool does not say what it lacks.</b> Some tools check for a folder without trying to open it, and Cadabra then has nothing to go on. Record on top of the pack for that tool: for cmake with the Xcode generator, tick <b>Xcode and Swift builds</b> first.</li>
+  </ul>
+  <p>The folders found before the command stopped are still shown, and can be saved if they are useful.</p>
+
+  <h2>Where your own packs are</h2>
+  <p>Each pack you save is one file in <code>~/Library/Application Support/Cadabra/SandboxPacks</code>, named after its id. To remove a pack, untick it and delete its file. A pack of your own with the id of one that comes with Cadabra takes its place until you delete yours; Cadabra asks before you save one.</p>
+
+  <h2>Allowing one folder</h2>
+  <ul>
+    <li><b>For every conversation:</b> the <b>+</b> buttons under the two tables of Agentic Session Tools.</li>
+    <li><b>For one conversation that is already running:</b> <b>Allow a Folder...</b> in the chat window. Cadabra also offers it when a tool was refused a folder.</li>
+  </ul>
+
+  <h2>If something does not work</h2>
+  <table>
+    <tr><th>What you see</th><th>What to do</th></tr>
+    <tr><td>A tool fails with "Operation not permitted", or with an error about its own installation</td><td>Tick the pack for that tool, or record one. Start a new conversation afterwards.</td></tr>
+    <tr><td>A pack is shown as not installed</td><td>Its tool is not where the pack expects it. Select the pack: the preview says what is missing.</td></tr>
+    <tr><td>A pack is ticked, but a folder is still refused</td><td>The preview's "Left out on this Mac" lists what the pack names and could not give. A folder that did not exist when the conversation started is one of them.</td></tr>
+    <tr><td>Record does nothing</td><td>A recording is still running in that window, or was interrupted. Close the window and open it again.</td></tr>
+  </table>
+
+  <div class="footer">
+    Packs widen what the tools on this Mac can reach. For work you do not want near your own files at all, run the tools in an AgentVM box: see AgentVM Boxes Help in the Help menu.
+  </div>
+</div>
+</body>
+</html>
