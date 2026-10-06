@@ -54,7 +54,7 @@ state_of() {
 TOKENS="--token DEVELOPER_DIR=$WORK/xcode/Xcode.app/Contents/Developer --token HOMEBREW_PREFIX=$WORK/brew --token DARWIN_USER_CACHE_DIR=$WORK/cache --token DARWIN_USER_TEMP_DIR=$WORK/build"
 
 section "the packs that ship with the application"
-check "there are four"                         "cmake git homebrew xcode" "$(/bin/ls "$SEEDS" | /usr/bin/sed 's/\.json$//' | /usr/bin/tr '\n' ' ' | /usr/bin/sed 's/ $//')"
+check "there are five"                         "cmake git homebrew make xcode" "$(/bin/ls "$SEEDS" | /usr/bin/sed 's/\.json$//' | /usr/bin/tr '\n' ' ' | /usr/bin/sed 's/ $//')"
 for seed in git homebrew xcode; do
     check "$seed is usable where its tools are" "ok" "$(field .state "$SEEDS/$seed.json" $TOKENS)"
     check "  and has a title and a description" "2" "$(field '[.title, .description] | map(select(length > 3)) | length' "$SEEDS/$seed.json" $TOKENS)"
@@ -66,13 +66,19 @@ check "  and then grants nothing"              "0" "$(field '[.read_only[], .rea
 check "homebrew without brew is not installed" "not-installed" "$(field .state "$SEEDS/homebrew.json" --token HOMEBREW_PREFIX=)"
 check "git grants one file to read"            "$HOME_REAL/.gitconfig" "$(field '.read_only_files | join(" ")' "$SEEDS/git.json")"
 check "  and no folder: a credentials file can be beside git's settings" "0" "$(field '.read_only | length' "$SEEDS/git.json")"
-check "the list has all four, none invalid"    "cmake:seed git:seed homebrew:seed xcode:seed|0" \
+check "the list has all five, none invalid"    "cmake:seed git:seed homebrew:seed make:seed xcode:seed|0" \
     "$("$PY" -B "$PACKS_PY" list --bundle "$OMC_APP_BUNDLE_PATH" $TOKENS | /usr/bin/jq -r '([.[] | .id + ":" + .source] | join(" ")) + "|" + ([.[] | select(.state == "invalid")] | length | tostring)')"
 
 # cmake's own folders are where this Mac has them or not; what is tested is its two keys.
 check "cmake needs any one of the places a cmake is installed" "3" "$(/usr/bin/jq -r '.requires_any | length' "$SEEDS/cmake.json")"
-check "  and comes with the compiler's pack and Homebrew's"    "xcode homebrew" "$(/usr/bin/jq -r '.uses | join(" ")' "$SEEDS/cmake.json")"
+check "  and comes with the pack for make and the compiler, and Homebrew's" "make homebrew" "$(/usr/bin/jq -r '.uses | join(" ")' "$SEEDS/cmake.json")"
 check "  both of which ship with the application"              "2" "$(for used in $(/usr/bin/jq -r '.uses[]' "$SEEDS/cmake.json"); do [ -f "$SEEDS/$used.json" ] && echo yes; done | /usr/bin/wc -l | /usr/bin/tr -d ' ')"
+
+/usr/bin/sed 's|/Library/Developer/CommandLineTools|/Library/Developer/NoSuchTools|g' "$SEEDS/make.json" > "$WORK/packs/make.json"
+check "make is usable where Xcode or the Command Line Tools are, and not installed with neither" "ok|not-installed" \
+    "$(field .state "$SEEDS/make.json" $TOKENS)|$(field .state "$WORK/packs/make.json" --token DEVELOPER_DIR=)"
+check "  and grants the developer folder to read, nothing to change" "$WORK/xcode/Xcode.app|0" \
+    "$(field '.read_only[0]' "$SEEDS/make.json" $TOKENS)|$(field '.read_write | length' "$SEEDS/make.json" $TOKENS)"
 
 section "a pack usable where any one of several things is"
 check "one of them is enough"          "ok: " "$(state_of anyone "\"title\": \"Any\", \"read_only\": [\"$WORK/tools\"], \"requires_any\": [\"$WORK/no-such-tool\", \"$WORK/tools\"]")"

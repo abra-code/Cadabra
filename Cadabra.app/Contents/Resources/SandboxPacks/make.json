@@ -1,0 +1,23 @@
+{
+  "formatVersion": 1,
+  "id": "make",
+  "title": "Make and C or C++ builds",
+  "description": "Build with make and the compilers of Xcode or the Command Line Tools.",
+  "read_only": [
+    "$DEVELOPER_DIR",
+    "/Library/Developer/CommandLineTools"
+  ],
+  "requires_any": [
+    "$DEVELOPER_DIR",
+    "/Library/Developer/CommandLineTools"
+  ],
+  "notes": [
+    "make, cc, clang and the other build tools in /usr/bin are only doors to the tools in Xcode or in the Command Line Tools, so a build with make needs one of the two and nothing else beyond the project and the temporary folders.",
+    "Not covered: xcodebuild and swift, which also keep caches and build folders outside the project. Use the Xcode pack for them."
+  ],
+  "recorded": {
+    "by": "sandbox-discover, with Xcode 27 and with the Command Line Tools alone (DEVELOPER_DIR), then a build under the pack's folders alone",
+    "command": "make; ./configure && make (zlib 1.3.2)",
+    "date": "2026-10-06"
+  }
+}

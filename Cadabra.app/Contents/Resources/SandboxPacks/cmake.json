@@ -13,16 +13,17 @@
     "$HOMEBREW_PREFIX/bin/cmake"
   ],
   "uses": [
-    "xcode",
+    "make",
     "homebrew"
   ],
   "notes": [
-    "The compiler comes with the Xcode pack, and a cmake installed with Homebrew with the Homebrew pack: both come with this one.",
+    "The compiler and make come with the Make pack, and a cmake installed with Homebrew with the Homebrew pack: both come with this one.",
+    "With cmake -G Xcode, tick the Xcode pack as well: xcodebuild keeps caches and build folders outside the project.",
     "Not covered: a cmake installed another way (MacPorts, pip, a folder of your own). Record a pack for it.",
     "A project whose build reads folders outside the project, such as a dependency checked out beside it, needs those added."
   ],
   "recorded": {
-    "by": "sandbox-discover, with CMake.app 4.3.3 and Homebrew's cmake 4.4.3, then a build under each pack's folders alone",
+    "by": "sandbox-discover, with CMake.app 4.3.3 and Homebrew's cmake 4.4.3, then a build under each pack's folders alone (Makefiles; the Xcode generator with the Xcode pack)",
     "command": "cmake -S . -B build && cmake --build build",
     "date": "2026-10-06"
   }
