@@ -40,7 +40,7 @@
         {
           "type": "Text",
           "properties": {
-            "text": "The model runs on this Mac either way.",
+            "text": "Local model inference runs on this Mac regardless.",
             "foregroundStyle": "secondary",
             "font": "caption"
           }
