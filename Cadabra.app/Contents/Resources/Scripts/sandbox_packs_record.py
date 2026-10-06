@@ -17,15 +17,19 @@
 #                                             [--seed-dir <dir>] [--replace]
 #
 #   run     runs the command line with /bin/sh in the folder, which is granted from the start
-#           (a session's project always is) and is left out of what is found, as are the
-#           system folders replay's sandbox always allows, and devices. Prints one line
+#           (a session's project always is), with what every session has before any pack: the
+#           system's program and library folders to read, the temporary folders to change.
+#           All of that is left out of what is found, and so are devices. Prints one line
 #           per step, tab separated, for the window:
 #               pass <number> <command's exit status> <folders found so far>
 #               check <path being checked>
+#               hint <output | bundle | layout> <folders tried>
 #               end <outcome> <message>
 #           outcome is "success" (the command ran), "partial" (it still fails; what was found is
 #           kept for review), or "failed" (nothing to review). The state file is written before
-#           the end line. Its own process id is in --pid-file while it runs; ended with SIGTERM
+#           the end line. A hint is the recorder trying folders the system log did not name:
+#           a tool that asks whether it may read a path, before opening it, is refused without
+#           a record. Its own process id is in --pid-file while it runs; ended with SIGTERM
 #           it stops the command and everything the command started.
 #   rows    prints the review table: a checkbox image name, the path as the pack would hold it,
 #           the access in words, a note.
@@ -67,9 +71,38 @@ _WIDE_IN_HOME = ("Library/Application Support", "Library/Caches", "Library/Prefe
                  "Library/Developer", "Documents", "Desktop", "Downloads")
 
 
-# What replay's sandbox always lets a tool read (its baseline), and devices: found because the
-# recorder's sandbox is narrower than a session's, and of no use in a pack.
-_ALWAYS_ALLOWED = ("/bin", "/sbin", "/usr/bin", "/usr/sbin", "/usr/lib", "/System/Library", "/dev")
+# WHAT A RECORDING STARTS WITH, beside the folder the command runs in: what a session's tools
+# have before any pack is ticked. To read, the folders of the system's own programs and of its
+# libraries (session_read_folders); to read and change, the temporary folders
+# (session_temp_folders). The recording is given them from the first pass, and they are left
+# out of what is found: a pack is what a command needs beyond them. Devices are left out too.
+_SYSTEM_LIBRARY_FOLDERS = ("/usr/lib", "/System/Library")
+
+
+def session_read_folders():
+    return sandbox_packs.SYSTEM_PROGRAM_FOLDERS + _SYSTEM_LIBRARY_FOLDERS
+
+
+def session_temp_folders(values):
+    """The user's temporary folder (a session's $TMPDIR) and /private/tmp, as true paths.
+    CADABRA_RECORD_TEMP_FOLDERS (paths with ":" between) replaces them, for tests, whose own
+    files are all in the temporary folder."""
+    given = os.environ.get("CADABRA_RECORD_TEMP_FOLDERS")
+    if given is not None:
+        named = given.split(":")
+    else:
+        named = [values.get("DARWIN_USER_TEMP_DIR", ""), os.environ.get("TMPDIR", ""), "/private/tmp"]
+    folders = []
+    for name in named:
+        real = sandbox_packs.true_path(name) if name.startswith("/") else ""
+        if real and real != "/" and os.path.isdir(real) and real not in folders:
+            folders.append(real)
+    return folders
+
+
+# Passes the recorder may take. A build needs about one per layer of tools it starts: a cmake
+# build of a small project took 11.
+_MAX_PASSES = 20
 
 
 def _one_line(text):
@@ -94,19 +127,36 @@ def tokenized(path, values):
     return ("~" if best_name == "HOME" else "$" + best_name) + rest
 
 
-def review_rows(done, folder, values):
+_BUNDLE_PATTERN = re.compile(r"(/.*?\.app)(?:/|\Z)")
+
+
+def bundle_of(path):
+    """The application bundle a path is in or is, or ""."""
+    match = _BUNDLE_PATTERN.match(path)
+    return match.group(1) if match else ""
+
+
+def review_rows(done, folder, values, temp_folders=(), succeeded=True):
     """The rows for a recorder's `done` event (read_only, read_write, folder_only, unverified).
-    The run's own folder and what is inside it are left out."""
+    The run's own folder and what is inside it are left out, and so is what the recording
+    started with (above). What was read inside an
+    application bundle becomes one row, the application: its tools read the rest of it, some of
+    it in ways the recorder cannot see, and a pack cannot grant a bundle's own listing alone."""
     home = values.get("HOME", "")
     wide = {home + "/" + name for name in _WIDE_IN_HOME} if home else set()
     unverified = set(done.get("unverified") or [])
+    # Folders the recorder tried because the command named them or its tools sit beside them,
+    # not because the log showed them refused. After a command that ran they are checked as
+    # needed; after one that still fails they are guesses, and start unticked.
+    guessed = set() if succeeded else set(done.get("hinted") or [])
+    started_with = session_read_folders() + ("/dev",) + tuple(temp_folders)
     rows = []
     seen = set()
 
     def add(path, access, locked_note=""):
         if not isinstance(path, str) or not path.startswith("/"):
             return
-        if any(_within(path, always) for always in _ALWAYS_ALLOWED):
+        if any(_within(path, always) for always in started_with):
             return
         reported = path
         place = sandbox_packs.guarded_place(path, home)
@@ -120,7 +170,7 @@ def review_rows(done, folder, values):
             return
         if folder and _within(path, folder):
             return
-        if any(_within(path, always) for always in _ALWAYS_ALLOWED):
+        if any(_within(path, always) for always in started_with):
             return
         seen.add(path)
         row = {"path": path, "written": tokenized(path, values), "access": access,
@@ -140,18 +190,39 @@ def review_rows(done, folder, values):
             row["access"] = "file"
         elif not os.path.isdir(path):
             row.update(keep=False, locked=True, note="Neither a folder nor a file on this Mac now")
+        elif folder and _within(folder, path):
+            row.update(keep=False, note="Contains the folder the command ran in, and everything beside it. "
+                                        "Keep it only if the command fails without it")
         elif path in wide or (home and os.path.dirname(path) == home):
             row.update(keep=False, note="Wide: holds the data of many programs. Keep it only if nothing narrower works")
-        if not row["locked"] and reported in unverified:
+        if not row["locked"] and reported in guessed:
+            row["keep"] = False
+            row["note"] = _one_line("A guess: the command named it or its tools sit beside it, and it "
+                                    "still fails. " + row["note"])
+        elif not row["locked"] and reported in unverified:
             row["note"] = _one_line("Unverified: may have been refused to another program. " + row["note"])
         rows.append(row)
 
     for path in done.get("read_write") or []:
         add(path, "read_write")
+    bundles = {}
+    for path in (done.get("read_only") or []) + (done.get("folder_only") or []):
+        bundle = bundle_of(path) if isinstance(path, str) else ""
+        if bundle:
+            bundles[bundle] = bundles.get(bundle, False) or path in unverified
+    for bundle, doubted in bundles.items():
+        if doubted:
+            unverified.add(bundle)
+        inside = [path for path in (done.get("read_only") or []) if isinstance(path, str) and bundle_of(path) == bundle]
+        if inside and all(path in guessed for path in inside):
+            guessed.add(bundle)
+        add(bundle, "read_only")
     for path in done.get("read_only") or []:
-        add(path, "read_only")
+        if not (isinstance(path, str) and bundle_of(path)):
+            add(path, "read_only")
     for path in done.get("folder_only") or []:
-        add(path, "read_only", "Only the folder's own listing was needed, which a pack cannot grant")
+        if not (isinstance(path, str) and bundle_of(path)):
+            add(path, "read_only", "Only the folder's own listing was needed, which a pack cannot grant")
     return rows
 
 
@@ -207,8 +278,16 @@ def run(options):
     profile = options.state + ".profile.json"
     # Absolute, since the recorder runs in the command's folder.
     argv = [os.path.abspath(sys.executable), "-B", os.path.abspath(options.discover),
-            "--loop", "--json", "-o", os.path.abspath(profile),
-            "--allow-write", folder, "--", "/bin/sh", "-c", command]
+            "--loop", str(_MAX_PASSES), "--json", "-o", os.path.abspath(profile),
+            "--allow-write", folder]
+    values = sandbox_packs.token_values()
+    temp_folders = session_temp_folders(values)
+    for always in session_read_folders():
+        argv += ["--allow-read", always]
+    for temp in temp_folders:
+        argv += ["--allow-write", temp]
+    argv += ["--", "/bin/sh", "-c", command]
+    started_with = session_read_folders() + ("/dev",) + tuple(temp_folders)
     child = None
     stopping = False
 
@@ -248,11 +327,15 @@ def run(options):
                 continue
             kind = event.get("event")
             if kind == "pass":
-                found = len(event.get("read_only") or []) + len(event.get("read_write") or [])
-                _say("pass", event.get("pass", ""), event.get("exit", ""), found)
+                found = [path for path in (event.get("read_only") or []) + (event.get("read_write") or [])
+                         if isinstance(path, str) and not _within(path, folder)
+                         and not any(_within(path, always) for always in started_with)]
+                _say("pass", event.get("pass", ""), event.get("exit", ""), len(found))
             elif kind == "check":
                 without = event.get("without", "")
                 _say("check", ", ".join(map(str, without)) if isinstance(without, list) else without)
+            elif kind == "hint":
+                _say("hint", event.get("source", ""), len(event.get("paths") or []))
             elif kind == "done":
                 done = event
         child.wait()
@@ -273,8 +356,8 @@ def run(options):
             _say("end", "failed", "The recorder ended without a result. Nothing was kept."
                  + (f" It said: {said}" if said else ""))
         return 0
-    state["rows"] = review_rows(done, folder, sandbox_packs.token_values())
     stopped = done.get("stopped")
+    state["rows"] = review_rows(done, folder, values, temp_folders, succeeded=stopped == "success")
     if stopped == "success":
         state["outcome"] = "success"
         message = f"The command ran after {done.get('passes', '?')} passes."

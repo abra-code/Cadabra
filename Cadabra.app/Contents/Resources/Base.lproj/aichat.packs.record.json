@@ -10,7 +10,7 @@
     {
       "type": "Text",
       "properties": {
-        "text": "Run a command the way a session's tools would: under a sandbox that allows only the folder it runs in. What it is refused is allowed and it is run again, until it succeeds. The folders found can then be saved as a pack.",
+        "text": "Run a command the way a session's tools would: under a sandbox that allows the folder it runs in, the system's own programs and libraries, and the temporary folders. What it is refused beyond that is allowed and it is run again, until it succeeds. The folders found can then be saved as a pack.",
         "foregroundStyle": "secondary",
         "font": "callout",
         "frame": { "maxWidth": "infinity", "alignment": "leading" }

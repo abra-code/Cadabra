@@ -28,7 +28,7 @@ RUN="$SUPPORT/Run"
 HOME_REAL="$(cd "$HOME" && pwd -P)"
 WORK="$(cd "$OMCTEST_WORK" && pwd -P)/record-a-pack"
 /bin/rm -rf "$WORK" "$USER_PACKS"
-/bin/mkdir -p "$WORK/project/sub" "$WORK/cache" "$WORK/tools" "$HOME/dev/tools" "$HOME/.ssh" "$HOME/Library/Caches"
+/bin/mkdir -p "$WORK/project/sub" "$WORK/cache" "$WORK/tools" "$WORK/Tool.app/Contents/bin" "$WORK/Tool.app/Contents/share" "$HOME/dev/tools" "$HOME/.ssh" "$HOME/Library/Caches"
 printf 'settings\n' > "$WORK/tools/settings.conf"
 
 # A found path is shown with a token where one fits, and the scratch folder is inside the user's
@@ -43,20 +43,27 @@ CADABRA_SANDBOX_DISCOVER="$OMCTEST_TESTS/helpers/fake_sandbox_discover.py"
 CADABRA_RECORD_POLL_SECONDS=0.1
 FAKE_DISCOVER_SCENARIO="$WORK/scenario.json"
 FAKE_DISCOVER_ARGV="$WORK/argv.txt"
-export CADABRA_SANDBOX_DISCOVER CADABRA_RECORD_POLL_SECONDS FAKE_DISCOVER_SCENARIO FAKE_DISCOVER_ARGV
+# The recording is given the temporary folders, and what is in them is left out of what is found.
+# This file's own folders are all in the temporary folder, so it names another as the only one.
+/bin/mkdir -p "$WORK/temp/scratch"
+CADABRA_RECORD_TEMP_FOLDERS="$WORK/temp"
+export CADABRA_SANDBOX_DISCOVER CADABRA_RECORD_POLL_SECONDS FAKE_DISCOVER_SCENARIO FAKE_DISCOVER_ARGV CADABRA_RECORD_TEMP_FOLDERS
 
 # scenario <stopped> <exit>  ->  the recorder finds the same folders and ends that way.
 scenario() {
-    /usr/bin/jq -n --arg work "$WORK" --arg home "$HOME_REAL" --arg stopped "$1" --argjson exit "$2" '{
+    /usr/bin/jq -n --arg work "$WORK" --arg above "${WORK%/*}" --arg home "$HOME_REAL" --arg stopped "$1" --argjson exit "$2" '{
         exit: $exit,
         events: [
             { event: "pass", pass: 1, exit: 1, read_only: [($work + "/tools")], read_write: [] },
+            { event: "hint", pass: 1, source: "output", paths: [($work + "/Tool.app/Contents/share")] },
             { event: "check", without: [($home + "/dev/tools")], exit: 1 },
             { event: "done", passes: 2, exit: $exit, stopped: $stopped,
-              read_write: [($work + "/cache"), ($work + "/project/sub")],
-              read_only: [($home + "/dev/tools"), ($work + "/tools/settings.conf"), ($home + "/.ssh"), ($home + "/Library/Caches"), "/bin/sh", "/usr/lib/dyld", "/dev/tty"],
-              folder_only: [$work],
-              unverified: [($home + "/dev/tools")] } ] }' > "$FAKE_DISCOVER_SCENARIO"
+              read_write: [($work + "/cache"), ($work + "/project/sub"), ($work + "/temp/scratch")],
+              read_only: [($home + "/dev/tools"), ($work + "/tools/settings.conf"), ($home + "/.ssh"), ($home + "/Library/Caches"), "/bin/sh", "/usr/lib/dyld", "/System/Library/Frameworks", "/dev/tty",
+                          ($work + "/Tool.app/Contents/bin"), ($work + "/Tool.app/Contents/share"), $work],
+              folder_only: [$above, ($work + "/Tool.app"), ($work + "/Tool.app/Contents")],
+              unverified: [($home + "/dev/tools")],
+              hinted: [($work + "/tools/settings.conf"), ($work + "/Tool.app/Contents/share")] } ] }' > "$FAKE_DISCOVER_SCENARIO"
 }
 fresh_window() {
     omc_control_defaults aichat.packs.record
@@ -121,11 +128,26 @@ check "a folder in the home folder is written with ~, and its doubt noted" \
 check "a single file is one"                "checkmark.square.fill	$SHOWN/tools/settings.conf	Read (one file)	" "$(row_with settings.conf)"
 check "a folder of keys is locked"          "minus.square	~/.ssh	Read	Never in a pack: in ~/.ssh, which holds keys or private data" "$(row_with '~/.ssh')"
 check "a wide folder starts unticked"       "square" "$(row_with '~/Library/Caches' | /usr/bin/cut -f1)"
-check "a folder needed only as itself is locked" "minus.square" "$(ui_rows "$V_table" | /usr/bin/awk -F'\t' -v path="$SHOWN" '$2 == path { print $1 }')"
+check "what was read inside an application is one row, the application" "checkmark.square.fill	$SHOWN/Tool.app	Read	|1" \
+    "$(row_with "$SHOWN/Tool.app")|$(ui_rows "$V_table" | /usr/bin/grep -c -F "Tool.app")"
+check "the temporary folder is given to change, and what is in it is left out" "1|0" \
+    "$(/usr/bin/grep -A1 -x -- '--allow-write' "$FAKE_DISCOVER_ARGV" | /usr/bin/grep -c -x "$WORK/temp")|$(ui_rows "$V_table" | /usr/bin/grep -c -F '/temp/scratch')"
+check "the system's program and library folders are given to the recording from the start" "/bin /sbin /usr/bin /usr/sbin /usr/lib /System/Library" \
+    "$(/usr/bin/grep -A1 -x -- '--allow-read' "$FAKE_DISCOVER_ARGV" | /usr/bin/grep '^/' | /usr/bin/tr '\n' ' ' | /usr/bin/sed 's/ $//')"
+check "a folder needed only as itself is locked" "minus.square" "$(ui_rows "$V_table" | /usr/bin/awk -F'\t' -v path="${SHOWN%/*}" '$2 == path { print $1 }')"
+check "the folder above the run's folder starts unticked, and says why" "square|1" \
+    "$(ui_rows "$V_table" | /usr/bin/awk -F'\t' -v path="$SHOWN" '$2 == path { print $1 }')|$(ui_rows "$V_table" | /usr/bin/awk -F'\t' -v path="$SHOWN" '$2 == path { print $4 }' | /usr/bin/grep -c 'Contains the folder the command ran in')"
 check "what is inside the run's folder is left out" "" "$(row_with "$SHOWN/project/sub")"
-check "what replay's sandbox always allows, and devices, are left out" "0" "$(ui_rows "$V_table" | /usr/bin/grep -c -E '	(/bin/sh|/usr/lib/dyld|/dev/tty)	')"
+check "what replay's sandbox always allows, and devices, are left out" "0" "$(ui_rows "$V_table" | /usr/bin/grep -c -E '	(/bin/sh|/usr/lib/dyld|/System/Library/Frameworks|/dev/tty)	')"
 check "Save Pack is on, Record on again, Stop off" "1|1|0" "$(ui_enabled "$V_save")|$(ui_enabled "$V_start")|$(ui_enabled "$V_stop")"
 check "the progress view is hidden again"   "0" "$(ui_visible "$V_progress")"
+
+section "the steps of a recording, as the window is told them"
+steps="$("$OMC_APP_BUNDLE_PATH/Contents/Library/Python/bin/python3" -B "$OMC_APP_BUNDLE_PATH/Contents/Resources/Scripts/sandbox_packs_record.py" run \
+    --discover "$CADABRA_SANDBOX_DISCOVER" --folder "$WORK/project" --state "$WORK/steps-state.json" --pid-file "$WORK/steps.pid" -- "make all")"
+check "a pass counts what was found beyond what is always allowed" "pass	1	1	1" "$(printf '%s\n' "$steps" | /usr/bin/sed -n 1p)"
+check "a hint says where the folders tried come from"              "hint	output	1" "$(printf '%s\n' "$steps" | /usr/bin/sed -n 2p)"
+check "the last line is the outcome"                               "end	success	The command ran after 2 passes." "$(printf '%s\n' "$steps" | /usr/bin/tail -n 1)"
 
 section "reviewing: keep, and the access"
 click keep "$SHOWN/cache"
@@ -166,7 +188,7 @@ check "no alert"                        "0" "$(alerts_count)"
 check "the id comes from the title"     "yes" "$([ -f "$PACK" ] && echo yes || echo no)"
 check "its title and description"       "My Build: tools|Building with make." "$(/usr/bin/jq -r '.title + "|" + .description' "$PACK")"
 check "the folders to change"           "$SHOWN/cache" "$(/usr/bin/jq -r '.read_write | join(" ")' "$PACK")"
-check "the folders to read, with ~"     "~/dev/tools" "$(/usr/bin/jq -r '.read_only | join(" ")' "$PACK")"
+check "the folders to read, the application and the one with ~" "$SHOWN/Tool.app ~/dev/tools" "$(/usr/bin/jq -r '.read_only | join(" ")' "$PACK")"
 check "the single files"                "$SHOWN/tools/settings.conf" "$(/usr/bin/jq -r '.read_only_files | join(" ")' "$PACK")"
 check "how it was recorded"             "sandbox-discover|make all" "$(/usr/bin/jq -r '.recorded.by + "|" + .recorded.command' "$PACK")"
 check "the application reads it as a usable pack" "ok" \
@@ -226,6 +248,9 @@ fresh_window
 record "make all"
 check "the status says it still fails"  "1" "$(cad_has "$(ui_value "$V_status")" 'The command still fails (status 1) and nothing more was refused.')"
 check "the folders found are shown"     "1" "$([ -n "$(row_with "$SHOWN/cache")" ] && echo 1 || echo 0)"
+check "what the recorder only guessed starts unticked, and says so" "square|1" \
+    "$(row_with settings.conf | /usr/bin/cut -f1)|$(row_with settings.conf | /usr/bin/cut -f4 | /usr/bin/grep -c '^A guess: ')"
+check "  an application is a guess only when all found in it was" "checkmark.square.fill" "$(row_with "$SHOWN/Tool.app" | /usr/bin/cut -f1)"
 check "  and can be saved"              "1" "$(ui_enabled "$V_save")"
 
 section "a recorder that ends without a result leaves nothing to save"

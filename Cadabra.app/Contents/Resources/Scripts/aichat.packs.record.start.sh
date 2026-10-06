@@ -96,6 +96,12 @@ EOF_STEP
                 fi ;;
             check)
                 "$dialog" "$window_uuid" $record_status_view "Checking whether the command needs $one..." ;;
+            hint)
+                if [ "$one" = "output" ]; then
+                    "$dialog" "$window_uuid" $record_status_view "Nothing new was refused, but the command still fails. Trying what its output names ($two)..."
+                else
+                    "$dialog" "$window_uuid" $record_status_view "Nothing new was refused, but the command still fails. Trying the folders around its tools ($two)..."
+                fi ;;
             end)
                 outcome="$one"
                 message="$two" ;;
