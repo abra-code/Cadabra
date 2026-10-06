@@ -1,0 +1,32 @@
+{
+  "formatVersion": 1,
+  "id": "node",
+  "title": "Node.js and npm",
+  "description": "Run node and install packages with npm.",
+  "read_only": [
+    "/usr/local/bin",
+    "/usr/local/lib/node_modules",
+    "~/.nvm"
+  ],
+  "read_write": [
+    "~/.npm"
+  ],
+  "requires_any": [
+    "/usr/local/bin/node",
+    "$HOMEBREW_PREFIX/bin/node",
+    "~/.nvm"
+  ],
+  "uses": [
+    "homebrew"
+  ],
+  "notes": [
+    "Covers a node from the nodejs.org installer, from nvm, and from Homebrew (with the Homebrew pack, which comes with this one). Packages are installed into the project, and npm's cache in ~/.npm can be changed.",
+    "Not covered: ~/.npmrc, which can hold the keys of a private registry, so npm runs with its default settings; installing packages for the whole Mac (npm install -g); and the caches of yarn and pnpm. Record a pack on top of this one for those.",
+    "A package that compiles code when it is installed needs the Make pack as well."
+  ],
+  "recorded": {
+    "by": "sandbox-discover, with node 24 from the nodejs.org installer, then the same under the pack's folders alone",
+    "command": "node main.js; npm install && npm test",
+    "date": "2026-10-06"
+  }
+}

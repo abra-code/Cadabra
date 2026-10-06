@@ -1,0 +1,45 @@
+{
+  "formatVersion": 1,
+  "id": "python",
+  "title": "Python, pip and uv",
+  "description": "Run Python, make virtual environments and install packages with pip or uv.",
+  "read_only": [
+    "/Library/Frameworks/Python.framework",
+    "/usr/local/bin",
+    "~/Library/Python",
+    "~/.local/bin",
+    "~/.local/share/uv",
+    "~/.pyenv"
+  ],
+  "read_write": [
+    "~/Library/Caches/pip",
+    "~/Library/Caches/com.apple.python",
+    "~/.cache/uv"
+  ],
+  "read_only_files": [
+    "/private/etc/apache2/mime.types"
+  ],
+  "requires_any": [
+    "/Library/Frameworks/Python.framework",
+    "$DEVELOPER_DIR",
+    "/Library/Developer/CommandLineTools",
+    "$HOMEBREW_PREFIX/bin/python3",
+    "~/.local/bin/uv",
+    "~/.pyenv"
+  ],
+  "uses": [
+    "make",
+    "homebrew"
+  ],
+  "notes": [
+    "Covers the Python of the python.org installer, the one that comes with Xcode or the Command Line Tools (/usr/bin/python3, with the Make pack), one installed with Homebrew (with the Homebrew pack), the Pythons that uv manages, and pyenv. Both packs come with this one.",
+    "Packages go into a virtual environment in the project (python3 -m venv, uv venv). The packages installed for your user (pip install --user) can be read, not changed, and uv cannot download a new Python: do both outside a session.",
+    "The one file outside these, /etc/apache2/mime.types, is there because pip stops when it is refused it: Python's table of file types reads it when it exists.",
+    "Not covered: conda, and a folder outside the project that your Python is set to look in (PYTHONPATH, a .pth file). Add such a folder by hand, or record a pack on top of this one."
+  ],
+  "recorded": {
+    "by": "sandbox-discover, with Python 3.14 from python.org, Python 3.9 of Xcode 27 and uv, then the same under the pack's folders alone; pyenv and a Homebrew Python were not tried",
+    "command": "python3 main.py; python3 -m venv .venv && .venv/bin/pip install six; uv venv && uv pip install six && uv run python",
+    "date": "2026-10-06"
+  }
+}
