@@ -425,11 +425,17 @@ if mac_server_on("time"):
 # folder. A file there named like a module it imports (argparse.py, a duckduckgo_mcp_server
 # folder) would then run on this Mac, outside every sandbox, the next time a window starts its
 # tools: code left in the project by an earlier session, or shipped in a folder someone else made.
+#
+# SEARCH_SERVER_ENV: the search server's own settings, here and in a box. It would replace a
+# long address in its results with a short "ref://" token that only it can resolve; with the
+# threshold at 0 results carry the addresses themselves, which the model can cite and the user
+# can open, and its third tool (expand_link, which turns a token back) is never needed.
+SEARCH_SERVER_ENV = {"DDG_REF_URL_THRESHOLD": "0"}
 if mac_server_on("search"):
     servers["search"] = {
         "command": python3_bin,
         "args": ["-P", "-m", "duckduckgo_mcp_server.server"],
-        "env": {"PYTHONPATH": packages_dir},
+        "env": dict(SEARCH_SERVER_ENV, PYTHONPATH=packages_dir),
     }
     server_order.append("search")
 
@@ -476,7 +482,7 @@ if box.box:
         server_order.append("time")
     if box_flag("internet"):
         servers["search"] = boxed([guest_python, "-P", "-m", "duckduckgo_mcp_server.server"],
-                                  guest_python_env)
+                                  dict(SEARCH_SERVER_ENV, **guest_python_env))
         server_order.append("search")
 
 # ── Ask each server which of its tools need a permission prompt ───────────────

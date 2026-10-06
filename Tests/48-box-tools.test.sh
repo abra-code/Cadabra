@@ -236,7 +236,7 @@ check "pdfutil: the project and the box's temporary folder, writable" \
     "exec --box b1 --project $PROJECT -- $guest/Support/pdfutil mcp --root $PROJECT --root /private/tmp --writable" \
     "$(server "$cfg" pdf '" ".join(s["args"])')"
 check "the Python server gets its paths in the box through --env" \
-    "exec --box b1 --project $PROJECT --env PYTHONPATH=$guest/Library/Packages --env PYTHONPYCACHEPREFIX=$PYCACHE -- $guest/Library/Python/bin/python3 -P -m duckduckgo_mcp_server.server" \
+    "exec --box b1 --project $PROJECT --env DDG_REF_URL_THRESHOLD=0 --env PYTHONPATH=$guest/Library/Packages --env PYTHONPYCACHEPREFIX=$PYCACHE -- $guest/Library/Python/bin/python3 -P -m duckduckgo_mcp_server.server" \
     "$(server "$cfg" search '" ".join(s["args"])')"
 check "  and no environment on this Mac"  "none" "$(server "$cfg" search 's.get("env", "none")')"
 check "no path of this Mac's sandbox reaches the box" "0" "$(cad_has "$(/bin/cat "$cfg")" '/opt/homebrew')"
@@ -321,7 +321,7 @@ check "  each started by the agent in the box, not through agent-vm" \
     "$(mcp_servers "$json" 'm["local"]["command"] + "|" + m["pdf"]["command"] + "|" + m["time"]["command"] + "|" + m["search"]["command"]')"
 check "  replay unconfined, the project first" "--mcp-server --no-sandbox --allow-write $PROJECT --allow-write /" \
     "$(mcp_servers "$json" '" ".join(m["local"]["args"])')"
-check "  the Python server's environment in ACP's form" "PYTHONPATH=$guest/Library/Packages,PYTHONPYCACHEPREFIX=$PYCACHE" \
+check "  the Python server's environment in ACP's form" "DDG_REF_URL_THRESHOLD=0,PYTHONPATH=$guest/Library/Packages,PYTHONPYCACHEPREFIX=$PYCACHE" \
     "$(mcp_servers "$json" '",".join(e["name"] + "=" + e["value"] for e in m["search"]["env"])')"
 check "  no agent-vm anywhere in them" "0" "$(mcp_servers "$json" 'sum("agent-vm" in json.dumps(s) or "fake_agent_vm" in json.dumps(s) for s in m.values())')"
 check "  probed through the box"         "1" "$(cad_has "$(/bin/cat "$FAKE_AGENTVM_DIR/log")" "exec --box b1 --project $PROJECT -- $guest/Support/replay")"

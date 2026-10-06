@@ -90,10 +90,7 @@ CLEAN_PACKAGES="default"
 # Kept in sync with generate_mcp_configs.py - adding one here without teaching that
 # script about it installs dead weight, and the reverse leaves a configured server with
 # nothing to import.
-#
-# The search server is held below 0.7: that release moves to version 2 of the mcp package and
-# adds a third tool, which the app's permission rules have not been checked against.
-MCP_PACKAGES=("duckduckgo-mcp-server<0.7")
+MCP_PACKAGES=("duckduckgo-mcp-server")
 MCP_MODULES=("duckduckgo_mcp_server.server")
 [ "${#MCP_PACKAGES[@]}" -eq "${#MCP_MODULES[@]}" ] \
     || { echo "MCP_PACKAGES and MCP_MODULES must be index-aligned" >&2; exit 1; }
