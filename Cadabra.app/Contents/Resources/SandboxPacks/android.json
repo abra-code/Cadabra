@@ -1,0 +1,44 @@
+{
+  "formatVersion": 1,
+  "id": "android",
+  "title": "Android Studio and Gradle",
+  "description": "Build and test Android projects with Gradle, using Android Studio's Java and the Android SDK.",
+  "read_only": [
+    "/Applications/Android Studio.app",
+    "~/Applications/Android Studio.app",
+    "~/Library/Android/sdk"
+  ],
+  "read_write": [
+    "~/.gradle/caches",
+    "~/.gradle/wrapper",
+    "~/.gradle/daemon",
+    "~/.gradle/native",
+    "~/.gradle/.tmp",
+    "~/.gradle/jdks",
+    "~/.gradle/android",
+    "~/.gradle/kotlin-profile",
+    "~/.gradle/notifications",
+    "~/.gradle/workers",
+    "~/.android"
+  ],
+  "requires": [
+    "~/Library/Android/sdk"
+  ],
+  "requires_any": [
+    "/Applications/Android Studio.app",
+    "~/Applications/Android Studio.app"
+  ],
+  "notes": [
+    "Covers ./gradlew builds and unit tests of an Android project. The Mac has no Java of its own, so the command must say where Android Studio's is: JAVA_HOME=\"/Applications/Android Studio.app/Contents/jbr/Contents/Home\". The SDK is found through the project's local.properties or ANDROID_HOME.",
+    "Gradle's working folders in ~/.gradle can be changed, and the SDK only read: a build cannot install SDK packages or accept licenses. Do that in Android Studio first.",
+    "Not covered: ~/.gradle/gradle.properties and ~/.gradle/init.d, which can hold signing passwords, repository keys and scripts that every build runs. A project that needs a value from there fails; pass it on the command line or record a pack on top of this one.",
+    "~/.android can be changed, because every build writes there. It also holds the debug signing key and the key that lets this Mac talk to your devices.",
+    "A Gradle daemon that was started outside the conversation is not confined by the sandbox. Use --no-daemon in a conversation.",
+    "Downloading dependencies needs the network to be allowed in Agentic Session Tools. The emulator and installing on a device were not tried."
+  ],
+  "recorded": {
+    "by": "sandbox-discover, with Android Studio's Java 21 and Gradle 9.5, then the same under the pack's folders alone",
+    "command": "./gradlew --no-daemon clean assembleDebug testDebugUnitTest",
+    "date": "2026-10-06"
+  }
+}

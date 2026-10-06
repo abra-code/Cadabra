@@ -54,7 +54,7 @@ state_of() {
 TOKENS="--token DEVELOPER_DIR=$WORK/xcode/Xcode.app/Contents/Developer --token HOMEBREW_PREFIX=$WORK/brew --token DARWIN_USER_CACHE_DIR=$WORK/cache --token DARWIN_USER_TEMP_DIR=$WORK/build"
 
 section "the packs that ship with the application"
-check "there are seven"                        "cmake git homebrew make node python xcode" "$(/bin/ls "$SEEDS" | /usr/bin/sed 's/\.json$//' | /usr/bin/tr '\n' ' ' | /usr/bin/sed 's/ $//')"
+check "there are eight"                        "android cmake git homebrew make node python xcode" "$(/bin/ls "$SEEDS" | /usr/bin/sed 's/\.json$//' | /usr/bin/tr '\n' ' ' | /usr/bin/sed 's/ $//')"
 for seed in git homebrew xcode; do
     check "$seed is usable where its tools are" "ok" "$(field .state "$SEEDS/$seed.json" $TOKENS)"
     check "  and has a title and a description" "2" "$(field '[.title, .description] | map(select(length > 3)) | length' "$SEEDS/$seed.json" $TOKENS)"
@@ -66,7 +66,7 @@ check "  and then grants nothing"              "0" "$(field '[.read_only[], .rea
 check "homebrew without brew is not installed" "not-installed" "$(field .state "$SEEDS/homebrew.json" --token HOMEBREW_PREFIX=)"
 check "git grants one file to read"            "$HOME_REAL/.gitconfig" "$(field '.read_only_files | join(" ")' "$SEEDS/git.json")"
 check "  and no folder: a credentials file can be beside git's settings" "0" "$(field '.read_only | length' "$SEEDS/git.json")"
-check "the list has all seven, none invalid"   "cmake:seed git:seed homebrew:seed make:seed node:seed python:seed xcode:seed|0" \
+check "the list has all eight, none invalid"   "android:seed cmake:seed git:seed homebrew:seed make:seed node:seed python:seed xcode:seed|0" \
     "$("$PY" -B "$PACKS_PY" list --bundle "$OMC_APP_BUNDLE_PATH" $TOKENS | /usr/bin/jq -r '([.[] | .id + ":" + .source] | join(" ")) + "|" + ([.[] | select(.state == "invalid")] | length | tostring)')"
 
 # cmake's own folders are where this Mac has them or not; what is tested is its two keys.
@@ -89,6 +89,12 @@ check "python comes with the packs of the Pythons that are not its own" "make ho
 check "  it may change caches only"                                 "3" "$(/usr/bin/jq -r '[.read_write[] | select(test("[Cc]ache"))] | length' "$SEEDS/python.json")"
 check "  and all it may change is a cache"                          "3" "$(/usr/bin/jq -r '.read_write | length' "$SEEDS/python.json")"
 check "  with the one file pip stops without"                       "/private/etc/apache2/mime.types" "$(/usr/bin/jq -r '.read_only_files | join(" ")' "$SEEDS/python.json")"
+# android: Gradle's working folders, not all of ~/.gradle, whose settings file and start-up
+# scripts can hold keys and code that every build runs.
+check "android may change Gradle's working folders, not all of its folder" "0" "$(/usr/bin/jq -r '[.read_write[] | select(. == "~/.gradle" or (test("gradle\\.properties|init\\.d")))] | length' "$SEEDS/android.json")"
+check "  it only reads the SDK"                                       "1|0" "$(/usr/bin/jq -r '([.read_only[] | select(. == "~/Library/Android/sdk")] | length | tostring) + "|" + ([.read_write[] | select(test("Library/Android"))] | length | tostring)' "$SEEDS/android.json")"
+check "  it needs the SDK and Android Studio, in either Applications folder" "1|2" "$(/usr/bin/jq -r '(.requires | length | tostring) + "|" + (.requires_any | length | tostring)' "$SEEDS/android.json")"
+check "  and it is not invalid on this Mac" "0" "$(field .state "$SEEDS/android.json" | /usr/bin/grep -c invalid)"
 for seed in node python; do
     check "$seed is usable when any one of its installs is there" "1" "$(/usr/bin/jq -r 'if (.requires_any | length) > 1 and (has("requires") | not) then 1 else 0 end' "$SEEDS/$seed.json")"
     check "  what it uses ships with the application" "0" "$(for used in $(/usr/bin/jq -r '.uses[]' "$SEEDS/$seed.json"); do [ -f "$SEEDS/$used.json" ] || echo missing; done | /usr/bin/wc -l | /usr/bin/tr -d ' ')"
