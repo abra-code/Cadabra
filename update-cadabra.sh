@@ -3,7 +3,7 @@
 # Updates the git-excluded runtime engines inside Cadabra.app (the native-chat V2,
 # rebranded from V2/AIChat.app):
 #   1. llama.cpp  - llama-server + its dylibs, from a GitHub release (the GGUF engine)
-#   2. mlx-agent  - built from source with xcodebuild, Release (the ACP agent + MLX engine)
+#   2. mlx-agent  - archived from source with xcodebuild, Release (the ACP agent + MLX engine)
 #   3. pdfutil    - built from source with ./build.sh (the PDF MCP server)
 #   4. replay     - built from source with xcodebuild (the local files/shell MCP server)
 #   5. time-mcp   - built from source with cmake (the date and time MCP server)
@@ -103,6 +103,8 @@ MCP_MODULES=("duckduckgo_mcp_server.server")
 # Set by prepare(), the build paths by each tool's stage
 ASSET_NAME=""; DOWNLOAD_URL=""; WORK_DIR=""; TARBALL=""; EXTRACT_DIR=""
 AGENT_BUILD_DIR=""
+AGENT_ARCHIVE=""
+AGENT_BUNDLES_DIR=""
 AGENT_RESOLVED=""
 # Set by update_agent_packages while mlx-agent's Package.resolved is moved aside. Globals
 # rather than locals because the INT/TERM trap has to see them (see restore_agent_pins).
@@ -172,7 +174,7 @@ fetch_tagged_source() {
 
 # check_tagged_version <program name> <tag> <built program>  ->  a tagged source must build the
 # version its tag names: a tag put on the wrong commit would otherwise ship under the right name.
-# Run from the program's own folder (mlx-agent loads its Metal library from beside itself).
+# Run from the program's own folder, as it is run in the bundle.
 check_tagged_version() {
     local _built="$( cd "$(/usr/bin/dirname "$3")" && "./$(/usr/bin/basename "$3")" --version 2>/dev/null | /usr/bin/head -1 )"
     [ "$_built" = "$1 ${2#v}" ] \
@@ -274,7 +276,7 @@ Usage: $0 [OPTIONS]
 
 Updates the runtime engines in $(/usr/bin/basename "$APP_BUNDLE"):
   llama.cpp -> Contents/Support/Llama.cpp/   (downloaded release, no WebUI - Cadabra is native)
-  mlx-agent -> Contents/Support/MLX/         (built from source, xcodebuild -configuration Release)
+  mlx-agent -> Contents/Support/MLX/         (from source, xcodebuild archive, Release)
   pdfutil   -> Contents/Support/pdfutil      (built from source with ./build.sh)
   replay    -> Contents/Support/replay       (built from source with xcodebuild)
   time-mcp  -> Contents/Support/time-mcp     (built from source with cmake)
@@ -907,11 +909,17 @@ update_agent() {
         # A tagged version is built with the package versions it was tagged with.
         DO_AGENT_PACKAGE_UPDATE="no"
     fi
-    # Release, not Debug: this is the binary users run, so it is built -O/wholemodule
-    # rather than -Onone. The configuration is passed to xcodebuild explicitly (below)
-    # instead of relying on the scheme, which keeps run/test on Debug for development - so
-    # this path must match that flag, not the scheme.
-    AGENT_BUILD_DIR="$AGENT_REPO/build/Build/Products/Release"
+    # An archive, not a plain build: an archive is what Xcode makes for distribution. A
+    # plain build, in any configuration, gets com.apple.security.get-task-allow (a debugger
+    # may attach), which the notary service refuses, and keeps its debug symbols in the
+    # program. The archive holds the program alone, stripped, with its symbols beside it
+    # in dSYMs.
+    AGENT_ARCHIVE="$AGENT_REPO/build/mlx-agent.xcarchive"
+    AGENT_BUILD_DIR="$AGENT_ARCHIVE/Products/usr/local/bin"
+    # The resource bundles of the packages (the Metal library among them) are not installed
+    # into the archive, since a command line tool has nowhere to hold them. The archive
+    # build leaves them here, in its intermediate folder under -derivedDataPath.
+    AGENT_BUNDLES_DIR="$AGENT_REPO/build/Build/Intermediates.noindex/ArchiveIntermediates/mlx-agent/IntermediateBuildFilesPath/UninstalledProducts/macosx"
     # The SPM pins for the Xcode project live here (there is no Package.swift in that
     # repo - see the header of mlx-agent/project.yml for why).
     AGENT_RESOLVED="$AGENT_REPO/mlx-agent.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved"
@@ -937,10 +945,13 @@ update_agent() {
         fi
 
         # Release, not Debug: this binary ships inside the app, so it is built -O /
-        # wholemodule. The flag is what selects it - the scheme keeps run/test on Debug so
-        # development in Xcode is unaffected - which is why AGENT_BUILD_DIR above must track
-        # this value and not the scheme's.
-        echo "  Building (xcodebuild -configuration Release - compiles the Metal shaders; never 'swift build')..."
+        # wholemodule. The configuration is passed explicitly rather than left to the
+        # scheme's archive action, so a change in the scheme cannot change what ships.
+        #
+        # The old archive goes first: a build that fails must not leave the previous
+        # program where the deploy step below would take it for the new one.
+        /bin/rm -rf "$AGENT_ARCHIVE"
+        echo "  Archiving (xcodebuild archive, Release - compiles the Metal shaders; never 'swift build')..."
         ( cd "$AGENT_REPO" && /usr/bin/xcodebuild \
             -project mlx-agent.xcodeproj \
             -scheme mlx-agent \
@@ -949,14 +960,15 @@ update_agent() {
             -configuration Release \
             -skipPackagePluginValidation \
             -skipMacroValidation \
-            build ) 2>&1 | /usr/bin/grep -iE "error:|BUILD (SUCCEEDED|FAILED)" | /usr/bin/tail -10
+            -archivePath "$AGENT_ARCHIVE" \
+            archive ) 2>&1 | /usr/bin/grep -iE "error:|ARCHIVE (SUCCEEDED|FAILED)" | /usr/bin/tail -10
         [ "${PIPESTATUS[0]}" = 0 ] || fail "xcodebuild failed."
     else
         echo "  --skip-build: reusing existing build products"
     fi
 
     [ -x "$AGENT_BUILD_DIR/mlx-agent" ] \
-        || fail "No built mlx-agent at $AGENT_BUILD_DIR (drop --skip-build, or build it yourself - note this deploys the RELEASE product, so a Debug-only build tree will not do)."
+        || fail "No archived mlx-agent at $AGENT_BUILD_DIR (drop --skip-build - note this deploys the product of xcodebuild archive, so a tree with only plain builds will not do)."
     [ -z "$AGENT_TAG" ] || check_tagged_version mlx-agent "$AGENT_TAG" "$AGENT_BUILD_DIR/mlx-agent"
 
     /bin/mkdir -p "$MLX_DIR" || fail "Could not create $MLX_DIR"
@@ -972,19 +984,19 @@ update_agent() {
     # The metallib bundle must travel with the binary it was built against; a stale one is a
     # runtime abort, so it is replaced wholesale rather than merged.
     local required_bundle="mlx-swift_Cmlx.bundle"
-    [ -d "$AGENT_BUILD_DIR/$required_bundle" ] || fail "Required metallib bundle missing: $required_bundle"
+    [ -d "$AGENT_BUNDLES_DIR/$required_bundle" ] || fail "Required metallib bundle missing: $AGENT_BUNDLES_DIR/$required_bundle (the archive build's intermediate folder; if Xcode moved it, AGENT_BUNDLES_DIR needs the new place)"
     local b
     for b in "$required_bundle" swift-crypto_Crypto.bundle swift-transformers_Hub.bundle; do
-        if [ -d "$AGENT_BUILD_DIR/$b" ]; then
+        if [ -d "$AGENT_BUNDLES_DIR/$b" ]; then
             /bin/rm -rf "${MLX_DIR:?}/$b"
-            /bin/cp -Rf "$AGENT_BUILD_DIR/$b" "$MLX_DIR/$b"
+            /bin/cp -Rf "$AGENT_BUNDLES_DIR/$b" "$MLX_DIR/$b"
         fi
     done
     [ -f "$MLX_DIR/$required_bundle/Contents/Resources/default.metallib" ] \
         || fail "default.metallib not found after copy."
     [ -f "$AGENT_REPO/LICENSE" ] && /bin/cp -f "$AGENT_REPO/LICENSE" "$MLX_DIR/mlx-agent.LICENSE"
 
-    AGENT_STATUS="deployed (Release${AGENT_TAG:+, $AGENT_TAG})"
+    AGENT_STATUS="deployed (archive, Release${AGENT_TAG:+, $AGENT_TAG})"
     echo "  ${GREEN}Deployed${RESET} mlx-agent + metallib"
     echo
 }
