@@ -6,7 +6,7 @@
 #   2. mlx-agent  - archived from source with xcodebuild, Release (the ACP agent + MLX engine)
 #   3. pdfutil    - built from source with ./build.sh (the PDF MCP server)
 #   4. replay     - built from source with xcodebuild (the local files/shell MCP server)
-#   5. time-mcp   - built from source with cmake (the date and time MCP server)
+#   5. time-mcp   - built from source with make (the date and time MCP server)
 #   6. packages   - the Python MCP server, pip-installed into Contents/Library/Packages
 # Each of the four built tools comes from a sibling checkout when there is one (built as it
 # is), and otherwise from the source of its newest version tag on GitHub.
@@ -120,7 +120,6 @@ GITHUB_BASE="https://github.com/abra-code"
 AGENT_TAG=""; PDFUTIL_TAG=""; REPLAY_TAG=""; TIME_TAG=""
 SOURCES_WORK_DIR=""
 FETCHED_DIR=""
-CMAKE_BIN=""
 LLAMA_STATUS="skipped"; AGENT_STATUS="skipped"; PDFUTIL_STATUS="skipped"
 REPLAY_STATUS="skipped"; TIME_STATUS="skipped"; PACKAGES_STATUS="skipped"
 
@@ -279,7 +278,7 @@ Updates the runtime engines in $(/usr/bin/basename "$APP_BUNDLE"):
   mlx-agent -> Contents/Support/MLX/         (from source, xcodebuild archive, Release)
   pdfutil   -> Contents/Support/pdfutil      (built from source with ./build.sh)
   replay    -> Contents/Support/replay       (built from source with xcodebuild)
-  time-mcp  -> Contents/Support/time-mcp     (built from source with cmake)
+  time-mcp  -> Contents/Support/time-mcp     (built from source with make)
   packages  -> Contents/Library/Packages     (pip install with the bundle's own python3)
 
 Options:
@@ -569,32 +568,25 @@ prepare() {
     fi
 
     if [ "$DO_TIME" = "yes" ]; then
-        # time-mcp (github.com/abra-code/time-mcp, Apache 2.0), known by its CMakeLists.txt and
-        # its main source file.
+        # time-mcp (github.com/abra-code/time-mcp, Apache 2.0), known by its main source file.
+        # It is built with its Makefile, which a checkout or a tag from before it replaced
+        # CMake (version 0.1.0) does not have. Both are refused here, before any stage runs,
+        # instead of failing after the long ones.
         if [ -z "$TIME_REPO" ]; then
             for _cand in "$SCRIPT_DIR/../time-mcp" "$SCRIPT_DIR/../../time-mcp"; do
-                [ -f "$_cand/CMakeLists.txt" ] && [ -f "$_cand/src/TimeTools.cpp" ] \
-                    && { TIME_REPO="$(cd "$_cand" && pwd)"; break; }
+                [ -f "$_cand/src/TimeTools.cpp" ] && { TIME_REPO="$(cd "$_cand" && pwd)"; break; }
             done
         fi
         if [ -n "$TIME_REPO" ]; then
-            [ -f "$TIME_REPO/CMakeLists.txt" ] && [ -f "$TIME_REPO/src/TimeTools.cpp" ] \
-                || fail "No time-mcp checkout at $TIME_REPO (looked for CMakeLists.txt and src/TimeTools.cpp)."
+            [ -f "$TIME_REPO/src/TimeTools.cpp" ] \
+                || fail "No time-mcp checkout at $TIME_REPO (looked for src/TimeTools.cpp)."
             TIME_REPO="$(cd "$TIME_REPO" && pwd)"
+            [ "$DO_BUILD" = "no" ] || [ -f "$TIME_REPO/Makefile" ] \
+                || fail "The time-mcp checkout at $TIME_REPO has no Makefile: it is from before time-mcp was built with make. Update it (git pull), or re-run with --skip-time."
         elif [ "$DO_BUILD" = "yes" ]; then
             TIME_TAG="$(tag_for_missing_repo time-mcp --skip-time)" || { cleanup; exit 1; }
-        fi
-        if [ "$DO_BUILD" = "yes" ]; then
-            # cmake is not part of Xcode or the Command Line Tools, so it is looked up here,
-            # before any stage runs, instead of failing after the long ones.
-            CMAKE_BIN="$(command -v cmake 2>/dev/null)"
-            if [ -z "$CMAKE_BIN" ]; then
-                for _cand in /opt/homebrew/bin/cmake /usr/local/bin/cmake /Applications/CMake.app/Contents/bin/cmake; do
-                    [ -x "$_cand" ] && { CMAKE_BIN="$_cand"; break; }
-                done
-            fi
-            [ -n "$CMAKE_BIN" ] \
-                || fail "cmake not found, and time-mcp is built with it. Install it (brew install cmake, or cmake.org), or re-run with --skip-time."
+            [ "${TIME_TAG#v}" != "0.1.0" ] \
+                || fail "time-mcp $TIME_TAG, its newest tagged version, is built with CMake, which this script no longer runs. Clone time-mcp beside this repository (its main branch is built with make), or re-run with --skip-time."
         fi
     fi
 
@@ -1116,7 +1108,7 @@ update_time() {
             TIME_STATUS="reused"
             return 0
         fi
-        fetch_tagged_source time-mcp "$TIME_TAG" CMakeLists.txt
+        fetch_tagged_source time-mcp "$TIME_TAG" Makefile
         TIME_REPO="$FETCHED_DIR"
     fi
     # A build folder of this script's own inside build/, so a developer's own build there
@@ -1125,20 +1117,19 @@ update_time() {
     TIME_BUILD_BIN="$TIME_BUILD_DIR/time-mcp"
 
     if [ "$DO_BUILD" = "yes" ]; then
-        # A plain C++ program with yyjson vendored: no Xcode project and no dependencies.
-        # The architecture is passed because cmake would otherwise build for the machine
+        # A plain C++ program with yyjson vendored: no Xcode project and no dependencies, built
+        # with the make and the compiler that come with Xcode.
+        # The architecture is passed because make would otherwise build for the machine
         # it runs on, which is the same today but is not this script's rule.
-        echo "  Building (cmake, MinSizeRel, $ARCH)..."
-        # The whole output goes to a log: cmake's last lines say only that it failed. The log
+        echo "  Building (make, $ARCH)..."
+        # The whole output goes to a log: make's last lines say only that it failed. The log
         # is shown on failure, since a temporary build folder goes when the script ends.
         /bin/mkdir -p "$TIME_BUILD_DIR" || fail "Could not create $TIME_BUILD_DIR"
         local time_log="$TIME_BUILD_DIR/update-cadabra.log"
-        "$CMAKE_BIN" -S "$TIME_REPO" -B "$TIME_BUILD_DIR" \
-            -DCMAKE_BUILD_TYPE=MinSizeRel -DCMAKE_OSX_ARCHITECTURES="$ARCH" > "$time_log" 2>&1 \
-            || { /usr/bin/tail -30 "$time_log"; fail "time-mcp: cmake could not configure the build."; }
-        "$CMAKE_BIN" --build "$TIME_BUILD_DIR" --target time-mcp >> "$time_log" 2>&1 \
+        # The build folder is named from inside the checkout (make -C), not by its whole
+        # path: make cannot work with a space in a file name, and the path may have one.
+        /usr/bin/make -C "$TIME_REPO" BUILD_DIR="build/cadabra" ARCHS="$ARCH" time-mcp > "$time_log" 2>&1 \
             || { /usr/bin/tail -30 "$time_log"; fail "time-mcp build failed."; }
-        /usr/bin/tail -2 "$time_log"
     else
         echo "  --skip-build: reusing existing build product"
     fi

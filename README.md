@@ -110,14 +110,13 @@ bundle and verifies that they actually launch (`--help` lists every option):
 | `mlx-agent` + resource bundles | `Contents/Support/MLX/` | built from source with `xcodebuild` |
 | `pdfutil` | `Contents/Support/` | built from source with `./build.sh` |
 | `replay` | `Contents/Support/` | built from source with `xcodebuild` |
-| `time-mcp` | `Contents/Support/` | built from source with `cmake` |
+| `time-mcp` | `Contents/Support/` | built from source with `make` |
 | Python MCP server (search) | `Contents/Library/Packages/` | `pip install` with the bundle's own `python3` |
 
 mlx-agent, pdfutil, replay and time-mcp are built from sibling checkouts (`--agent-repo=`,
 `--pdfutil-repo=`, `--replay-repo=`, `--time-repo=`), each as it is. A tool with no checkout is
 built from the source of its newest version tag, which the script downloads from GitHub.
-time-mcp needs `cmake`. No WebUI is downloaded
-or patched - Cadabra's chat is native.
+No WebUI is downloaded or patched - Cadabra's chat is native.
 
 Cadabra carries no agent-vm and does not install one. Boxes need macOS 27 or later and run the
 agent-vm that the AgentVM app (https://github.com/abra-code/AgentVMApp) installs for the user
