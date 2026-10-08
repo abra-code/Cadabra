@@ -222,7 +222,13 @@ boxes_status_text() {
         echo ""
         return 0
     fi
-    printf 'Virtual machines running on this Mac: %s of %s\n' "$_running" "$_limit"
+    # The limit is on macOS guests, so agent-vm's Linux guests are told apart, not counted in.
+    local _linux="$(boxes_field "$_vms" 3)"
+    case "$_linux" in
+        ''|0|*[!0123456789]*) printf 'macOS virtual machines running on this Mac: %s of %s\n' "$_running" "$_limit" ;;
+        1) printf 'macOS virtual machines running on this Mac: %s of %s, plus 1 Linux virtual machine\n' "$_running" "$_limit" ;;
+        *) printf 'macOS virtual machines running on this Mac: %s of %s, plus %s Linux virtual machines\n' "$_running" "$_limit" "$_linux" ;;
+    esac
 }
 
 # boxes_paint_buttons <uuid>  ->  Start, Stop and View for the selected box, as its state allows.
@@ -289,7 +295,7 @@ boxes_paint() {
 
 # boxes_no_slot_text: what a start that agent-vm refused for want of a virtual machine slot says,
 # in place of agent-vm's own words, which point to a Terminal command.
-boxes_no_slot_text="No virtual machine slot was free: macOS runs at most two macOS virtual machines at once, and that many were running. Stop a box, or a virtual machine in another application, then try again."
+boxes_no_slot_text="No virtual machine slot was free: macOS runs at most two macOS virtual machines at once, and that many were running. Stop a macOS box, or a macOS virtual machine in another application, then try again."
 
 # boxes_watched <uuid>  ->  the ids of the jobs this window started and still follows.
 boxes_watched() {

@@ -21,8 +21,8 @@
 # is left running here. A box Cadabra started also stops by itself when Cadabra exits, however
 # it exits, through its owner lease (agentvm_box_start passes --owner-pid).
 #
-# THE STOP QUESTION. A running kept box holds one of the two virtual machine slots and its
-# memory, so when the last window using it closes, boxsession_close asks whether to stop it,
+# THE STOP QUESTION. A running kept box holds its memory and, when it runs macOS, one of the
+# two macOS virtual machine slots, so when the last window using it closes, boxsession_close asks whether to stop it,
 # and while windows use it the box line says it stays running. Asked only at a window close:
 # never at quit (the owner lease stops what Cadabra started), at launch, or when a window gives
 # up its box to start again.
@@ -246,7 +246,7 @@ boxsession_line_head() {
 _boxsession_kept_note() {
     local _disposable="$(boxsession_registry_row "$1" | /usr/bin/cut -f3)"
     if [ "$_disposable" = "no" ]; then
-        printf '%s\n' "A kept box keeps running when its chat windows close, holding one of the two virtual machine slots on this Mac, unless you stop it: closing the last window that uses it asks."
+        printf '%s\n' "A kept box keeps running when its chat windows close, unless you stop it: closing the last window that uses it asks. A running macOS box holds one of the two macOS virtual machine slots on this Mac."
     fi
 }
 
@@ -1273,10 +1273,14 @@ _boxsession_offer_stop() {
     if [ "$_foreign" -lt 0 ]; then
         _foreign=0
     fi
+    # A Linux box holds memory only: the two slots are for macOS virtual machines.
+    local _guest="$(printf '%s\n' "$_row" | /usr/bin/cut -f15)"
     local _text="No chat window uses it any more."
-    case "$_memory" in
-        ''|*[!0123456789]*) _text="$_text While it runs it holds one of the two virtual machine slots on this Mac." ;;
-        *) _text="$_text While it runs it holds one of the two virtual machine slots on this Mac and $_memory GB of memory." ;;
+    case "$_guest:$_memory" in
+        linux:|linux:*[!0123456789]*) ;;
+        linux:*) _text="$_text While it runs it holds $_memory GB of memory." ;;
+        *:|*:*[!0123456789]*) _text="$_text While it runs it holds one of the two macOS virtual machine slots on this Mac." ;;
+        *) _text="$_text While it runs it holds one of the two macOS virtual machine slots on this Mac and $_memory GB of memory." ;;
     esac
     if [ "$_foreign" = "1" ]; then
         _text="$_text

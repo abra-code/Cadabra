@@ -152,6 +152,12 @@ fake_reset
 box=$(with_fake boxsession_start w1 box:b1 claude-code-acp "$PROJECT" no)
 check "a box that is stopping is started again by agent-vm" "b1|box start b1$owner_args --json" "$box|$(logged 'box start')"
 check "  also without the slot check"    "0" "$(cad_has "$(/bin/cat "$FAKE_AGENTVM_DIR/log")" 'doctor')"
+fake_reset
+/usr/bin/jq '.guest = "linux"' "$FIXTURES/box-status-stopped.json" > "$FAKE_AGENTVM_DIR/box-b1.json"
+/bin/cp "$FIXTURES/doctor.json" "$FAKE_AGENTVM_DIR/doctor.json"
+box=$(with_fake boxsession_start w1 box:b1 claude-code-acp "$PROJECT" no)
+check "a stopped Linux box starts with the macOS slots full" "b1|box start b1$owner_args --json" "$box|$(logged 'box start')"
+check "  without the slot check: it needs none" "0" "$(cad_has "$(/bin/cat "$FAKE_AGENTVM_DIR/log")" 'doctor')"
 
 section "a window that starts again gives up its earlier box"
 fake_reset
@@ -334,7 +340,7 @@ kept_box running 0 999999
 alert_answer 0
 with_fake boxsession_close w1
 check "it asks"                          "1" "$(alerts_mention 'Stop the AgentVM box b1?')"
-check "  naming the slot and the memory" "1" "$(alerts_mention 'two virtual machine slots on this Mac and 4 GB of memory')"
+check "  naming the slot and the memory" "1" "$(alerts_mention 'one of the two macOS virtual machine slots on this Mac and 4 GB of memory')"
 check "  and that a box Cadabra did not start keeps running" "1" "$(alerts_mention 'Cadabra did not start it, so it keeps running')"
 check "Stop Box stops it with a job"     "job start --json -- box stop b1" "$(wait_for_log 'job start --json -- box stop')"
 check "  and the row is gone"            "" "$(/bin/cat "$REGISTRY")"
@@ -344,6 +350,14 @@ alert_answer 1
 jobs_before=$(stop_jobs)
 with_fake boxsession_close w1
 check "Keep Running leaves it running"   "1|$jobs_before" "$(alerts_count)|$(stop_jobs)"
+fake_reset
+kept_box running 0 999999
+/usr/bin/jq '.guest = "linux"' "$FAKE_AGENTVM_DIR/box-b1.json" > "$FAKE_AGENTVM_DIR/box-b1.json.new"
+/bin/mv -f "$FAKE_AGENTVM_DIR/box-b1.json.new" "$FAKE_AGENTVM_DIR/box-b1.json"
+alert_answer 1
+with_fake boxsession_close w1
+check "a Linux box: the question names its memory" "1" "$(alerts_mention 'While it runs it holds 4 GB of memory.')"
+check "  and no slot, which it does not hold" "0" "$(alerts_mention 'slots')"
 if [ -n "${OMC_APP_PROCESS_ID:-}" ]; then
     fake_reset
     kept_box starting 0 "$OMC_APP_PROCESS_ID"
@@ -699,7 +713,7 @@ cad_journal_reset
 with_fake boxsession_line_refresh w1
 check "a refresh restates the counts" "AgentVM box b1, project read-only - 2 hosts reached, 1 refused, 1 failed" "$(line_title)"
 check "  and names the hosts in the tooltip" \
-    "Reached: api.anthropic.com, registry.npmjs.org Refused: bag.itunes.apple.com Failed: down.example Counted for every program in AgentVM box b1 since the agent started, each connection when it opens. Programs in the box reach only the hosts its rules allow; agent-vm box netlog b1 --denied lists the refused ones. A kept box keeps running when its chat windows close, holding one of the two virtual machine slots on this Mac, unless you stop it: closing the last window that uses it asks." \
+    "Reached: api.anthropic.com, registry.npmjs.org Refused: bag.itunes.apple.com Failed: down.example Counted for every program in AgentVM box b1 since the agent started, each connection when it opens. Programs in the box reach only the hosts its rules allow; agent-vm box netlog b1 --denied lists the refused ones. A kept box keeps running when its chat windows close, unless you stop it: closing the last window that uses it asks. A running macOS box holds one of the two macOS virtual machine slots on this Mac." \
     "$(line_help)"
 /bin/cat > "$FAKE_AGENTVM_DIR/netlog.json" <<'JSONEOF'
 [

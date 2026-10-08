@@ -216,11 +216,11 @@ out=$(with_fake agentvm_vm_slot_free); rc=$?
 check "the fixture's two running VMs: none free" "1" "$rc"
 why=$(message "$rc")
 check "  doctor's own count is in the reason" "1" "$(cad_has "$why" "No virtual machine slot is free: 2 virtual machines running on this Mac")"
-check "  and where to stop a box"   "1" "$(cad_has "$why" "Stop a box in Tools > AgentVM Boxes, or a virtual machine in another application, then try again.")"
-printf '%s' '[{"box":{"name":"s3","network":{"mode":"off"}},"state":"running"},{"box":{"name":"try1","network":{"mode":"off"}},"state":"stopped"},{"box":{"name":"b2","network":{"mode":"off"}},"state":"starting"},{"box":{"name":"b4","network":{"mode":"off"}},"state":"stopping"}]' > "$FAKE_AGENTVM_DIR/box-list.json"
+check "  and where to stop a box"   "1" "$(cad_has "$why" "Stop a macOS box in Tools > AgentVM Boxes, or a macOS virtual machine in another application, then try again.")"
+printf '%s' '[{"box":{"name":"s3","network":{"mode":"off"}},"state":"running"},{"box":{"name":"try1","network":{"mode":"off"}},"state":"stopped"},{"box":{"name":"b2","network":{"mode":"off"}},"state":"starting"},{"box":{"name":"b4","network":{"mode":"off"}},"state":"stopping"},{"box":{"name":"lx","network":{"mode":"off"}},"guest":"linux","state":"running"}]' > "$FAKE_AGENTVM_DIR/box-list.json"
 with_fake agentvm_vm_slot_free; rc=$?
 check "running boxes: refused"      "1" "$rc"
-check "  naming those that run or start" "1" "$(cad_has "$(message "$rc")" "AgentVM boxes running: s3, b2. Stop one in Tools > AgentVM")"
+check "  naming those that run or start, but no Linux box: it holds no slot" "1" "$(cad_has "$(message "$rc")" "macOS AgentVM boxes running: s3, b2. Stop one in Tools > AgentVM")"
 /bin/rm -f "$FAKE_AGENTVM_DIR/box-list.json"
 /usr/bin/sed 's/"warning"/"ok"/g' "$FIXTURES/doctor.json" > "$FAKE_AGENTVM_DIR/doctor.json"
 with_fake agentvm_vm_slot_free; rc=$?
@@ -270,11 +270,17 @@ section "status: the boxes, the jobs and the virtual machines of one answer"
 status_rows() { lib "$1" < "$2"; }
 rows=$(status_rows agentvm_status_box_rows "$FIXTURES/status-variety.json")
 check "one row per box"            "3" "$(printf '%s\n' "$rows" | count_rows)"
-check "a stopped disposable box"   "cadabra-spike${TAB}stopped${TAB}dev-agents${TAB}4${TAB}-${TAB}-${TAB}true${TAB}-" "$(printf '%s\n' "$rows" | /usr/bin/sed -n 1p)"
-check "a running one: its programs and its owner" "s3${TAB}running${TAB}dev-acp${TAB}8${TAB}2${TAB}812${TAB}false${TAB}-" "$(printf '%s\n' "$rows" | /usr/bin/sed -n 2p)"
+check "a stopped disposable box"   "cadabra-spike${TAB}stopped${TAB}dev-agents${TAB}4${TAB}-${TAB}-${TAB}true${TAB}-${TAB}-" "$(printf '%s\n' "$rows" | /usr/bin/sed -n 1p)"
+check "a running one: its programs and its owner" "s3${TAB}running${TAB}dev-acp${TAB}8${TAB}2${TAB}812${TAB}false${TAB}-${TAB}-" "$(printf '%s\n' "$rows" | /usr/bin/sed -n 2p)"
 check "one that does not answer says why" "no answer from the supervisor within 5 s" "$(printf '%s\n' "$rows" | /usr/bin/sed -n 3p | col 8)"
-check "every row has eight fields" "8 8 8" "$(printf '%s\n' "$rows" | /usr/bin/awk -F'\t' '{ printf "%s%s", sep, NF; sep = " " }')"
-check "the virtual machines"       "1${TAB}2" "$(status_rows agentvm_status_vm_row "$FIXTURES/status-variety.json")"
+check "every row has nine fields" "9 9 9" "$(printf '%s\n' "$rows" | /usr/bin/awk -F'\t' '{ printf "%s%s", sep, NF; sep = " " }')"
+/usr/bin/jq '.boxes[0].guest = "linux" | .boxes[1].box.guest = "macos"' "$FIXTURES/status-variety.json" > "$OMCTEST_WORK/guests.json"
+check "the system each box runs, from the entry or its record" "linux macos -" "$(status_rows agentvm_status_box_rows "$OMCTEST_WORK/guests.json" | /usr/bin/awk -F'\t' '{ printf "%s%s", sep, $9; sep = " " }')"
+check "the virtual machines"       "1${TAB}2${TAB}0" "$(status_rows agentvm_status_vm_row "$FIXTURES/status-variety.json")"
+/usr/bin/jq '.runningVMs = {"count": 4, "limit": 2, "linuxBoxes": 2, "linuxImages": 1}' "$FIXTURES/status-variety.json" > "$OMCTEST_WORK/linux-vms.json"
+check "  agent-vm's Linux guests are not counted toward the macOS limit" "1${TAB}2${TAB}3" "$(status_rows agentvm_status_vm_row "$OMCTEST_WORK/linux-vms.json")"
+/usr/bin/jq '.runningVMs = {"limit": 2, "linuxBoxes": 0, "linuxImages": 0}' "$FIXTURES/status-variety.json" > "$OMCTEST_WORK/no-count.json"
+check "  a count agent-vm could not make stays unknown" "-${TAB}2${TAB}0" "$(status_rows agentvm_status_vm_row "$OMCTEST_WORK/no-count.json")"
 check "no jobs: no rows"           "" "$(status_rows agentvm_status_job_rows "$FIXTURES/status-variety.json")"
 rows=$(status_rows agentvm_status_job_rows "$FIXTURES/status.json")
 check "drift: a real capture's jobs have an id, a state, a target and a command" "" "$(printf '%s\n' "$rows" | /usr/bin/awk -F'\t' '{ for (i = 1; i <= 4; i++) if ($i == "-") printf "row %d field %d ", NR, i }')"
@@ -305,6 +311,13 @@ starts_before=$(/usr/bin/grep -c 'box start b1' "$FAKE_AGENTVM_DIR/log")
 id=$(with_fake agentvm_box_start_job b1); rc=$?
 check "no free slot: no start"     "1|" "$rc|$id"
 check "  and no job was asked for" "$starts_before" "$(/usr/bin/grep -c 'box start b1' "$FAKE_AGENTVM_DIR/log")"
+lib agentvm_last_error >/dev/null
+/bin/rm -f "$FAKE_AGENTVM_DIR/log"
+id=$(with_fake agentvm_box_start_job b1 linux); rc=$?
+check "  a Linux box needs no slot: it starts" "0|job start --json -- box start b1$owner_args" "$rc|$(last_call)"
+check "    and doctor is not asked" "0" "$(/usr/bin/grep -c '^doctor' "$FAKE_AGENTVM_DIR/log")"
+id=$(with_fake agentvm_box_start_job b1 macos); rc=$?
+check "  a macOS box is still refused" "1|" "$rc|$id"
 lib agentvm_last_error >/dev/null
 id=$(with_fake agentvm_box_stop_job b1); rc=$?
 check "  a stop needs no slot"     "0" "$rc"

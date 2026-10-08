@@ -102,7 +102,7 @@ open_window
 check_status "init ran"                 0
 check "one status reading"              "1" "$(fake_asked "status --json")"
 check "  and no list that would collect stopped disposable boxes" "0" "$(fake_asked "box list")"
-check "the line counts the virtual machines" "Virtual machines running on this Mac: 1 of 2" "$(ui_value "$BOXES_STATUS_ID")"
+check "the line counts the macOS virtual machines" "macOS virtual machines running on this Mac: 1 of 2" "$(ui_value "$BOXES_STATUS_ID")"
 check "three boxes"                     "3" "$(ui_row_count "$BOXES_LIST_ID")"
 check "  a stopped disposable one"      "cadabra-spike${TAB}stop.circle${TAB}Stopped - dev-agents, 4 GB, disposable${TAB}#8E8E93" "$(card cadabra-spike)"
 check "  a running one, with its programs" "s3${TAB}play.circle.fill${TAB}Running, 2 programs - dev-acp, 8 GB${TAB}#2E9E4F" "$(card s3)"
@@ -168,6 +168,26 @@ check "the box is Waiting"              "Waiting - dev-agents, 4 GB, disposable"
 status_is "$(job 20261002-101500-aaaaaa queued cadabra-spike start) | $(job 20261002-101500-bbbbbb running cadabra-spike stop)"
 poll
 check "a job that runs wins over one that waits" "Stopping - dev-agents, 4 GB, disposable" "$(card cadabra-spike | /usr/bin/cut -f3)"
+
+section "Linux boxes are outside the limit of two macOS virtual machines"
+fake_reset
+status_is '.boxes[0].guest = "linux" | .runningVMs = {"count": 3, "limit": 2, "linuxBoxes": 1, "linuxImages": 0}'
+open_window
+check "the line counts them apart"      "macOS virtual machines running on this Mac: 2 of 2, plus 1 Linux virtual machine" "$(ui_value "$BOXES_STATUS_ID")"
+/bin/cp "$FIXTURES/doctor.json" "$FAKE_AGENTVM_DIR/doctor.json"
+select_box cadabra-spike
+omc_run aichat.boxes.box.start
+check "a Linux box starts with the macOS slots full" "job start --json -- box start cadabra-spike$owner_args" "$(fake_log | /usr/bin/grep '^job start')"
+check "  with no alert"                 "0" "$(alerts_count)"
+check "  and doctor not asked about slots" "0" "$(fake_asked "doctor")"
+select_box s3
+/bin/rm -f "$FAKE_AGENTVM_DIR/jobs"
+omc_run aichat.boxes.box.start
+check "a macOS box is still refused"    "1" "$(alerts_mention 'No virtual machine slot is free')"
+check "  and no job is started"         "" "$(last_job)"
+status_is '.runningVMs = {"count": 4, "limit": 2, "linuxBoxes": 2, "linuxImages": 1}'
+poll
+check "several say so"                  "macOS virtual machines running on this Mac: 1 of 2, plus 3 Linux virtual machines" "$(ui_value "$BOXES_STATUS_ID")"
 
 section "a start that fails in the background is told once"
 fake_reset

@@ -47,7 +47,7 @@ source "$OMC_APP_BUNDLE_PATH/Contents/Resources/Scripts/aichat.library.sh"
 # pointing at a stale build) is refused rather than guessed at.
 # Raise it with every agent-vm version Cadabra moves to. The tests and the fake agent-vm read it
 # from here, so the number lives only on this line.
-AGENTVM_MIN_VERSION="0.6.14"
+AGENTVM_MIN_VERSION="0.7.12"
 AGENTVM_MIN_MACOS="27"
 
 # Where the AgentVM app puts the link to the newest agent-vm, and where to get the app.
@@ -310,7 +310,7 @@ agentvm_available() {
 
 # agentvm_box_status <box>  ->  TSV: state, pid, supervisorVersion, supervisorPath, startedAt,
 # project, projectReadOnly, activeExecs, guestVersion, guestFeatures, image, statusError,
-# ownerPid, memoryGB.
+# ownerPid, memoryGB, guest ("macos" or "linux").
 #
 # Never starts or stops anything (agent-vm 0.1.6's `box status`), so it is safe to poll, but a
 # supervisor that does not answer can hold it up for about 7 seconds (agent-vm's BoxStatus.of:
@@ -518,6 +518,10 @@ agentvm_box_view() {
 # The status agent-vm exits with when a start finds no free virtual machine slot. The refusal is
 # macOS's own (Virtualization's), so it is right even when two starts pass agentvm_vm_slot_free
 # at the same moment.
+#
+# The slots are for macOS guests only. A Linux box takes none and needs none, so it is neither
+# checked before it starts nor named among the boxes that hold a slot, and doctor leaves
+# agent-vm's own Linux guests out when it decides whether the limit is reached.
 agentvm_no_slot_status=75
 
 # _agentvm_slots_full  ->  doctor's explanation (how many run, the limit) when no macOS virtual
@@ -543,10 +547,10 @@ _agentvm_slots_full() {
 # `agent-vm box list` in Terminal). Without doctor's explanation it states the limit.
 _agentvm_refuse_no_slot() {
     local _why="${2:-macOS runs at most two macOS virtual machines at once, and that many are running}"
-    local _running="$(agentvm_boxes 2>/dev/null | /usr/bin/awk -F'\t' '$2 == "running" || $2 == "starting" { printf "%s%s", sep, $1; sep = ", " }')"
-    local _fix="Stop a box in Tools > AgentVM Boxes, or a virtual machine in another application, then try again."
+    local _running="$(agentvm_boxes 2>/dev/null | /usr/bin/awk -F'\t' '($2 == "running" || $2 == "starting") && $19 != "linux" { printf "%s%s", sep, $1; sep = ", " }')"
+    local _fix="Stop a macOS box in Tools > AgentVM Boxes, or a macOS virtual machine in another application, then try again."
     if [ -n "$_running" ]; then
-        _fix="AgentVM boxes running: $_running. Stop one in Tools > AgentVM Boxes, or a virtual machine in another application, then try again."
+        _fix="macOS AgentVM boxes running: $_running. Stop one in Tools > AgentVM Boxes, or a macOS virtual machine in another application, then try again."
     fi
     _agentvm_refuse "$1" "No virtual machine slot is free: $_why. $_fix"
 }
@@ -585,13 +589,14 @@ agentvm_status() {
 # agentvm_status_box_rows  <  status JSON  ->  one row per box:
 #   1 name   2 state (stopped, starting, running, stopping, unresponsive)   3 image
 #   4 memoryGB   5 activeExecs (programs running in it now)   6 ownerPid (the process it stops
-#   with)   7 disposable (true or false)   8 statusError
+#   with)   7 disposable (true or false)   8 statusError   9 guest ("macos" or "linux")
 # The running fields (5, 6) are "-" for a stopped box.
 agentvm_status_box_rows() {
     /usr/bin/jq -r "$agentvm_jq_defs"' .boxes[]
         | [.box.name, .state, .box.image,
            (if .box.memoryBytes == null then null else .box.memoryBytes / 1073741824 | floor end),
-           .activeExecs, .ownerPid, (.box.disposable // false), .statusError]
+           .activeExecs, .ownerPid, (.box.disposable // false), .statusError,
+           (.guest // .box.guest)]
         | row'
 }
 
@@ -606,11 +611,18 @@ agentvm_status_job_rows() {
         | row'
 }
 
-# agentvm_status_vm_row  <  status JSON  ->  one row: how many macOS virtual machines run on this
-# Mac (any application's), and how many can run at once. The count is "-" when agent-vm could
-# not list processes.
+# agentvm_status_vm_row  <  status JSON  ->  one row:
+#   1 how many virtual machines that count toward the macOS limit run on this Mac (any
+#     application's): agent-vm's count less its own Linux guests, which the limit does not concern
+#   2 how many macOS guests can run at once
+#   3 those Linux guests of agent-vm's: running Linux boxes, and the Linux guests of its image
+#     commands
+# The count is "-" when agent-vm could not list processes.
 agentvm_status_vm_row() {
-    /usr/bin/jq -r "$agentvm_jq_defs"' [.runningVMs.count, .runningVMs.limit] | row'
+    /usr/bin/jq -r "$agentvm_jq_defs"' .runningVMs
+        | ((.linuxBoxes // 0) + (.linuxImages // 0)) as $linux
+        | [(if .count == null then null else ([.count - $linux, 0] | max) end), .limit, $linux]
+        | row'
 }
 
 # -- Jobs: starting and stopping a box without waiting for it ----------------------------
@@ -664,11 +676,14 @@ _agentvm_owner_pid() {
     esac
 }
 
-# agentvm_box_start_job <box>  ->  the job id. The box stops by itself when Cadabra exits (its
-# owner lease), because a running box holds one of the two macOS virtual machine slots.
+# agentvm_box_start_job <box> [guest]  ->  the job id. The box stops by itself when Cadabra exits
+# (its owner lease), because a running macOS box holds one of the two macOS virtual machine
+# slots. guest is the box's system as the lists give it; a "linux" box is not slot-checked.
 agentvm_box_start_job() {
     _agentvm_need_name box "$1" || return $?
-    agentvm_vm_slot_free || return $?
+    if [ "${2:-}" != "linux" ]; then
+        agentvm_vm_slot_free || return $?
+    fi
     local _owner="$(_agentvm_owner_pid)"
     if [ -n "$_owner" ]; then
         _agentvm_job_start box start "$1" --owner-pid "$_owner"
@@ -733,7 +748,7 @@ agentvm_app_show() {
 # box; the AgentVM Boxes window starts boxes as jobs. A box that already runs is left as it is; one
 # that is starting (a job, say) is waited for, and one that is stopping is waited for and
 # then started (agent-vm 0.2.15). None of them is slot-checked: each still holds its virtual
-# machine slot and would count against itself.
+# machine slot and would count against itself. Nor is a Linux box, which needs no slot.
 agentvm_box_start() {
     _agentvm_need_name box "$1" || return $?
     local _row
@@ -743,10 +758,11 @@ agentvm_box_start() {
         return "$_status"
     fi
     local _state="$(printf '%s\n' "$_row" | /usr/bin/cut -f1)"
-    case "$_state" in
-        running)  return 0 ;;
-        starting|stopping) ;;
-        *)        agentvm_vm_slot_free || return $? ;;
+    local _guest="$(printf '%s\n' "$_row" | /usr/bin/cut -f15)"
+    case "$_state:$_guest" in
+        running:*)  return 0 ;;
+        starting:*|stopping:*|*:linux) ;;
+        *)          agentvm_vm_slot_free || return $? ;;
     esac
     local _owner="$(_agentvm_owner_pid)"
     local _started

@@ -113,7 +113,7 @@ printf '%s' '{"state":"running","pid":7,"supervisorVersion":"","supervisorPath":
     > "$OMCTEST_WORK/hostile.json"
 row=$(convert status "$OMCTEST_WORK/hostile.json")
 check "one line"                         "1"     "$(printf '%s\n' "$row" | /usr/bin/awk 'END { print NR }')"
-check "fourteen fields"                  "14"    "$(printf '%s\n' "$row" | /usr/bin/awk -F'\t' '{ print NF }')"
+check "fifteen fields"                   "15"    "$(printf '%s\n' "$row" | /usr/bin/awk -F'\t' '{ print NF }')"
 check "an empty string is \"-\""         "-"     "$(printf '%s\n' "$row" | col 3)"
 check "a tab inside a value is \"?\""    "/a?b"  "$(printf '%s\n' "$row" | col 4)"
 check "a newline inside a value is \"?\"" "/p?q" "$(printf '%s\n' "$row" | col 6)"
@@ -266,6 +266,11 @@ fake_reset
 row=$(with_fake agentvm_box_status cadabra-x); rc=$?
 check "succeeds"                   "0"     "$rc"
 check "  with the converted row"   "running" "$(printf '%s\n' "$row" | col 1)"
+check "  fifteen fields, the last the system, unknown in this capture" "15|-" "$(printf '%s\n' "$row" | /usr/bin/awk -F'\t' '{ print NF "|" $15 }')"
+/usr/bin/jq '.guest = "linux"' "$FIXTURES/box-status-running.json" > "$FAKE_AGENTVM_DIR/box-lx.json"
+check "  a Linux box says so"      "linux" "$(with_fake agentvm_box_status lx | col 15)"
+/bin/rm -f "$FAKE_AGENTVM_DIR/log"
+with_fake agentvm_box_status cadabra-x >/dev/null
 check "  after asking exactly this" "box status cadabra-x --json" "$(/bin/cat "$FAKE_AGENTVM_DIR/log")"
 check "  leaving no error file behind" "0" "$([ -e "$ERR_FILE" ] && echo 1 || echo 0)"
 

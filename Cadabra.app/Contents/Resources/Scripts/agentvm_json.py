@@ -26,9 +26,9 @@ Usage (the JSON on stdin):
 
 "status" emits one row:
     state, pid, supervisorVersion, supervisorPath, startedAt, project, projectReadOnly,
-    activeExecs, guestVersion, guestFeatures, image, statusError, ownerPid, memoryGB
+    activeExecs, guestVersion, guestFeatures, image, statusError, ownerPid, memoryGB, guest
   ownerPid is the process whose exit stops the box ("-" for none); memoryGB is the box's memory,
-  from its record.
+  from its record; guest is the system the box runs, "macos" or "linux".
 "doctor" emits one row per check:
     name, status, detail
 "images" emits one row per image:
@@ -167,7 +167,8 @@ def status_rows(data):
                data.get("project"), data.get("projectReadOnly"), data.get("activeExecs"),
                data.get("guestVersion"), data.get("guestFeatures"),
                record.get("image"), data.get("statusError"),
-               data.get("ownerPid"), gigabytes(record.get("memoryBytes"))])
+               data.get("ownerPid"), gigabytes(record.get("memoryBytes")),
+               data.get("guest", record.get("guest"))])
 
 
 def doctor_rows(data):

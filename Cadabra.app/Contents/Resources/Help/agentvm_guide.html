@@ -93,7 +93,7 @@
     <tr><td><b>Kept box</b></td><td>A copy of an image that you make in the AgentVM app and that stays until you delete it. What is installed or logged in there is still there next time.</td></tr>
     <tr><td><b>New disposable box</b></td><td>A copy of an image that Cadabra makes for one chat window and deletes when the window closes. Nothing done inside it is left, except the changes in the project folder.</td></tr>
   </table>
-  <p>macOS runs at most two macOS virtual machines at a time, so at most two boxes run at once. A box also uses the memory it was given for as long as it runs.</p>
+  <p>macOS runs at most two macOS virtual machines at a time, so at most two macOS boxes run at once. Linux boxes do not count toward that limit. A box also uses the memory it was given for as long as it runs.</p>
 
   <h2>Choosing where things run</h2>
   <h3>An external agent (Claude Code, Codex, and others)</h3>
@@ -154,7 +154,7 @@
 
   <h2>Tools &gt; AgentVM Boxes</h2>
   <p>A small window listing the boxes and what each is doing. The play button starts the selected box (it stops when Cadabra quits), the stop button shuts it down, and <b>View</b> shows its screen. <b>Open AgentVM</b> opens the AgentVM app, where boxes and images are made, changed and deleted.</p>
-  <p>A kept box keeps running when its chat windows close, holding one of the two virtual machine slots, unless you stop it. Closing the last window that uses it asks.</p>
+  <p>A kept box keeps running when its chat windows close, holding its memory and, for a macOS box, one of the two macOS virtual machine slots, unless you stop it. Closing the last window that uses it asks.</p>
 
   <h2>If something does not work</h2>
   <table>
@@ -162,7 +162,7 @@
     <tr><td>"AgentVM is not set up on this Mac"</td><td>Press <b>Set Up AgentVM...</b> or <b>Open AgentVM</b>. The app installs what is missing.</td></tr>
     <tr><td>"AgentVM on this Mac needs an update"</td><td>Open the AgentVM app and update there. Cadabra always needs the newest version.</td></tr>
     <tr><td>No box or image to choose</td><td>Make an image, and a box if you want a kept one, in the AgentVM app.</td></tr>
-    <tr><td>No free virtual machine slot</td><td>Two boxes are running. Stop one in Tools &gt; AgentVM Boxes.</td></tr>
+    <tr><td>No free virtual machine slot</td><td>Two macOS virtual machines are running. Stop a macOS box in Tools &gt; AgentVM Boxes. A Linux box needs no slot.</td></tr>
     <tr><td>A host is refused</td><td><b>Network...</b> on the box line, then <b>Allow in This Box...</b></td></tr>
     <tr><td>A program in the box waits for a permission prompt</td><td>Nobody sees the prompt in the box. Answer it on the box's screen: <b>View</b> in Tools &gt; AgentVM Boxes.</td></tr>
   </table>
