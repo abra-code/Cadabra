@@ -185,6 +185,13 @@ select_box s3
 omc_run aichat.boxes.box.start
 check "a macOS box is still refused"    "1" "$(alerts_mention 'No virtual machine slot is free')"
 check "  and no job is started"         "" "$(last_job)"
+status_is '.boxes[1].guest = "linux"'
+poll
+select_box s3
+check "a running Linux box: Stop, but no View, since it has no screen" "010" "$(buttons)"
+status_is '.boxes[1].guest = "macos"'
+poll
+check "  a running macOS box: Stop and View" "011" "$(buttons)"
 status_is '.runningVMs = {"count": 4, "limit": 2, "linuxBoxes": 2, "linuxImages": 1}'
 poll
 check "several say so"                  "macOS virtual machines running on this Mac: 1 of 2, plus 3 Linux virtual machines" "$(ui_value "$BOXES_STATUS_ID")"

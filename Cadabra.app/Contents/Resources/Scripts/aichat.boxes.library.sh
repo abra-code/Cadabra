@@ -232,7 +232,8 @@ boxes_status_text() {
 }
 
 # boxes_paint_buttons <uuid>  ->  Start, Stop and View for the selected box, as its state allows.
-# A box a job holds takes no button until the job is done.
+# A box a job holds takes no button until the job is done. A Linux box has no screen to show, so
+# View stays off for it.
 boxes_paint_buttons() {
     local _uuid="$1"
     local _name="$(boxes_selected "$_uuid")"
@@ -246,7 +247,7 @@ boxes_paint_buttons() {
             [ "$_state" = "stopped" ] && _start=1
             [ "$_state" != "stopped" ] && _stop=1
         fi
-        [ "$_state" = "running" ] && _view=1
+        [ "$_state" = "running" ] && [ "$(boxes_field "$_row" 9)" != "linux" ] && _view=1
     fi
     boxes_enable "$_uuid" "$BOXES_START_ID" "$_start"
     boxes_enable "$_uuid" "$BOXES_STOP_ID" "$_stop"

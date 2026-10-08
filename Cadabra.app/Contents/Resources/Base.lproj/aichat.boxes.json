@@ -91,7 +91,7 @@
             "systemImage": "macwindow",
             "imageScale": "large",
             "disabled": true,
-            "help": "Show the screen of the selected box",
+            "help": "Show the screen of the selected box. A Linux box has no screen to show.",
             "actionID": "aichat.boxes.box.view"
           }
         },
