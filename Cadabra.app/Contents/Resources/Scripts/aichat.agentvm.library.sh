@@ -358,17 +358,19 @@ _agentvm_need_count() {
 }
 
 # agentvm_images  ->  one row per image: name, state, failure, macOS, basedOn, ownSize, needs,
-# recipe, created, guestVersion, cpus, memoryGB, diskGB, path, needKinds. ownSize is "-":
-# agent-vm's lists measure no disk.
+# recipe, created, guestVersion, cpus, memoryGB, diskGB, path, needKinds, guest. ownSize is "-":
+# agent-vm's lists measure no disk. guest is "macos" or "linux" ("-" from an agent-vm that has
+# macOS images only).
 agentvm_images() {
     agentvm_rows images image list
 }
 
 # agentvm_boxes  ->  one row per box: name, state, image, network, cpus, memoryGB, ownSize, pid,
 # project, projectReadOnly, activeExecs, disposable, ownerPid, startedAt, supervisorVersion,
-# path, netMode, rules. ownSize is "-" (the list measures no disk); state is "running"
-# for a box that is up. Like `box status`, listing never starts or stops anything; it does
-# delete disposable boxes that have stopped (agent-vm's `box gc`, run by `box list`).
+# path, netMode, rules, guest. ownSize is "-" (the list measures no disk); state is "running"
+# for a box that is up; guest is as for images. Like `box status`, listing never starts or
+# stops anything; it does delete disposable boxes that have stopped (agent-vm's `box gc`, run
+# by `box list`).
 agentvm_boxes() {
     agentvm_rows boxes box list
 }

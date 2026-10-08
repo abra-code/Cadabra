@@ -106,6 +106,16 @@ in_box=no
 case "$run_in" in
     box:*|new:*) in_box=yes ;;
 esac
+# Cadabra's MCP servers are macOS programs, so an agent in a Linux box gets none, whatever the
+# picker's snapshot says: the picker is off and disabled for such a place (agent_tools_follow_place),
+# but a Continue pressed right after Runs in changed can carry the value from before.
+if [ "$in_box" = "yes" ] && [ "$use_tools" != "false" ]; then
+    agent_load_places cached
+    if agent_place_is_linux "$run_in"; then
+        echo "$run_in is a Linux box: Cadabra's tools are not handed to the agent"
+        use_tools="false"
+    fi
+fi
 # No level selected: its stored value could not be read (agent_prepare_run_in). Refused for a box,
 # where it decides how freely the agent works; on this Mac it is not used, and the default is kept.
 if [ -z "$level" ] && [ "$in_box" = "no" ]; then

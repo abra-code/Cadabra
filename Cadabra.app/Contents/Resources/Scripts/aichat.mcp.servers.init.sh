@@ -117,7 +117,8 @@ if [ -n "$box_agent" ]; then
 fi
 
 # WHERE A LOCAL MODEL'S TOOLS RUN (mcp_tools_run_in): This Mac, a kept AgentVM box, or a new
-# disposable box from a ready image, offered where boxes can be used. Shown for a local model's
+# disposable box from a ready image, offered where boxes can be used. macOS boxes and images
+# only: the servers are macOS programs (agent_run_in_options' "tools"). Shown for a local model's
 # launch and for the Tools menu (nothing queued: the choice applies to the next load), never for
 # an external agent, which runs its own tools. In a box this Mac's servers and paths give way to
 # the tools box pane, whose settings are its own (mcp_box_setting): the servers and the network
@@ -164,7 +165,7 @@ if [ "$tools_launch" = "yes" ]; then
         fi
     fi
     if [ "$places_status" -eq 0 ]; then
-        "$dialog" "$window_uuid" $TOOLS_RUNIN_PICKER_ID omc_set_property options "$(agent_run_in_options "$tools_run_in")"
+        "$dialog" "$window_uuid" $TOOLS_RUNIN_PICKER_ID omc_set_property options "$(agent_run_in_options "$tools_run_in" tools)"
         "$dialog" "$window_uuid" $TOOLS_RUNIN_PICKER_ID "$tools_run_in"
         "$dialog" "$window_uuid" $TOOLS_BOX_LOCAL_TOGGLE_ID "$(mcp_box_setting local)"
         "$dialog" "$window_uuid" $TOOLS_BOX_CONFINE_TOGGLE_ID "$(mcp_box_setting confineLocal)"

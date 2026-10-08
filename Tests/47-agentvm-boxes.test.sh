@@ -57,7 +57,7 @@ section "images: one row per image"
 rows=$(convert images "$FIXTURES/image-list.json")
 check "one row per image"  "5" "$(printf '%s\n' "$rows" | count_rows)"
 row=$(printf '%s\n' "$rows" | /usr/bin/awk -F'\t' '$1 == "dev-agents"')
-check "fifteen fields"     "15"             "$(printf '%s\n' "$row" | /usr/bin/awk -F'\t' '{ print NF }')"
+check "sixteen fields"     "16"             "$(printf '%s\n' "$row" | /usr/bin/awk -F'\t' '{ print NF }')"
 check "state"              "ready"          "$(printf '%s\n' "$row" | col 2)"
 check "no failure is \"-\"" "-"             "$(printf '%s\n' "$row" | col 3)"
 check "macOS with its build" "27.0 (26A428)" "$(printf '%s\n' "$row" | col 4)"
@@ -68,6 +68,12 @@ check "created, the day"   "2026-09-23"     "$(printf '%s\n' "$row" | col 9)"
 check "memory in GB"       "8"              "$(printf '%s\n' "$row" | col 12)"
 check "needs, for code"    "guest-update"   "$(printf '%s\n' "$row" | col 15)"
 check "a base image has no \"based on\"" "-" "$(printf '%s\n' "$rows" | /usr/bin/awk -F'\t' '$1 == "dev" { print $5 }')"
+check "an agent-vm that has macOS images only names no guest" "-" "$(printf '%s\n' "$row" | col 16)"
+# The guest, as agent-vm 0.7 and later report it; a Linux image has no macOS version.
+printf '%s' '[{"name":"dev","state":"ready","guest":"macos","system":"macOS 27.0.1 (26A434)","macOSVersion":"27.0.1","macOSBuild":"26A434"},{"name":"deb","state":"ready","guest":"linux","system":"Debian GNU/Linux 13 (trixie)","macOSVersion":null,"macOSBuild":null}]' > "$OMCTEST_WORK/guests.json"
+rows=$(convert images "$OMCTEST_WORK/guests.json")
+check "a macOS image's guest"   "macos|27.0.1 (26A434)" "$(printf '%s\n' "$rows" | /usr/bin/awk -F'\t' '$1 == "dev" { print $16 "|" $4 }')"
+check "a Linux image's, with no macOS" "linux|-|16" "$(printf '%s\n' "$rows" | /usr/bin/awk -F'\t' '$1 == "deb" { print $16 "|" $4 "|" NF }')"
 
 section "drift: every image field the library reads is in the fixture"
 check "no field is absent" "" "$(printf '%s\n' "$row" | absent name state _ macOS basedOn ownSize needs recipe created guestVersion cpus memoryGB diskGB path needKinds)"
@@ -75,7 +81,8 @@ check "no field is absent" "" "$(printf '%s\n' "$row" | absent name state _ macO
 section "boxes: one row per box"
 rows=$(convert boxes "$FIXTURES/box-list.json")
 row=$(printf '%s\n' "$rows" | /usr/bin/awk -F'\t' '$1 == "cadabra-spike"')
-check "eighteen fields"    "18"             "$(printf '%s\n' "$row" | /usr/bin/awk -F'\t' '{ print NF }')"
+check "nineteen fields"    "19"             "$(printf '%s\n' "$row" | /usr/bin/awk -F'\t' '{ print NF }')"
+check "no guest from an agent-vm that has macOS boxes only" "-" "$(printf '%s\n' "$row" | col 19)"
 check "state"              "stopped"        "$(printf '%s\n' "$row" | col 2)"
 check "image"              "dev-agents"     "$(printf '%s\n' "$row" | col 3)"
 check "network, for people" "allowlist, 1 rule" "$(printf '%s\n' "$row" | col 4)"
@@ -97,6 +104,8 @@ check "disposable"         "true"           "$(printf '%s\n' "$row" | col 12)"
 check "its owner"          "77"             "$(printf '%s\n' "$row" | col 13)"
 check "without unsharedBytes, the whole size" "9.0 GB" "$(printf '%s\n' "$row" | col 7)"
 check "rules, comma-joined" "pack:npm,example.com" "$(printf '%s\n' "$row" | col 18)"
+printf '%s' '[{"box":{"name":"lb","image":"deb"},"guest":"linux","state":"stopped"},{"box":{"name":"mb","image":"dev"},"guest":"macos","state":"stopped"}]' > "$OMCTEST_WORK/guests.json"
+check "a box's guest"      "lb linux|mb macos" "$(convert boxes "$OMCTEST_WORK/guests.json" | /usr/bin/awk -F'\t' '{ printf "%s%s %s", sep, $1, $19; sep = "|" }')"
 printf '%s' '[{"box":{"name":"o","network":{"mode":"off"}},"state":"stopped"}]' > "$OMCTEST_WORK/off.json"
 check "network off is just \"off\"" "off" "$(convert boxes "$OMCTEST_WORK/off.json" | col 4)"
 

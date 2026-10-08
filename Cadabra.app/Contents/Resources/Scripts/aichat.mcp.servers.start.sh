@@ -104,6 +104,20 @@ if [ "$tools_runin_offered" = "yes" ]; then
                 "Where the tools run cannot be read from Cadabra's settings. Choose This Mac or an AgentVM box in Where tools run."
             exit 0 ;;
     esac
+    # A Linux box or image is never offered here (agent_run_in_options' "tools"); a choice stored
+    # before, or by hand, is still shown, and refused: the servers are macOS programs.
+    case "$tools_run_in" in
+        box:?*|new:?*)
+            source "$OMC_APP_BUNDLE_PATH/Contents/Resources/Scripts/aichat.select.external.agent.library.sh"
+            agent_load_places cached
+            if agent_place_is_linux "$tools_run_in"; then
+                "$alert" --level "stop" --title "$APPLET_NAME" --ok "OK" \
+                    "Cadabra's tools cannot run in a Linux AgentVM box.
+
+${tools_run_in#*:} runs Linux, and the tools are macOS programs. Choose This Mac, or a macOS box or image, in Where tools run."
+                exit 0
+            fi ;;
+    esac
     mcp_tools_set_run_in "$tools_run_in"
     status=$?
     # The box pane's settings, each from its toggle. A toggle with no value keeps the stored

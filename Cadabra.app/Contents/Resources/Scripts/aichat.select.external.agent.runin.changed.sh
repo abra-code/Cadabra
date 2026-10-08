@@ -7,4 +7,6 @@ source "$OMC_APP_BUNDLE_PATH/Contents/Resources/Scripts/aichat.library.sh"
 source "$OMC_APP_BUNDLE_PATH/Contents/Resources/Scripts/aichat.mcp.servers.library.sh"
 source "$OMC_APP_BUNDLE_PATH/Contents/Resources/Scripts/aichat.select.external.agent.library.sh"
 
+# The places as the window read them when it opened: which of them are Linux decides Use Tools.
+agent_load_places cached
 agent_apply_run_in "${OMC_ACTIONUI_VIEW_32_VALUE:-mac}" "$(agent_has_keys "$(agent_pane_owner)")"

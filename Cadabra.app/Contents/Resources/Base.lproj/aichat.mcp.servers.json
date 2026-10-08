@@ -33,7 +33,7 @@
               }
             ],
             "pickerStyle": "menu",
-            "help": "Where a local model's MCP servers run. The model itself always runs on this Mac. In an AgentVM box the servers work on the project folder only, and reach only the hosts the box allows.",
+            "help": "Where a local model's MCP servers run. The model itself always runs on this Mac. In an AgentVM box the servers work on the project folder only, and reach only the hosts the box allows. The servers are macOS programs, so Linux boxes and images are not listed.",
             "actionID": "aichat.mcp.servers.runin.changed"
           }
         },

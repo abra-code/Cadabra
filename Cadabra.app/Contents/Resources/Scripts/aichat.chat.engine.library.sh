@@ -121,15 +121,22 @@ chat_engine_remember_recent() {
 # runs adds nothing. The window's own disposable box, if it has one from an earlier start, is not
 # counted: the new start releases it, and a disposable box nobody uses goes. Nothing is asked
 # when the size cannot be read.
+#
+# The same list says what system the box runs, and it is slow to ask for twice (image list
+# takes about 2 s), so this leaves it in chat_engine_box_guest for the caller: agent-vm's
+# "macos" or "linux", or "-" or nothing when it is not known.
+chat_engine_box_guest=""
 chat_engine_box_memory_check() {
 	local run_in="$1" win="${2:-}" gb="" label="" rows=""
 	local status
+	chat_engine_box_guest=""
 	case "$run_in" in
 		new:*)
 			rows="$(agentvm_images)"
 			status=$?
 			[ "$status" -eq 0 ] || { agentvm_last_error "$status" >/dev/null; rows=""; }
 			gb="$(printf '%s\n' "$rows" | /usr/bin/awk -F'\t' -v name="${run_in#new:}" '$1 == name { print $12; exit }')"
+			chat_engine_box_guest="$(printf '%s\n' "$rows" | /usr/bin/awk -F'\t' -v name="${run_in#new:}" '$1 == name { print $16; exit }')"
 			label="a new AgentVM box from ${run_in#new:}" ;;
 		box:*)
 			rows="$(agentvm_boxes)"
@@ -137,6 +144,7 @@ chat_engine_box_memory_check() {
 			[ "$status" -eq 0 ] || { agentvm_last_error "$status" >/dev/null; rows=""; }
 			# A kept box that runs already holds its memory, and is counted among the running ones.
 			gb="$(printf '%s\n' "$rows" | /usr/bin/awk -F'\t' -v name="${run_in#box:}" '$1 == name && $2 != "running" { print $6; exit }')"
+			chat_engine_box_guest="$(printf '%s\n' "$rows" | /usr/bin/awk -F'\t' -v name="${run_in#box:}" '$1 == name { print $19; exit }')"
 			label="the AgentVM box ${run_in#box:}" ;;
 	esac
 	case "$gb" in
@@ -190,7 +198,9 @@ Start the conversation again when it is done."
 #   Tools): 0 once the box runs with the project shared and Cadabra's tools copied in, and the
 #   window's tools record is set, so the transport built next generates its MCP config in box
 #   mode (aichat_acp_transport_json). Also 0, doing nothing, when tools are off or run on this
-#   Mac. 1 after an alert, with nothing left registered.
+#   Mac. 1 after an alert, with nothing left registered. A Linux box or image is refused before
+#   anything starts: the tools are macOS programs, and Agentic Session Tools offers no such
+#   place (a setting stored before it stopped offering them gets here).
 #
 #   The model stays on this Mac: only the MCP servers go into the box, each started by mlx-agent
 #   through `agent-vm exec`. The box is registered for this window first thing, as an agent's box
@@ -245,6 +255,14 @@ Whether the project is shared read-only cannot be read from Cadabra's settings. 
 		echo "tools box: not started, the memory warning was canceled ($run_in)"
 		return 1
 	fi
+	if [ "$chat_engine_box_guest" = "linux" ]; then
+		echo "tools box: $run_in runs Linux, where Cadabra's tools cannot run"
+		"$alert" --level "stop" --title "$APPLET_NAME" --ok "OK" \
+			"Cadabra's tools cannot run in a Linux AgentVM box.
+
+${run_in#*:} runs Linux, and the tools are macOS programs. Choose This Mac, or a macOS box or image, under Where tools run in Agentic Session Tools, then start the conversation again."
+		return 1
+	fi
 	chat_loading_overlay_note "$win" "Starting the AgentVM box and copying Cadabra's tools into it..."
 	local box
 	box="$(boxsession_start_tools "$win" "$run_in" "$project" "$read_only")"
@@ -292,7 +310,10 @@ $why"
 #   chooses whether it is shared read-only (acp_agent_read_only). With tools on (Use Tools in
 #   Select ACP Agent), Cadabra's MCP servers are copied into the box and handed to the agent at
 #   their box paths, following the box pane's settings (boxsession_transport); the agent starts
-#   them there. Its own tools run in the box either way.
+#   them there. Its own tools run in the box either way. In a Linux box the agent gets its own
+#   tools only: Cadabra's servers are macOS programs, so tools are off there whatever the launch
+#   carries (Select ACP Agent turns Use Tools off for such a place; one whose system was not
+#   known then gets here with it on).
 #
 #   <agent id> is the stored id. Only a catalog id is handed on as the agent's recipe: "custom"
 #   (an edited command) and "custom:N" (a saved agent) run their command as typed, with no
@@ -359,6 +380,13 @@ $why"
 	if [ $? -ne 0 ]; then
 		echo "box: not started, the memory warning was canceled ($run_in)"
 		return 1
+	fi
+	if [ "$chat_engine_box_guest" = "linux" ] && [ "$use_tools" != "false" ]; then
+		echo "box: $run_in runs Linux; Cadabra's tools are not handed to the agent"
+		use_tools=false
+		# The window's stamp too, which chat_engine_load wrote from what the launch carried: the
+		# model bar's next pick reads it as what this conversation runs with.
+		pb_set "aichatv2_tools_${win}" "false"
 	fi
 
 	if [ "$use_tools" = "false" ]; then

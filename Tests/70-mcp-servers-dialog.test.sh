@@ -669,6 +669,52 @@ check "Reset to Defaults shows the box pane's defaults too" "true|false|true|tru
     "$(for v in $MCP_TOOLS_BOX_LOCAL_TOGGLE_ID $MCP_TOOLS_BOX_CONFINE_TOGGLE_ID $MCP_TOOLS_BOX_PDF_TOGGLE_ID $MCP_TOOLS_BOX_PDF_WRITABLE_TOGGLE_ID $MCP_TOOLS_BOX_TIME_TOGGLE_ID $MCP_TOOLS_BOX_INTERNET_TOGGLE_ID $MCP_TOOLS_BOX_READ_ONLY_TOGGLE_ID; do printf "%s\n" "$(ui_value $v)"; done | /usr/bin/paste -sd'|' -)"
 omc_run aichat.mcp.servers.cancel
 cad_call launch_queue_clear
+# Linux boxes and images: the servers are macOS programs, so they are not offered here.
+/usr/bin/jq '. + [(.[0] | .name = "deb" | .guest = "linux" | .macOSVersion = null | .macOSBuild = null | del(.derivedFrom))]' \
+    "$OMCTEST_TESTS/fixtures/agentvm/image-list.json" > "$FAKE_AGENTVM_DIR/image-list.json"
+/usr/bin/jq '. + [(.[0] | .box.name = "lb" | .box.image = "deb" | .guest = "linux")]' \
+    "$OMCTEST_TESTS/fixtures/agentvm/box-list.json" > "$FAKE_AGENTVM_DIR/box-list.json"
+cad_call_lib aichat.mcp.servers.library.sh mcp_tools_set_run_in mac >/dev/null
+fresh_window
+arm_launch "/models/tiny.gguf" "true"
+omc_run aichat.mcp.servers.init
+check "a Linux box and a Linux image are not offered for the tools" \
+    "mac |Kept AgentVM boxes box:cadabra-spike box:try1 |New disposable AgentVM box from new:dev new:dev-agents new:dev-node new:dev-xcode new:dev-xcode-ios" \
+    "$(tools_options)"
+omc_run aichat.mcp.servers.cancel
+cad_call launch_queue_clear
+/usr/bin/jq '[.[] | select(.guest == "linux")]' "$FAKE_AGENTVM_DIR/box-list.json" > "$FAKE_AGENTVM_DIR/box-list.json.new"
+/bin/mv -f "$FAKE_AGENTVM_DIR/box-list.json.new" "$FAKE_AGENTVM_DIR/box-list.json"
+fresh_window
+arm_launch "/models/tiny.gguf" "true"
+omc_run aichat.mcp.servers.init
+check "  with only Linux boxes kept, no empty heading is left" \
+    "mac |New disposable AgentVM box from new:dev new:dev-agents new:dev-node new:dev-xcode new:dev-xcode-ios" \
+    "$(tools_options)"
+omc_run aichat.mcp.servers.cancel
+cad_call launch_queue_clear
+# A choice stored before Linux places stopped being offered.
+cad_call_lib aichat.mcp.servers.library.sh mcp_tools_set_run_in new:deb >/dev/null
+fresh_window
+arm_launch "/models/tiny.gguf" "true"
+omc_run aichat.mcp.servers.init
+check "a stored Linux image stays shown, saying why it cannot be used" "new:deb|1" \
+    "$(ui_value "$MCP_TOOLS_RUNIN_PICKER_ID")|$(cad_has "$(ui_prop "$MCP_TOOLS_RUNIN_PICKER_ID" options)" "{\"title\":\"deb (Linux, cannot run Cadabra's tools)\",\"tag\":\"new:deb\"}")"
+omc_control "$MCP_TOOLS_RUNIN_PICKER_ID" new:deb
+chains_reset
+alerts_reset
+omc_run aichat.mcp.servers.start
+check "  Start refuses it, and the window stays" "0|1|1" \
+    "$(chain_asked aichat.chat)|$(alerts_mention "Cadabra's tools cannot run in a Linux AgentVM box.")|$(alerts_mention 'deb runs Linux, and the tools are macOS programs.')"
+omc_control "$MCP_TOOLS_RUNIN_PICKER_ID" new:dev
+chains_reset
+alerts_reset
+omc_run aichat.mcp.servers.start
+check "  a macOS image in its place is stored, and the chat opens" "new:dev|1|0" \
+    "$(cad_call_lib aichat.mcp.servers.library.sh mcp_tools_run_in)|$(chain_asked aichat.chat)|$(alerts_count)"
+queue_settle "/models/tiny.gguf|true|"
+cad_call launch_queue_clear
+/bin/rm -f "$FAKE_AGENTVM_DIR/image-list.json" "$FAKE_AGENTVM_DIR/box-list.json"
 cad_call acp_agent_store claude-code-acp "claude-agent-acp"
 fresh_window
 arm_launch "" "true"

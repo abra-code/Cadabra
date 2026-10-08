@@ -141,6 +141,20 @@ check "  saying so"                       "1" "$(cad_has "$why" 'Another Cadabra
 check "  without running anything in the box" "0" "$(logged_count 'exec')"
 /bin/rmdir "$HOME/Library/Application Support/Cadabra/box-tools-b1.lock"
 check "a bad box name is refused"         "2" "$(with_fake boxsession_tools_copy 'B 1' >/dev/null; echo $?)"
+# The tools are macOS programs: a box that says it runs something else gets nothing.
+fake_reset
+printf 'missing\t/home/agent/Library/Application Support/Cadabra/Tools/%s\t/home/agent/Library/Caches/Cadabra/pycache\tLinux\n' "$TOOLS_ID" > "$FAKE_AGENTVM_DIR/exec-output"
+row=$(with_fake boxsession_tools_copy b1)
+status=$?
+why=$(message "$status")
+check "a Linux box is refused"            "1|" "$status|$row"
+check "  saying why"                      "1" "$(cad_has "$why" "Cadabra's tools are macOS programs and cannot run in the AgentVM box b1, which runs Linux.")"
+check "  after asking the box once, with nothing sent" "1" "$(logged_count 'exec --box b1')"
+check "  and the lock is released"        "no" "$([ -d "$HOME/Library/Application Support/Cadabra/box-tools-b1.lock" ] && echo yes || echo no)"
+printf 'ready\t/Users/agent/Library/Application Support/Cadabra/Tools/%s\t/Users/agent/Library/Caches/Cadabra/pycache\n' "$TOOLS_ID" > "$FAKE_AGENTVM_DIR/exec-output"
+row=$(with_fake boxsession_tools_copy b1)
+status=$?
+check "so is a box that does not say what it runs" "1|1" "$status|$(cad_has "$(message "$status")" 'which runs another system')"
 # tar in the box takes an empty stream (a tar on this Mac that could not run) as an empty archive.
 install_script=$(cad_lib_var _boxsession_tools_install "$LIB")
 /bin/rm -rf "$OMCTEST_WORK/empty-copy"
@@ -384,6 +398,59 @@ json=$(printf '%s\n' "$out" | /usr/bin/sed 1d)
 check "  and with tools off, none, and no public rule" "0||0" \
     "$(printf '%s\n' "$out" | /usr/bin/head -1)|$(mcp_servers "$json" '"|".join(sorted(m))')|$(cad_has "$(logged 'box create')" '--allow public')"
 with_fake boxsession_release w1
+
+section "in a Linux box an agent gets its own tools only, and a local model's tools do not start"
+# linux_places  ->  agent-vm's lists with a Linux image (deb) and a kept Linux box (lb) added.
+linux_places() {
+    /usr/bin/jq '. + [(.[0] | .name = "deb" | .guest = "linux" | .macOSVersion = null | .macOSBuild = null | del(.derivedFrom))]' \
+        "$FIXTURES/image-list.json" > "$FAKE_AGENTVM_DIR/image-list.json"
+    /usr/bin/jq '. + [(.[0] | .box.name = "lb" | .box.image = "deb" | .guest = "linux")]' \
+        "$FIXTURES/box-list.json" > "$FAKE_AGENTVM_DIR/box-list.json"
+    /bin/cp "$FIXTURES/box-status-stopped.json" "$FAKE_AGENTVM_DIR/box-lb.json"
+}
+fake_reset
+linux_places
+prefs_reset true
+cad_pb_set aichatv2_open_w1 1
+alerts_reset
+cad_pb_set aichatv2_tools_w1 true
+out=$(engine chat_engine_box_transport w1 "claude-agent-acp" claude-code-acp new:deb true)
+json=$(printf '%s\n' "$out" | /usr/bin/sed 1d)
+check "an agent in a new Linux box starts, with none of Cadabra's servers" "0||1" \
+    "$(printf '%s\n' "$out" | /usr/bin/head -1)|$(mcp_servers "$json" '"|".join(sorted(m))')|$(cad_has "$json" '"exec", "--box"')"
+check "  the box is made from the Linux image, without the servers' public rule" "1|0" \
+    "$(cad_has "$(logged 'box create')" '--image deb')|$(cad_has "$(logged 'box create')" '--allow public')"
+check "  nothing is copied into it"       "0" "$(logged_count 'exec --box cadabra-claude-code-acp-[0-9a-f]* -- /bin/sh -c')"
+check "  the window is stamped as running without tools" "false" "$(cad_pb_get aichatv2_tools_w1)"
+check "  no config is left for the agent, and no alert" "no|0" \
+    "$([ -f "$HOME/Library/Application Support/Cadabra/Sessions/w1/mcp-config.json" ] && echo yes || echo no)|$(alerts_count)"
+with_fake boxsession_release w1
+fake_reset
+linux_places
+out=$(engine chat_engine_box_transport w1 "claude-agent-acp" claude-code-acp box:lb readonly)
+json=$(printf '%s\n' "$out" | /usr/bin/sed 1d)
+check "the same in a kept Linux box, its rules untouched" "0|||0" \
+    "$(printf '%s\n' "$out" | /usr/bin/head -1)|$(mcp_servers "$json" '"|".join(sorted(m))')|$(logged 'box network')|$(logged_count 'exec --box lb -- /bin/sh -c')"
+with_fake boxsession_release w1
+fake_reset
+linux_places
+prefs_reset
+cad_call mcp_tools_set_run_in new:deb >/dev/null
+alerts_reset
+out=$(engine chat_engine_tools_box w1 true)
+check "a local model's tools set to a Linux image refuse" "1" "$(printf '%s\n' "$out" | /usr/bin/head -1)"
+check "  saying why, and where to choose again" "1|1" \
+    "$(alerts_mention "Cadabra's tools cannot run in a Linux AgentVM box.")|$(alerts_mention 'deb runs Linux, and the tools are macOS programs. Choose This Mac, or a macOS box or image, under Where tools run')"
+check "  before agent-vm made or started anything" "||" "$(logged 'box create')|$(logged 'box start')|$(/bin/cat "$REGISTRY" 2>/dev/null)"
+cad_call mcp_tools_set_run_in box:lb >/dev/null
+alerts_reset
+out=$(engine chat_engine_tools_box w1 true)
+check "and so does a kept Linux box, left as it is" "1|1|" \
+    "$(printf '%s\n' "$out" | /usr/bin/head -1)|$(alerts_mention 'lb runs Linux')|$(logged 'box start')"
+out=$(engine chat_engine_tools_box w1 false)
+check "with tools off nothing is asked"   "0" "$(printf '%s\n' "$out" | /usr/bin/head -1)"
+cad_call mcp_tools_set_run_in mac >/dev/null
+alerts_reset
 
 section "chat init starts the tools' box before the engine"
 fake_reset

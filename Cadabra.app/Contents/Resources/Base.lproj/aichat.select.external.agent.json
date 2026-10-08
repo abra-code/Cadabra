@@ -419,7 +419,8 @@
                 { "title": "Read-only MCP Servers", "tag": "readonly" },
                 { "title": "All", "tag": "true" }
               ],
-              "pickerStyle": "menu"
+              "pickerStyle": "menu",
+              "help": "Which of Cadabra's MCP servers the agent gets, beside its own tools. They are macOS programs, so they are off in a Linux AgentVM box."
             }
           },
           {

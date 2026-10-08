@@ -21,6 +21,15 @@ fake_reset() {
     /bin/mkdir -p "$FAKE_AGENTVM_DIR"
 }
 
+# linux_places  ->  agent-vm's lists with a Linux image (deb) and a kept Linux box (lb) added to
+# the fixtures' macOS ones, as agent-vm 0.7 and later name them.
+linux_places() {
+    /usr/bin/jq '. + [(.[0] | .name = "deb" | .guest = "linux" | .macOSVersion = null | .macOSBuild = null | del(.derivedFrom))]' \
+        "$FIXTURES/image-list.json" > "$FAKE_AGENTVM_DIR/image-list.json"
+    /usr/bin/jq '. + [(.[0] | .box.name = "lb" | .box.image = "deb" | .guest = "linux")]' \
+        "$FIXTURES/box-list.json" > "$FAKE_AGENTVM_DIR/box-list.json"
+}
+
 # options  ->  the Runs in picker's option tags, space-joined.
 options() {
     ui_prop "$RUN_IN_PICKER_ID" options | "$OMC_APP_BUNDLE_PATH/Contents/Library/Python/bin/python3" -c \
@@ -308,6 +317,60 @@ section "+ shows the new agent's place, not the previous row's"
 omc_run aichat.select.external.agent.add
 check "a new agent runs on this Mac"     "mac" "$(ui_value "$RUN_IN_PICKER_ID")"
 check "  with tools offered again"       "1" "$(ui_enabled "$USE_TOOLS_PICKER_ID")"
+
+section "a Linux box or image is offered and marked, with Cadabra's tools off there"
+# Cadabra's MCP servers are macOS programs: an agent can run in a Linux box, with its own tools.
+cad_reset
+fake_reset
+linux_places
+ui_reset
+omc_run aichat.select.external.agent.init
+check "the Linux places are on the list" \
+    "mac |Kept AgentVM boxes box:cadabra-spike box:try1 box:lb |New disposable AgentVM box from new:dev new:dev-agents new:dev-node new:dev-xcode new:dev-xcode-ios new:deb" \
+    "$(options)"
+titles=$(ui_prop "$RUN_IN_PICKER_ID" options)
+check "  each saying it is Linux"        "1|1" "$(cad_has "$titles" '{"title":"lb (Linux)","tag":"box:lb"}')|$(cad_has "$titles" '{"title":"deb (Linux)","tag":"new:deb"}')"
+check "  and no macOS place saying so"   "0" "$(cad_has "$titles" 'dev (Linux)')"
+check "on this Mac tools are on"         "true|1" "$(ui_value "$USE_TOOLS_PICKER_ID")|$(ui_enabled "$USE_TOOLS_PICKER_ID")"
+omc_control "$PANE_OWNER_ID" claude-code-acp
+omc_control "$USE_TOOLS_PICKER_ID" readonly
+omc_control "$RUN_IN_PICKER_ID" new:deb
+omc_run aichat.select.external.agent.runin.changed
+check "choosing a Linux image turns tools off, and the picker with them" "false|0" "$(ui_value "$USE_TOOLS_PICKER_ID")|$(ui_enabled "$USE_TOOLS_PICKER_ID")"
+check "  the level picker shows as in any box" "1" "$(ui_visible "$LEVEL_PICKER_ID")"
+omc_control "$RUN_IN_PICKER_ID" box:lb
+omc_run aichat.select.external.agent.runin.changed
+check "another Linux place keeps them off" "false|0" "$(ui_value "$USE_TOOLS_PICKER_ID")|$(ui_enabled "$USE_TOOLS_PICKER_ID")"
+omc_control "$RUN_IN_PICKER_ID" box:try1
+omc_run aichat.select.external.agent.runin.changed
+check "a macOS box brings back the choice made before" "readonly|1" "$(ui_value "$USE_TOOLS_PICKER_ID")|$(ui_enabled "$USE_TOOLS_PICKER_ID")"
+check "  kept for that one change only" "" "$(cad_pb_get "aichatv2_agenttools_$OMC_ACTIONUI_WINDOW_UUID")"
+# ui_value is what a handler last wrote, so after ui_reset an empty one means nothing was written.
+ui_reset
+omc_control "$USE_TOOLS_PICKER_ID" false
+omc_control "$RUN_IN_PICKER_ID" mac
+omc_run aichat.select.external.agent.runin.changed
+check "  so a choice made since is not written over" "|1" "$(ui_value "$USE_TOOLS_PICKER_ID")|$(ui_enabled "$USE_TOOLS_PICKER_ID")"
+# Continue pressed with the picker's value from before the place changed.
+continue_with claude-code-acp "claude-agent-acp" new:deb free
+check "Continue with a Linux image stores it" "new:deb" "$(cad_call acp_agent_run_in claude-code-acp)"
+check "  the launch carries no tools, whatever the picker's snapshot held" "false" "$(cad_pb_get aichatv2_launch_queue | /usr/bin/awk -F"|" "{ print \$2 }")"
+check "  and the project step comes next" "1|0" "$(chain_asked aichat.mcp.servers)|$(chain_asked aichat.chat)"
+continue_with claude-code-acp "claude-agent-acp" new:dev free
+check "Continue with a macOS image still carries them" "true" "$(cad_pb_get aichatv2_launch_queue | /usr/bin/awk -F"|" "{ print \$2 }")"
+ui_reset
+omc_run aichat.select.external.agent.init
+check "an agent set to a macOS image opens with tools on" "new:dev|true|1" "$(ui_value "$RUN_IN_PICKER_ID")|$(ui_value "$USE_TOOLS_PICKER_ID")|$(ui_enabled "$USE_TOOLS_PICKER_ID")"
+cad_call acp_agent_set_run_in claude-code-acp box:lb
+ui_reset
+omc_run aichat.select.external.agent.init
+check "one set to a Linux box opens with tools off" "box:lb|false|0" "$(ui_value "$RUN_IN_PICKER_ID")|$(ui_value "$USE_TOOLS_PICKER_ID")|$(ui_enabled "$USE_TOOLS_PICKER_ID")"
+omc_table_cell "$TABLE_ID" 3 "opencode acp"
+omc_table_cell "$TABLE_ID" 4 opencode
+omc_run aichat.select.external.agent.selection.changed
+check "  and the next agent, on this Mac, gets the window's default back" "mac|true|1" "$(ui_value "$RUN_IN_PICKER_ID")|$(ui_value "$USE_TOOLS_PICKER_ID")|$(ui_enabled "$USE_TOOLS_PICKER_ID")"
+omc_run aichat.select.external.agent.cancel
+check "Cancel forgets the kept choice"   "" "$(cad_pb_get "aichatv2_agenttools_$OMC_ACTIONUI_WINDOW_UUID")"
 
 section "agent-vm is asked once per window, not on every click"
 cad_reset

@@ -773,7 +773,7 @@ EOF
 }
 
 # TOOLS IN A BOX. A local model's MCP servers (replay, pdfutil, time-mcp and the Python search
-# server) can run in a box while the model runs on this Mac: mlx-agent starts each server as
+# server) can run in a macOS box while the model runs on this Mac: mlx-agent starts each server as
 # `agent-vm exec --box B --project P -- <server>` (generate_mcp_configs.py's box mode). The
 # servers are Cadabra's own files, so they are copied into the box user's
 #   ~/Library/Application Support/Cadabra/Tools/<version>-<digest>/
@@ -793,6 +793,10 @@ EOF
 #
 # The digest covers the copied files' paths, sizes and modification times (under 0.1 s), so a
 # rebuilt Cadabra copies again even at the same version.
+#
+# macOS boxes only: the servers are macOS programs. The windows do not offer them for a Linux box
+# or image, chat start checks agent-vm's record again, and the copy itself asks the box what it
+# runs before anything is sent (boxsession_tools_copy), whatever the lists said.
 boxsession_tools_items="Support/replay Support/pdfutil Support/time-mcp Library/Python Library/Packages Resources/replay-box-sandbox.json"
 # The rule the search server needs: agent-vm's "public" (any public host name, logged, never
 # this Mac or the local network), since its fetch tool reads whatever page the model names.
@@ -852,15 +856,16 @@ _boxsession_tools_unlock() {
     /bin/rmdir "$mcp_app_support/box-tools-$1.lock" 2>/dev/null
 }
 
-# The two programs run in the box by /bin/sh. The first says whether the copy <id> is complete
-# and where it and the bytecode cache are; the second, reading the tar stream on its standard
+# The two programs run in the box by /bin/sh. The first says whether the copy <id> is complete,
+# where it and the bytecode cache are, and what system the box runs (uname's "Darwin" for
+# macOS); the second, reading the tar stream on its standard
 # input, puts a copy there, checks that each item arrived, compiles it, removes copies of other
 # builds with their bytecode, and marks it complete.
 # A failed compile costs only speed, so it is not an error.
 _boxsession_tools_where='dir="$HOME/Library/Application Support/Cadabra/Tools/$1"
 state=missing
 if [ -f "$dir/.cadabra-tools-complete" ]; then state=ready; fi
-printf "%s\t%s\t%s\n" "$state" "$dir" "$HOME/Library/Caches/Cadabra/pycache"'
+printf "%s\t%s\t%s\t%s\n" "$state" "$dir" "$HOME/Library/Caches/Cadabra/pycache" "$(/usr/bin/uname -s)"'
 _boxsession_tools_install='dir="$1"; cache="$2"; base="${dir%/*}"
 shift 2
 /bin/rm -rf "$dir" || exit 1
@@ -877,6 +882,7 @@ done
 
 # boxsession_tools_copy <box>  ->  one row, the copy's folder in the box TAB the bytecode cache
 # folder there, once Cadabra's tools are in the running box (copied now, or found from before).
+# A box that does not run macOS is refused, with nothing copied: the tools could not start there.
 # A failure's message is left for agentvm_last_error.
 boxsession_tools_copy() {
     _agentvm_need_name box "$1" || return $?
@@ -903,8 +909,8 @@ boxsession_tools_copy() {
         _boxsession_tools_unlock "$_box"
         return "$_status"
     fi
-    local _state _dir _cache
-    IFS="$boxsession_tab" read -r _state _dir _cache <<EOF
+    local _state _dir _cache _system
+    IFS="$boxsession_tab" read -r _state _dir _cache _system <<EOF
 $_where
 EOF
     case "$_state:$_dir:$_cache" in
@@ -914,6 +920,11 @@ EOF
             _agentvm_refuse 1 "The AgentVM box $_box did not say where Cadabra's tools go (it answered \"$_where\")."
             return 1 ;;
     esac
+    if [ "$_system" != "Darwin" ]; then
+        _boxsession_tools_unlock "$_box"
+        _agentvm_refuse 1 "Cadabra's tools are macOS programs and cannot run in the AgentVM box $_box, which runs ${_system:-another system}."
+        return 1
+    fi
     if [ "$_state" = "missing" ]; then
         set --
         for _item in $boxsession_tools_items; do
@@ -1033,7 +1044,8 @@ boxsession_secret() {
 # ask or plan. <use tools> (true, readonly or false, the default) hands the agent Cadabra's MCP
 # servers: they are copied into the box (boxsession_tools_copy) and listed as the agent starts
 # them there, at their box paths (generate_mcp_configs.py --client in-box, following the box
-# pane's settings); "readonly" passes only the servers with no permission-gated tools.
+# pane's settings); "readonly" passes only the servers with no permission-gated tools. The
+# caller passes false for a Linux box (chat_engine_box_transport): the copy refuses one.
 # The builder is called directly, never through aichat_acp_transport_json, whose fallback builds
 # a transport of its own when the builder prints nothing: here that would run the agent on this
 # Mac instead of refusing.

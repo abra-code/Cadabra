@@ -25,6 +25,8 @@
 #   jobs       APPENDED to by `job start`: one "<id><TAB><the job's command, space-joined>" line.
 #   exec-error when present, `exec` prints "Error: " and the file's text and exits 1 (agent-vm's
 #              refusal of a share, say); otherwise exec runs nothing and exits 0, unless:
+#   exec-output  when present, `exec` prints the file and exits 0, running nothing: what a
+#              box says that this Mac cannot (a Linux box's answer about itself).
 #   exec-run   when present, `exec` runs the program after "--" on this Mac, as the box would:
 #              standard input and output pass through, each --env NAME=VALUE is set for it, and
 #              its status is exec's. The box user's home is then the test's $HOME, so Cadabra's
@@ -175,6 +177,10 @@ case "$1 $2" in
         if [ -f "$state/exec-error" ]; then
             printf 'Error: %s\n' "$(/bin/cat "$state/exec-error")" >&2
             exit 1
+        fi
+        if [ -f "$state/exec-output" ]; then
+            /bin/cat "$state/exec-output"
+            exit 0
         fi
         if [ -f "$state/exec-run" ]; then
             shift 3

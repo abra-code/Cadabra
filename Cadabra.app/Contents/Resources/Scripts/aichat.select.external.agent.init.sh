@@ -45,7 +45,10 @@ agent_restore_configured_view $TABLE_ID
 # list - is an mlx-agent extension that an external agent cannot honor, so the only leverage
 # left is what we hand over rather than what we ask it to gate.
 "$dialog_tool" "$window_uuid" $USE_TOOLS_PICKER_ID true
+# This handler's snapshot was taken before that write, and the paint below reads the picker's
+# choice from it to keep for later (agent_tools_follow_place).
+OMC_ACTIONUI_VIEW_30_VALUE=true
 
-# Where the configured agent runs. After the tools default on purpose: in a box, tools are off
-# and the picker disabled, and that has to be the last word.
+# Where the configured agent runs. After the tools default on purpose: in a Linux box, tools are
+# off and the picker disabled (agent_tools_follow_place), and that has to be the last word.
 agent_paint_run_in

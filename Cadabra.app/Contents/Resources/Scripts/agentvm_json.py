@@ -33,15 +33,18 @@ Usage (the JSON on stdin):
     name, status, detail
 "images" emits one row per image:
     name, state, failure, macOS, basedOn, ownSize, needs, recipe, created, guestVersion,
-    cpus, memoryGB, diskGB, path, needKinds
+    cpus, memoryGB, diskGB, path, needKinds, guest
   macOS is "27.0 (26A428)"; ownSize is "-" (agent-vm's lists measure nothing), and is kept
   so the later columns keep their places; needs is
   for people ("guest update, Full Disk Access"), needKinds for code ("guest-update,...").
+  guest is the system the image runs, "macos" or "linux"; "-" from an agent-vm before 0.7,
+  which had macOS images only. A Linux image has no macOS, so that column is "-" for it.
 "boxes" emits one row per box:
     name, state, image, network, cpus, memoryGB, ownSize, pid, project, projectReadOnly,
-    activeExecs, disposable, ownerPid, startedAt, supervisorVersion, path, netMode, rules
+    activeExecs, disposable, ownerPid, startedAt, supervisorVersion, path, netMode, rules,
+    guest
   network is for people ("allowlist, 2 rules"); rules is the allow list, comma-joined; ownSize
-  is "-", as for images.
+  is "-", as for images; guest is as for images.
 "execlog" emits one row per program run, oldest first:
     started, status, seconds, program, prompts, stoppedOnPrompt
   status is "no end recorded" while the run goes on, and also when its client died without
@@ -191,7 +194,7 @@ def image_rows(data):
                    sub(image, "recipe").get("description"), day(image.get("createdAt")),
                    image.get("guestVersion"), image.get("cpuCount"),
                    gigabytes(image.get("memoryBytes")), gigabytes(image.get("diskBytes")),
-                   image.get("path"), kinds])
+                   image.get("path"), kinds, image.get("guest")])
 
 
 def box_rows(data):
@@ -210,7 +213,7 @@ def box_rows(data):
                    entry.get("activeExecs"),
                    entry.get("disposable", record.get("disposable")), entry.get("ownerPid"),
                    entry.get("startedAt"), entry.get("supervisorVersion"), entry.get("path"),
-                   mode, rules])
+                   mode, rules, entry.get("guest", record.get("guest"))])
 
 
 def execlog_rows(data):
