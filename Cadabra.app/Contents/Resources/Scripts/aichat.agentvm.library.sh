@@ -47,7 +47,7 @@ source "$OMC_APP_BUNDLE_PATH/Contents/Resources/Scripts/aichat.library.sh"
 # pointing at a stale build) is refused rather than guessed at.
 # Raise it with every agent-vm version Cadabra moves to. The tests and the fake agent-vm read it
 # from here, so the number lives only on this line.
-AGENTVM_MIN_VERSION="0.7.12"
+AGENTVM_MIN_VERSION="0.7.43"
 AGENTVM_MIN_MACOS="27"
 
 # Where the AgentVM app puts the link to the newest agent-vm, and where to get the app.
@@ -783,8 +783,10 @@ agentvm_box_start() {
 
 # agentvm_box_warmup <box> <project> <yes|no read-only>  ->  0 once a program has run in the box
 # with the project shared, at the same path. It checks what only agent-vm can (its share rules,
-# a box already serving another project) and mounts the share, so the agent's own start does not
-# wait for it. A refusal is agent-vm's message, naming the rule, for agentvm_last_error.
+# a box already serving another project), so a refusal comes before the agent is started, as
+# agent-vm's message, naming the rule, for agentvm_last_error. It also mounts the share, which
+# an agent that starts within 5 seconds finds in place: agent-vm takes the folder back from the
+# box 5 seconds after the last program started on it ends, and a later start shares it again.
 agentvm_box_warmup() {
     _agentvm_need_name box "$1" || return $?
     case "$2" in
