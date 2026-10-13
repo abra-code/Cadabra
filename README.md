@@ -1,13 +1,27 @@
 # Cadabra.app
 ![Cadabra Icon](Icon/Cadabra-macOS-256x256@1x.png)
 
-Cadabra.app - macOS applet to run large language models locally
+Cadabra.app - macOS applet to run large language models locally, to chat with coding agents
+that speak ACP (Agent Client Protocol), and to keep either one's work in an AgentVM box, a
+virtual machine on your Mac
+
+**What Cadabra does**
+
+- **Local models.** Runs MLX and GGUF models on your Mac, with a native chat and tools the model
+  can call (files and shell, web search, PDF, time).
+- **ACP agents.** Drives external agents such as Claude Code, Codex, OpenCode or Gemini from the
+  same chat window: any local agent that speaks ACP.
+- **AgentVM boxes.** An agent can run in a separate macOS or Linux in a virtual machine instead of
+  on your Mac, with one project folder shared, and so can a local model's tools (in a macOS box).
+  Needs macOS 27 and the AgentVM app: https://github.com/abra-code/AgentVMApp
+- **Review and undo.** A snapshot of the project before a session lets you see what the session
+  changed and put any of it back.
 
 This repo holds two applets that share a lineage and a codebase, but not a UI:
 
 | App | Version | Chat UI | Engines |
 | --- | --- | --- | --- |
-| **Cadabra.app** | 2.0 | native (ActionUI Chat) | **MLX** (mlx-agent) + **GGUF** (llama-server) |
+| **Cadabra.app** | 2.1.1 | native (ActionUI Chat) | **MLX** (mlx-agent) + **GGUF** (llama-server), or an external ACP agent |
 | **AIChat.app** | 1.2 | llama.cpp WebUI in a WebKit view | **GGUF** (llama-server) |
 
 Cadabra.app is the current app. AIChat.app 1.2 is kept as the previous generation and still works,
@@ -19,11 +33,12 @@ https://huggingface.co/models<br>
 or<br>
 https://www.modelscope.cn/models<br>
 
-After the initial setup no network is required to query the LLMs.
+After the initial setup no network is required to query the local LLMs. An external agent uses
+whatever service it is set up for.
 
 ---
 
-## Cadabra.app (2.0)
+## Cadabra.app (2.1.1)
 
 One etymology of *abra-cadabra* is "I create as I speak" - the speaking carries over from the
 old name.
@@ -54,6 +69,56 @@ MLX - so both formats sit side by side in the same model list.
   - PDF (embedded `pdfutil`, no network): inspection always, plus optional editing - merge, page ops, metadata, form fill, watermark, shrink - whose outputs are always new files (never an overwrite) and are permission-gated per call
   - Local files & shell, sandboxed via `replay`, with explicit read-only and read-write path lists
   - a session-wide **Allow Network** master switch that hard-gates the networked servers
+
+**External ACP agents**
+
+ACP (Agent Client Protocol) is the protocol a chat application and an agent talk over. Cadabra's
+own chat with a local model uses it, and so can any agent installed on your Mac that speaks it.
+
+- **Select ACP Agent** keeps the agents by name. A catalog comes with Cadabra: Claude Code and
+  Codex (through their ACP adapters), OpenCode, Gemini, GitHub Copilot, Cursor, Grok, Kilo,
+  Kimi Code, Mistral Vibe and Qwen Code. Any other agent is added by its command.
+- Cadabra does not install the agents. Test says whether an agent is on this Mac and answers.
+- For each agent you choose how much of Cadabra's MCP tooling it gets: nothing, the read-only
+  servers, or all of them.
+- **Runs in** chooses where the agent works: this Mac, or an AgentVM box.
+
+**AgentVM boxes** (macOS 27 or later)
+
+An agent that can run commands can do anything your account can. An AgentVM box is a separate
+macOS or Linux running in a virtual machine on your Mac. What happens there stays there, apart
+from the one project folder you share with it.
+
+- **An external agent in a box.** The agent and every tool it starts run inside the box: a kept
+  box, or a new disposable one that is deleted when the chat window closes.
+- **A local model's tools in a box.** The model stays on your Mac, since it needs the Mac's memory
+  and graphics processor; every tool call it makes runs in a macOS box.
+- **Network.** A box reaches only the hosts its rules allow. A window lists the hosts it reached
+  and those it was refused, and a refused host can be allowed there.
+- **Keys.** An agent in a box cannot read the keys on your Mac. Keys... stores an API key in your
+  login Keychain and gives the agent the one key you choose.
+- **Review and undo.** Cadabra snapshots the project before a session (on by default for a box).
+  Review Changes lists what the session changed, shows each file's differences, and undoes one
+  change or all of them. Changes that could run something on your Mac later, such as a git hook,
+  are flagged and listed first.
+- **Tools > AgentVM Boxes** lists the boxes and starts and stops them.
+- Linux boxes run external agents with the agents' own tools. Cadabra's MCP servers are macOS
+  programs and run in macOS boxes only.
+
+Images and boxes are made in the AgentVM app, a separate application:<br>
+https://github.com/abra-code/AgentVMApp/releases<br>
+On a macOS older than 27 everything runs on your Mac, as before. Help > AgentVM Boxes Help in the
+app explains all of it.
+
+**Sandbox on your Mac**
+
+- The Local server (files and shell) runs in a sandbox that allows the project and a list of
+  folders. **Sandbox packs** are named sets of folders for one kind of work (Xcode and Swift,
+  CMake, Node.js, Python, Homebrew and others); you can record one of your own from a command.
+- **Allow a Folder...** and **Allow Packs...** in a chat window let the tools use more while a
+  conversation is running.
+- The engines can run in a sandbox too: llama-server with Run Engine in Sandbox on, and mlx-agent
+  when no tools run on your Mac.
 
 Preferences and state live under `~/Library/Application Support/Cadabra` and the
 `com.abracode.Cadabra` preference domains.
