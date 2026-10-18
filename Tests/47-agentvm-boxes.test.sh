@@ -182,7 +182,7 @@ refused() {
     with_fake agentvm_box_create "$@" >/dev/null
     printf '%s|%s' "$?" "$([ -s "$FAKE_AGENTVM_DIR/log" ] && echo ran || echo quiet)"
 }
-check "a bad box name"      "2|quiet" "$(refused Box1 dev "" "" allowlist no)"
+check "a bad box name"      "2|quiet" "$(refused box/1 dev "" "" allowlist no)"
 check "a bad image name"    "2|quiet" "$(refused b1 -dev "" "" allowlist no)"
 check "an unknown network"  "2|quiet" "$(refused b1 dev "" "" wide no)"
 check "a rule like an option" "2|quiet" "$(refused b1 dev "" "" allowlist no pack:npm --net=open)"

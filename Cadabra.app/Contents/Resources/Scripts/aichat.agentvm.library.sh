@@ -47,7 +47,7 @@ source "$OMC_APP_BUNDLE_PATH/Contents/Resources/Scripts/aichat.library.sh"
 # pointing at a stale build) is refused rather than guessed at.
 # Raise it with every agent-vm version Cadabra moves to. The tests and the fake agent-vm read it
 # from here, so the number lives only on this line.
-AGENTVM_MIN_VERSION="0.7.46"
+AGENTVM_MIN_VERSION="0.8.1"
 AGENTVM_MIN_MACOS="27"
 
 # Where the AgentVM app puts the link to the newest agent-vm, and where to get the app.
@@ -162,18 +162,19 @@ agentvm_rows() {
 }
 
 # agentvm_valid_name <name>  ->  0 when agent-vm accepts it as an image or box name.
-# agent-vm's own rule (ImageStore.isValidName): lower-case letters, digits, ".", "_" and "-",
-# starting with a letter or digit, at most 63 characters. Checked here as well because a name
-# is an argv element: one that starts with "-" would be read as an option.
+# agent-vm's own rule (ImageStore.isValidName): letters, digits, ".", "_" and "-", starting
+# with a letter or digit, at most 63 characters. Checked here as well because a name is an argv
+# element: one that starts with "-" would be read as an option. Case is kept as given: a box
+# made in the AgentVM app may have capitals, and agent-vm matches names with their case.
 # The letters are spelled out, here and in the digit checks below, because a bracket RANGE
 # follows the locale's collation order: in en_US.UTF-8, [a-z] also matches "B" through "Z".
 agentvm_valid_name() {
     case "$1" in
-        [abcdefghijklmnopqrstuvwxyz0123456789]*) ;;
+        [ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789]*) ;;
         *) return 1 ;;
     esac
     case "$1" in
-        *[!abcdefghijklmnopqrstuvwxyz0123456789._-]*) return 1 ;;
+        *[!ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789._-]*) return 1 ;;
     esac
     [ "${#1}" -le 63 ]
 }
@@ -346,7 +347,7 @@ _agentvm_refuse() {
 # _agentvm_need_name <image|box> <name>  ->  0, or 2 with the reason left for agentvm_last_error.
 _agentvm_need_name() {
     agentvm_valid_name "$2" && return 0
-    _agentvm_refuse 2 "\"$2\" is not a $1 name agent-vm accepts: lower-case letters, digits, \".\", \"_\" and \"-\", starting with a letter or digit, at most 63 characters."
+    _agentvm_refuse 2 "\"$2\" is not a $1 name agent-vm accepts: letters, digits, \".\", \"_\" and \"-\", starting with a letter or digit, at most 63 characters."
 }
 
 # _agentvm_need_count <what> <value>  ->  0 when value is a whole number from 1 to 999.

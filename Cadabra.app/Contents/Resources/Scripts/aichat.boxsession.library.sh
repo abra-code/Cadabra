@@ -651,8 +651,9 @@ boxsession_box_users() {
 }
 
 # boxsession_disposable_name <agent id>  ->  a new box name, "cadabra-<agent>-<6 hex digits>".
-# The agent part keeps what agent-vm allows in a name (lower-case letters, digits, ".", "_",
-# "-"), with anything else as "-" ("custom:3" becomes "custom-3"), at most 40 characters.
+# The agent part is in lower case and keeps what agent-vm allows in a name (letters, digits,
+# ".", "_", "-"), with anything else as "-" ("custom:3" becomes "custom-3"), at most 40
+# characters.
 boxsession_disposable_name() {
     local _slug="$(printf '%s' "$1" | /usr/bin/tr 'ABCDEFGHIJKLMNOPQRSTUVWXYZ' 'abcdefghijklmnopqrstuvwxyz' \
         | /usr/bin/tr -c 'abcdefghijklmnopqrstuvwxyz0123456789._-' '-' | /usr/bin/cut -c1-40)"
