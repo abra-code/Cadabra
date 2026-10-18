@@ -591,13 +591,18 @@ agentvm_status() {
 #   1 name   2 state (stopped, starting, running, stopping, unresponsive)   3 image
 #   4 memoryGB   5 activeExecs (programs running in it now)   6 ownerPid (the process it stops
 #   with)   7 disposable (true or false)   8 statusError   9 guest ("macos" or "linux")
+#   10 screen (true or false): whether the box has a screen for View to show
 # The running fields (5, 6) are "-" for a stopped box.
+# Every macOS box has a screen. A Linux box has one when its record says `screen`, which a box
+# copies from its image (one built with a desktop recipe) when it is made or recreated; agent-vm
+# writes the key only when it is true.
 agentvm_status_box_rows() {
     /usr/bin/jq -r "$agentvm_jq_defs"' .boxes[]
+        | (.guest // .box.guest) as $guest
         | [.box.name, .state, .box.image,
            (if .box.memoryBytes == null then null else .box.memoryBytes / 1073741824 | floor end),
            .activeExecs, .ownerPid, (.box.disposable // false), .statusError,
-           (.guest // .box.guest)]
+           $guest, ($guest != "linux" or .box.screen == true)]
         | row'
 }
 

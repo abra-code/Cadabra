@@ -189,6 +189,9 @@ status_is '.boxes[1].guest = "linux"'
 poll
 select_box s3
 check "a running Linux box: Stop, but no View, since it has no screen" "010" "$(buttons)"
+status_is '.boxes[1].guest = "linux" | .boxes[1].box.screen = true'
+poll
+check "  one made from an image with a desktop: Stop and View" "011" "$(buttons)"
 status_is '.boxes[1].guest = "macos"'
 poll
 check "  a running macOS box: Stop and View" "011" "$(buttons)"
